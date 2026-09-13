@@ -5,11 +5,14 @@ import re
 
 import pytest
 from facts_plan.build import (
+    IN_BUDGET,
     build,
     code_key,
+    estimate_tokens,
     header_notes,
     item_candidates,
     load_estate,
+    plan_units,
     record_templates,
     reference_rows,
     strip_branch,
@@ -204,3 +207,106 @@ def test_ids_are_stable_across_two_builds(tmp_path):
     assert [c["id"] for c in first[0]] == [c["id"] for c in second[0]]
     assert all(c["id"].startswith("S-rec-") and len(c["id"]) == 18
                for c in first[0])
+
+
+# --------------------------------------------------------------------------
+# F4 — photos get their own units, and every input is read exactly once.
+
+def _lines_of(units):
+    """`Counter((path, line))` over the transcript ranges, `(path, 0)` for a
+    whole file — how often each input is read by the plan."""
+    import collections
+    seen = collections.Counter()
+    for unit in units:
+        if unit["type"] not in ("transcript", "attachment"):
+            continue
+        for ref in unit["inputs"]:
+            path, _, span = ref.partition("#")
+            if not span:
+                seen[(path, 0)] += 1
+                continue
+            first, last = (int(n[1:]) for n in span.split("-"))
+            seen.update((path, n) for n in range(first, last + 1))
+    return seen
+
+
+def test_photos_get_their_own_units_and_every_input_is_read_once(
+        tmp_path, monkeypatch):
+    """The preparation run of 2026-09-12: 13 photo descriptions (~51 KB) rode on
+    the last chunk of a 553-line transcript, the chunk was over budget, it was
+    halved on its line range alone, and no unit received any photo."""
+    import facts_plan.build as build_module
+    make_estate(tmp_path)
+    transcripts = tmp_path / "meetings" / "transcripts"
+    transcripts.mkdir(parents=True)
+    (transcripts / "prep.txt").write_text("\n".join(
+        f"سطر {n}: " + "آماده‌سازی فیله و برگر را هر صبح وزن می‌کنیم " * 2
+        for n in range(1, 554)), encoding="utf-8")
+    cache = tmp_path / "departments" / "cooking" / "attachments" / ".text"
+    cache.mkdir(parents=True)
+    photos = []
+    for n in range(1, 14):
+        path = cache / f"form-{n:02}.jpg.txt"
+        path.write_text(f"عکس {n}\n" + "\n".join(
+            f"ردیف {r}: فرم تبدیل مرغ به فیله، وزن قبل و بعد" for r in range(52)),
+            encoding="utf-8")
+        photos.append(str(path.relative_to(tmp_path)))
+    assert 45_000 < sum(len((tmp_path / p).read_bytes()) for p in photos) < 60_000
+    monkeypatch.setattr(build_module, "_attachment_state",
+                        lambda root, department: (list(photos), []))
+    run = tmp_path / "runs" / "facts" / "cooking" / "20260912-101500"
+
+    build(tmp_path, "cooking", run, ["prep"])
+
+    units = json.loads((run / "plan.json").read_text(encoding="utf-8"))["units"]
+    attachment_units = [u for u in units if u["type"] == "attachment"]
+    assert [u["id"] for u in attachment_units] == \
+        [f"u-att-{n}" for n in range(1, len(attachment_units) + 1)]
+    # all 13, in input order, and no transcript chunk carries any of them
+    assert [p for u in attachment_units for p in u["inputs"]] == photos
+    assert all("#" in ref for u in units if u["type"] == "transcript"
+               for ref in u["inputs"])
+    seen = _lines_of(units)
+    assert seen == {**{("meetings/transcripts/prep.txt", n): 1
+                       for n in range(1, 554)},
+                    **{(p, 0): 1 for p in photos}}
+    for unit in attachment_units:
+        text = (run / "units" / unit["id"] / "input.md").read_text(
+            encoding="utf-8")
+        assert estimate_tokens(text) <= IN_BUDGET
+        assert all(f"عکس {photos.index(p) + 1}\n" in text
+                   for p in unit["inputs"])
+
+
+def test_attachments_pack_to_the_budget_and_a_huge_one_goes_alone():
+    """Packed in input order; one too big for any unit is its own unit, sent
+    with an `oversized` issue naming it rather than dropped."""
+    size = {"a.txt": 100, "b.txt": 100, "huge.txt": IN_BUDGET * 3, "c.txt": 100}
+    render = lambda u: "x" * sum(size[p] for p in u["inputs"])   # noqa: E731
+    skeleton = {"candidates": [], "instances": []}
+
+    units = plan_units(skeleton, {}, [], [], list(size), render=render)
+
+    assert [(u["id"], u["type"], u["inputs"]) for u in units] == [
+        ("u-att-1", "attachment", ["a.txt", "b.txt"]),
+        ("u-att-2", "attachment", ["huge.txt"]),
+        ("u-att-3", "attachment", ["c.txt"])]
+    assert [(i["kind"], i["target"]) for i in skeleton["issues"]] == \
+        [("oversized", "huge")]
+
+
+def test_an_input_no_unit_reads_exits_2_naming_it(monkeypatch, capsys):
+    """The plan invariant over inputs: a transcript range or an attachment
+    that reaches no unit stops `build`, naming the file."""
+    import facts_plan.build as build_module
+    monkeypatch.setattr(build_module, "split_unit",
+                        lambda unit, *args, **kwargs: [])   # loses everything
+    with pytest.raises(SystemExit) as excinfo:
+        plan_units({"candidates": [], "instances": []}, {},
+                   [("prep", "meetings/transcripts/prep.txt", (1, 9), "x")],
+                   [], ["departments/cooking/attachments/.text/form.txt"],
+                   render=lambda u: "x" * (IN_BUDGET * 2))
+    assert excinfo.value.code == 2
+    err = capsys.readouterr().err
+    assert "meetings/transcripts/prep.txt" in err
+    assert "departments/cooking/attachments/.text/form.txt" in err

@@ -135,9 +135,11 @@ describe('label()', () => {
     expect(label(labels.KIND_LABELS, 'measurement')).toBe('اندازه‌گیری')
   })
 
-  it('throws in development on a value with no label', () => {
+  it('returns the raw value in development too — a stored value never crashes a screen', () => {
+    // Gate tiers C13/P4(b): the enums are open strings in the store now, so a
+    // value with no label is a real stored state, not a forgotten schema edit.
     vi.stubEnv('DEV', true)
-    expect(() => label(labels.KIND_LABELS, 'workbook')).toThrow(/workbook/)
+    expect(label(labels.KIND_LABELS, 'workbook')).toBe('workbook')
   })
 
   it('falls back to the raw value in production', () => {

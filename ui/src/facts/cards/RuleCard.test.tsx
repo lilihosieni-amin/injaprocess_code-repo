@@ -189,6 +189,27 @@ describe('the rule’s value cards', () => {
 })
 
 describe('the rule card', () => {
+  it('shows a threshold on a rule with inputs — «حد شروع پخت» is not invisible (P4a)', () => {
+    render(<RuleCard bundle={bundleOf('rule', {
+      inputs: [{ key: 'orders', title: 'سفارش‌های باز', from: 'operator' }],
+      outputs: [
+        { key: 'start_at', title: 'حد شروع پخت', value: 12 },
+        { key: 'band', title: 'بازهٔ مجاز', range: { min: 3, max: null } },
+      ],
+    })} onOpen={vi.fn()} />)
+    expect(screen.getByText('12')).toBeInTheDocument()
+    expect(screen.getByText('≥ 3')).toBeInTheDocument()
+  })
+
+  it('writes an object in an edge case as JSON text rather than crashing (P4c)', () => {
+    render(<RuleCard bundle={bundleOf('rule', {
+      inputs: [{ key: 'a' }], outputs: [{ key: 'b' }],
+      edge_cases: [{ input: { a: 0 }, expected: [1, 2], why: 'شب اول' }],
+    })} onOpen={vi.fn()} />)
+    expect(screen.getByText('{"a":0}')).toBeInTheDocument()
+    expect(screen.getByText('[1,2]')).toBeInTheDocument()
+  })
+
   it('keeps «متن اصلی» collapsed and closed until it is asked for', async () => {
     const user = userEvent.setup()
     render(<RuleCard bundle={FORMULA} onOpen={vi.fn()} />)

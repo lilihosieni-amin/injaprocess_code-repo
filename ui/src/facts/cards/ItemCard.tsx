@@ -43,7 +43,7 @@ export function ItemCard({ bundle }: { bundle: FactBundle }) {
       </div>
 
       <LabelRow text={L('pack')} width={PX.label110}>
-        {d.pack === undefined
+        {d.pack == null
           ? <span className="text-fs-body font-semibold text-ink">{none()}</span>
           // :5008 writes `toFa(size) + ' ' + unitFa(unit)`. **QF-42 is a global
           // constraint and overrides the design for the digits**: a number is
