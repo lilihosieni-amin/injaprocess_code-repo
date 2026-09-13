@@ -331,7 +331,8 @@ def test_every_held_back_reason_has_the_owner_s_words():
     nothing — so the two lists are held equal here."""
     from facts_plan.assemble import UNDECIDED_FA
     assert set(UNDECIDED_FA) == {"oversized", "cycle", "target_dropped",
-                                 "unknown_ref", "refused", "waits", "failed"}
+                                 "unknown_ref", "refused", "waits", "failed",
+                                 "not_decided"}
 
 
 def test_the_report_names_each_held_review_decision_in_persian(tmp_path):
