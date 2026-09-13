@@ -290,36 +290,27 @@ def test_a_review_document_is_not_checked_for_completeness(tmp_path):
     assert validate_unit(root, run_dir, path) == []
 
 
-def test_a_field_type_the_store_has_no_such_thing_as_fails_at_the_unit_gate(tmp_path):
+@pytest.mark.xfail(strict=True, reason="needs track K/S")
+def test_a_field_type_written_as_a_synonym_is_repaired(tmp_path):
     """I1 — 30 of the 2026-09-07 run's 52 Stage V refusals were column types
-    written as `text`. The unit that wrote it is told, by field path, while it
-    still has an attempt."""
+    written as `text`. C13 maps the synonym to `string`: no finding, no retry."""
     root, run_dir = _run(tmp_path, kind="record")
     doc = _doc("record")
     doc["decisions"][0]["data"] = {
         "role": "log", "fields": [{"from": "c_h", "key": "masraf", "type": "text"}]}
-    problems = validate_unit(root, run_dir, _write(run_dir, doc))
-    assert any("decisions[0] S-r-000000000001" in p
-               and "data.fields[0].type" in p
-               and "'text' is not one of" in p for p in problems)
-    doc["decisions"][0]["data"]["fields"][0]["type"] = "number"
-    assert validate_unit(root, run_dir, _write(run_dir, doc, "out.2.json")) == []
+    assert validate_unit(root, run_dir, _write(run_dir, doc)) == []
 
 
-def test_a_new_paper_record_without_a_location_fails_at_the_unit_gate(tmp_path):
-    """§3.3 + I1 — the two photographed forms of the 2026-09-07 run, refused
-    where the unit can still fix them."""
+@pytest.mark.xfail(strict=True, reason="needs track K/S")
+def test_a_new_paper_record_without_a_location_is_stored(tmp_path):
+    """§3.3 + I1 — the two photographed forms of the 2026-09-07 run. C10 fills
+    the missing `location` with `{}` (unknown, red in the panel): no refusal."""
     root, run_dir = _run(tmp_path)
     form = {"kind": "record", "key": "mande_shab", "title": "فرم مانده شب",
             "statement": "فرم کاغذی مانده شب که هر شیفت پر می‌شود.",
             "data": {"medium": "paper", "role": "log"}}
-    problems = validate_unit(root, run_dir,
-                             _write(run_dir, _doc(new=[form])))
-    assert any("new[0]" in p and "'location' is a required property" in p
-               for p in problems)
-    form["data"]["location"] = {"kept_at": "زونکن دفتر", "holder": "سرآشپز شیفت"}
-    assert validate_unit(root, run_dir,
-                         _write(run_dir, _doc(new=[form]), "out.2.json")) == []
+    assert tiers.refusals(_findings(root, run_dir,
+                                    _write(run_dir, _doc(new=[form])))) == []
 
 
 def test_a_paper_locations_prose_is_linted(tmp_path):
@@ -502,6 +493,7 @@ def test_a_symbol_this_document_adds_to_the_units_record_is_its_own(tmp_path):
                          _write(run_dir, _doc(new=[units, item]))) == []
 
 
+@pytest.mark.xfail(strict=True, reason="needs track K/S")
 def test_one_prose_nit_and_one_shape_error_are_one_line_each(tmp_path):
     """Ruling (e) — the gate runs even when something else was found, and the
     decision lint and the content pass say a prose nit in the same words, so it
@@ -511,9 +503,9 @@ def test_one_prose_nit_and_one_shape_error_are_one_line_each(tmp_path):
     doc["decisions"][0]["title"] = "گزارش H6"
     doc["decisions"][0]["data"] = {
         "role": "log", "fields": [{"from": "c_h", "key": "masraf", "type": "text"}]}
-    problems = validate_unit(root, run_dir, _write(run_dir, doc))
-    assert sum("H6" in p for p in problems) == 1
-    assert sum("'text' is not one of" in p for p in problems) == 1
+    found = _findings(root, run_dir, _write(run_dir, doc))
+    assert sum("H6" in p for p in tiers.lines(found)) == 1     # a note, said once
+    assert tiers.refusals(found) == []                          # `text` repaired
 
 
 def test_status_reads_a_third_attempt_as_refused_and_the_first_two_as_done(tmp_path):
@@ -688,6 +680,7 @@ def test_an_input_key_that_is_no_column_of_that_record_is_not_judged(tmp_path):
         run_dir, _bound_doc("vorudi_yek", "vorudi_do"))) == []
 
 
+@pytest.mark.xfail(strict=True, reason="needs track K/S")
 def test_the_content_half_of_the_gate_is_capped_like_the_schema_half(tmp_path):
     """§3.4's ceiling belongs to both halves. A record whose every cell is
     refused used to hand the unit one line per cell — 200 of them here, and the
@@ -700,6 +693,8 @@ def test_the_content_half_of_the_gate_is_capped_like_the_schema_half(tmp_path):
          "refItems": {"namespace": "##", "resolved_by": "code"}}]
     form["data"]["rows"] = [{"key": f"r{n}", "ing": f"ماده {n}"}
                             for n in range(200)]
-    problems = validate_unit(root, run_dir, _write(run_dir, _doc(new=[form])))
-    assert len([p for p in problems if "refItems cell" in p]) == 80
-    assert problems[80] == "new[0] mande_shab: … and 120 more"
+    # B7 — an unresolved cell is a note; notes are never capped (they carry
+    # marks), so nothing is refused and no "… and N more" line is written.
+    found = _findings(root, run_dir, _write(run_dir, _doc(new=[form])))
+    assert tiers.refusals(found) == []
+    assert not any("more" in p for p in tiers.lines(found))
