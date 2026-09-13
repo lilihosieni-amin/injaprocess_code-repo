@@ -646,3 +646,26 @@ def test_a_null_a_repair_wrote_never_disputes_a_stored_value(tmp_path, row):
     stored = _one(root, kind, key)
     assert leaf(stored) == first
     assert "accounts" not in stored and stored.get("status") != "disputed"
+
+
+def test_a_link_to_a_held_back_entry_leaves_no_temp_id_in_the_store(tmp_path):
+    """Final review I-3 (INV-1): `apply` holds back T-1, so the link T-2 had to
+    it is severed — the temp id is dropped with a note, never kept in `extra`
+    as an object or as text, and the same delta applied again changes nothing."""
+    root = _root(tmp_path); _seed_units(root)
+    held = _const_delta(key="tol2")["entries"][0]
+    held["title"], held["scope"]["departments"] = "دوم", ["nope"]       # C24
+    pointing = _const_delta()["entries"][0]
+    pointing["id"] = "T-2"
+    pointing["data"]["outputs"][0]["of"] = {"ref": "T-1"}
+    pointing["data"]["outputs"][0]["writes_to"] = {"ref": "T-1", "field": "x"}
+    _, run = _apply(root, _delta(held, pointing), "1")
+    assert [h["label"] for h in json.loads((run / "held.json").read_text())] == ["T-1"]
+    stored = _one(root, "rule", "tol")
+    assert "of" not in stored["data"]["outputs"][0]
+    assert not any("T-1" in p.read_text(encoding="utf-8")
+                   for p in (root / "facts").glob("*.json"))
+    assert stored["issues"]
+    before = _stored_bytes(root)
+    _apply(root, _delta(held, pointing), "2")
+    assert _stored_bytes(root) == before

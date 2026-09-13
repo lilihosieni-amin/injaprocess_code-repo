@@ -203,10 +203,37 @@ def _qf7(entry, path):
     return "/".join(segs)
 
 
+#: A temp id — a delta's `T-`, an assembly's `S-`/`N-` handle. It names
+#: nothing once the delta is written (INV-1).
+TEMP_REF_RE = re.compile(r"^(T-[0-9]+|[SN]-.+)$")
+
+
+def _without_temp_refs(value, dropped):
+    """`value` with every `{ref}` naming a temp id taken out (`_NONE` when the
+    value is one), each id appended to `dropped`."""
+    if isinstance(value, dict):
+        if "ref" in value and set(value) <= {"ref", "field", "row"} \
+                and isinstance(value["ref"], str) and TEMP_REF_RE.match(value["ref"]):
+            dropped.append(value["ref"])
+            return _NONE
+        kept = {k: _without_temp_refs(v, dropped) for k, v in value.items()}
+        return {k: v for k, v in kept.items() if v is not _NONE}
+    if isinstance(value, list):
+        kept = [_without_temp_refs(v, dropped) for v in value]
+        return [v for v in kept if v is not _NONE]
+    return value
+
+
 def _stash(entry, where, value):
     """C5: keep `value` in the envelope's `extra`, keyed by its QF-7 path. A
     second value for a path already held gets `~2`, `~3` — nothing is
-    overwritten."""
+    overwritten. A `{ref}` naming a temp id is never kept (final review I-3):
+    the id means nothing after the write, and a renumbered one would change
+    the entry on every run. Returns the temp ids dropped."""
+    dropped = []
+    value = _without_temp_refs(value, dropped)
+    if value is _NONE:
+        return dropped
     if any(True for _ in iter_ref_objects(value)):
         # a `{ref}` kept as an object would still be read as a link — its
         # temp id rewritten, its target resolved (INV-1, C6) — so it is text
@@ -217,6 +244,7 @@ def _stash(entry, where, value):
         n += 1
         key = f"{where}~{n}"
     bag[key] = value
+    return dropped
 
 
 def _sever(entry, path, label, why):
@@ -224,8 +252,9 @@ def _sever(entry, path, label, why):
     where = _qf7(entry, path)
     value = _get(entry, path)
     del _get(entry, path[:-1])[path[-1]]
-    _stash(entry, where, value)
-    return True, [note(label, f"{where}: {why}; kept in extra", path=where)]
+    dropped = _stash(entry, where, value)
+    kept = f"link to {', '.join(dropped)} dropped" if dropped else "kept in extra"
+    return True, [note(label, f"{where}: {why}; {kept}", path=where)]
 
 
 # --------------------------------------------------------------------------- #
