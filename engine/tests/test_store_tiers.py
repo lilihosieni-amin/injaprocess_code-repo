@@ -687,3 +687,18 @@ def test_an_id_less_entry_whose_key_a_repair_changes_is_held_back_alone(tmp_path
         ["Bad Key"]
     stored = _one(root, "rule", "gud")
     assert stored["field_status"] == {"data/outputs/v/unit": "inferred"}
+
+
+def test_c17_the_line_range_repair_never_reaches_a_column_letter(tmp_path):
+    """M-6: stripping `L` and spaces is how `L11 - L20` reads as `11-20`; on a
+    field's column it turned `B L` into `B`, which changes meaning. Stored as
+    written and marked."""
+    root = _root(tmp_path); _seed_units(root)
+    rec = _record()
+    rec["data"]["fields"][0]["columns"] = {"shab": "B L"}
+    rec["source"].append({"type": "voice", "ref": "meetings/transcripts/c.txt",
+                          "lines": "L11 - L20"})
+    _apply(root, _delta(rec))
+    stored = _one(root, "record", "barge_shab")
+    assert stored["data"]["fields"][0]["columns"] == {"shab": "B L"}
+    assert stored["source"][1]["lines"] == "11-20"

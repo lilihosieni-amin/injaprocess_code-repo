@@ -349,6 +349,10 @@ def normalise_key(value, pattern=KEY_RE.pattern):
     return s.strip("_")
 
 
+#: `source[].lines` — the one pattern a dropped `L` and spaces may repair.
+LINES_PATTERN = "^[0-9]+(-[0-9]+)?$"
+
+
 def _candidates(value, pattern):
     """C15/C17: the spellings a pattern miss may have meant, in order."""
     s = value.strip().translate(_DIGITS)
@@ -358,7 +362,8 @@ def _candidates(value, pattern):
     date = re.fullmatch(r"([0-9]{4})[/-]([0-9]{1,2})(?:[/-]([0-9]{1,2}))?", s)
     if date:
         yield "-".join([date[1]] + [p.zfill(2) for p in date.groups()[1:] if p])
-    yield re.sub(r"[Ll\s]", "", s.replace("–", "-").replace("—", "-"))
+    if pattern == LINES_PATTERN:            # `L11 – L20`, never a column's `B L`
+        yield re.sub(r"[Ll\s]", "", s.replace("–", "-").replace("—", "-"))
 
 
 def _named(ctx, value):
