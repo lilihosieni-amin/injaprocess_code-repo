@@ -1907,3 +1907,18 @@ def test_a_step_8_refusal_on_an_entry_a_repair_rekeys_holds_that_entry(tmp_path,
     assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
     assert [u["label"] for u in assembly["undecided"]
             if u.get("refused") == ["step 8 only"]] == ["گزارش شبانهٔ لاین پیتزا"]
+
+
+def test_a_merged_candidates_bindings_are_copied_not_shared():
+    """Prep run 2026-09-13: `_build_entries` runs twice and `_resolve_refs`
+    rewrites members in place. A binding `_absorb` shared with the skeleton
+    carried the draft pass's temp id into the folded pass, where it named a
+    lettuce measurement instead of the yield table."""
+    from facts_plan.assemble import _absorb
+    member = {"key": "t__s7__k__r2", "record": {"ref": "S-rec-1", "field": "c_k"}}
+    candidate = {"payload": {"applies_to": [member]}}
+    target = {"data": {"applies_to": [
+        {"key": "t__s7__j__r2", "record": {"ref": "S-rec-1", "field": "c_j"}}]}}
+    _absorb(target, candidate)
+    target["data"]["applies_to"][1]["record"]["ref"] = "T-67"
+    assert member["record"]["ref"] == "S-rec-1"

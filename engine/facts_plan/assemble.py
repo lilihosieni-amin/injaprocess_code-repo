@@ -1597,12 +1597,15 @@ def _entry(candidate, decision, state, part=None):
 
 def _absorb(target, candidate):
     """Step 3 — the merge target gains the candidate's bindings and instances;
-    a keyed member the target already carries is left alone (§11's union)."""
+    a keyed member the target already carries is left alone (§11's union).
+    Copied, never shared: `_build_entries` runs twice (draft, folded) and
+    `_resolve_refs` rewrites members in place, so a shared member would carry
+    the first pass's temp id into the second, where it names another entry."""
     for collection in ("applies_to", "instances"):
         held = {m["key"] for m in target["data"].get(collection) or []}
         for member in candidate["payload"].get(collection) or []:
             if member["key"] not in held:
-                target["data"].setdefault(collection, []).append(member)
+                target["data"].setdefault(collection, []).append(copy.deepcopy(member))
 
 
 def _undecided(state, skid, **why):
