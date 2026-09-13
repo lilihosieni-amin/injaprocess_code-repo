@@ -194,7 +194,11 @@ def _prepare(root, entries, run_dir, held):
     # entry on the next run and mint a duplicate.
     _derive_keys(store, [e for _, e in live])
     labels = {label for label, _ in live}
-    for finding in preconditions(root, store, [e for _, e in live], run_dir):
+    # The label each entry was judged under so far, by identity: a repair may
+    # have re-keyed an id-less entry since (C15, C22, the derived keys), and
+    # its findings must still name it, not read as document-level (M-3).
+    named = {id(e): label for label, e in live}
+    for finding in preconditions(root, store, [e for _, e in live], run_dir, named):
         if finding.tier == "note":
             found.append(finding)
         elif finding.label in labels:

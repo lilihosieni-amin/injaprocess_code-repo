@@ -963,11 +963,12 @@ def keyless_row_findings(entry, label):
             if isinstance(row, dict) and not row.get("key")]
 
 
-def preconditions(root, store, entries, run_dir):
+def preconditions(root, store, entries, run_dir, labels=None):
     """Every finding about `entries` in their store, by tier. `entries` have
     passed `normalise_entry` and the per-entry schema check, carry canonical
     scopes and derived keys, and may be changed in place: a NOTE that severs
-    (C25, C29, C31, C33) does it here."""
+    (C25, C29, C31, C33) does it here. `labels` (`{id(entry): label}`) names
+    an entry whose id or key a caller reports it under otherwise."""
     root = pathlib.Path(root)
     out = []
     # QF-43: a run creates in its own department — or, now, anywhere it names
@@ -979,7 +980,7 @@ def preconditions(root, store, entries, run_dir):
                for ident in _sheet_identities(e)}
     departments, branches = registered_scope(root)
     for entry in entries:
-        label = entry.get("id") or entry.get("key")
+        label = (labels or {}).get(id(entry)) or entry.get("id") or entry.get("key")
         out += keyless_row_findings(entry, label)                  # C9
         out += scope_findings(entry, departments, branches, label)  # C24, C25
         out += undeclared_unit_findings(entry, unit_rows, label)    # C28
@@ -1019,5 +1020,5 @@ def preconditions(root, store, entries, run_dir):
     # unit symbols for the Latin rule (QF-40). Its tiers are its own.
     out += check_document({"schema_version": 1, "entries": entries},
                           "facts-delta", store, unit_symbols=unit_rows,
-                          conventions=load_conventions(root))
+                          conventions=load_conventions(root), labels=labels)
     return out

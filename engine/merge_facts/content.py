@@ -79,9 +79,9 @@ def _unmarked(label, message, path=None):
 
 
 def check_document(doc, kind_of_file, store=None, unit_symbols=None,
-                   conventions=DEFAULT_CONVENTIONS):
+                   conventions=DEFAULT_CONVENTIONS, labels=None):
     """Every content-pass finding for `doc` (`list[tiers.Finding]`, labelled by
-    the entry's id or key), empty when it is clean. Never
+    `labels[id(entry)]` when given, else the entry's id or key), empty when it is clean. Never
     raises on a malformed shape — a missing/wrong-typed field is the schema's
     job to have already refused; this pass only adds messages.
 
@@ -109,7 +109,8 @@ def check_document(doc, kind_of_file, store=None, unit_symbols=None,
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        label = entry.get("id") or entry.get("key") or "?"
+        label = (labels or {}).get(id(entry)) or entry.get("id") \
+            or entry.get("key") or "?"
         _check_expr(entry, combined_by_id, messages, label)
         _check_unit_edges(entry, doc_by_id, messages, label)
         _check_keys(entry, messages, label, conventions)

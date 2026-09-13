@@ -669,3 +669,21 @@ def test_a_link_to_a_held_back_entry_leaves_no_temp_id_in_the_store(tmp_path):
     before = _stored_bytes(root)
     _apply(root, _delta(held, pointing), "2")
     assert _stored_bytes(root) == before
+
+
+def test_an_id_less_entry_whose_key_a_repair_changes_is_held_back_alone(tmp_path):
+    """M-3: a hand-written delta entry with no `id` is labelled by the key it
+    carried; C15 normalises that key, and a precondition refusal under the new
+    key used to read as document-level and hold back every entry."""
+    root = _root(tmp_path); _seed_units(root)
+    bad = _const_delta(key="Bad Key")["entries"][0]
+    bad["scope"]["departments"] = ["nope"]                          # C24
+    good = _const_delta(key="gud")["entries"][0]
+    good["data"]["outputs"][0]["unit"] = "lb"                       # C28: a note
+    for entry in (bad, good):
+        del entry["id"]
+    _, run = _apply(root, _delta(bad, good))
+    assert [h["label"] for h in json.loads((run / "held.json").read_text())] == \
+        ["Bad Key"]
+    stored = _one(root, "rule", "gud")
+    assert stored["field_status"] == {"data/outputs/v/unit": "inferred"}
