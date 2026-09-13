@@ -486,8 +486,12 @@ def test_a24_a_field_for_no_column_is_a_note(tmp_path):
     found = validate_unit(root, run_dir, _write(run_dir, doc))
     assert _refused(found) == []
     assert len(_noted(found)) == 2
-    assert [f["key"] for f in _built(root, run_dir, _write(run_dir, doc))[0]["data"]["fields"]] \
-        == ["masraf"]
+    built = _built(root, run_dir, _write(run_dir, doc))[0]
+    assert [f["key"] for f in built["data"]["fields"]] == ["masraf"]
+    # M-5: the attributes the unit wrote are kept, not only printed
+    assert built["extra"] == {
+        "data/fields/c_z": {"from": "c_z", "key": "gomshode", "title": "گمشده"},
+        "data/fields/haft": {"from": 7, "key": "haft"}}
 
 
 def test_a25_data_of_the_wrong_type_refuses_that_decision(tmp_path):

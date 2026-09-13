@@ -231,8 +231,16 @@ def _repair(item, where, ctx):
                         isinstance(written, str) and (not skid or written in columns)):
                     kept.append(field)
                     continue
+                name = written if isinstance(written, str) else field.get("key")
+                where = f"data/fields/{name if isinstance(name, str) else i}"
+                key, k = where, 1
+                while key in extra:
+                    k += 1
+                    key = f"{where}~{k}"
+                extra[key] = field                  # M-5: kept, not only printed
                 notes.append((f"data.fields[{i}].from: {written!r} names no column "
-                              f"of this candidate; dropped {json.dumps(field, ensure_ascii=False)}",
+                              f"of this candidate; kept in extra: "
+                              f"{json.dumps(field, ensure_ascii=False)}",
                               None, "issue", FA_NO_COLUMN))
             data["fields"] = kept
     if extra:
