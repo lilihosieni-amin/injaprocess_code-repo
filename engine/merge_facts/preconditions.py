@@ -23,6 +23,10 @@ from merge_facts import (KEY_RE, KIND_ORDER, PROC_ID_RE, _sheet_identities,
 from merge_facts.content import check_document
 from merge_facts.conventions import load as load_conventions
 
+#: The store gate's REPAIR tier, run by `merge_facts.normalise.normalise_entry`
+#: before `content.CONTENT_REPAIRS`. `def fn(entry, ctx) -> list[Finding] | None`.
+STORE_REPAIRS = []
+
 FACT_ID_RE = re.compile(r"^F-[0-9]{5}$")
 TEMP_ID_RE = re.compile(r"^T-[0-9]+$")
 UNITS_KEY = "units"

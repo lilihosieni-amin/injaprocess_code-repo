@@ -4,12 +4,23 @@ import sys
 from engine_common import data_root, read_json, schema_dir, validate
 from merge_facts.apply import simulate
 from merge_facts.content import check_document, group_messages
+from merge_facts.tiers import lines, notes, refusals
 
 # spec §12's `validate facts` paragraph: "need no engine change beyond a
 # content pass after the schema". The schema name (already normalised to its
 # `.schema.json` form below) maps onto `check_document`'s `kind_of_file`.
 CONTENT_PASS_SCHEMAS = {"facts.schema.json": "facts",
                         "facts-delta.schema.json": "facts-delta"}
+
+
+def _report(findings):
+    """Refusals grouped one line per rule, as before; notes after them, each
+    prefixed so a reader tells a stop from a mark (spec 2026-09-13 §4). Legacy
+    string producers still arrive as refusals through `lines`/`refusals`."""
+    for line in group_messages(lines(refusals(findings))):
+        print(line, file=sys.stderr)
+    for line in group_messages(lines(notes(findings))):
+        print(f"note: {line}", file=sys.stderr)
 
 
 def main(argv=None):
@@ -35,10 +46,9 @@ def main(argv=None):
             print("validate: facts-unit needs --run <run_dir>", file=sys.stderr)
             raise SystemExit(2)
         from facts_plan.assemble import validate_unit
-        problems = validate_unit(data_root(), args.run, args.file)
-        for line in group_messages(problems):
-            print(line, file=sys.stderr)
-        if problems:
+        found = validate_unit(data_root(), args.run, args.file)
+        _report(found)
+        if refusals(found):
             raise SystemExit(2)
         print(f"OK: {args.file} conforms to {name}")
         return 0
@@ -62,12 +72,10 @@ def main(argv=None):
             # store, which is strictly the better answer, so the standalone
             # pass is skipped rather than reported twice (§4).
             _store_after, findings = simulate(data_root(), args.file, args.run)
-            findings = group_messages(findings)
         else:
             findings = check_document(instance, kind_of_file)
-        if findings:
-            for msg in findings:
-                print(msg, file=sys.stderr)
+        _report(findings)
+        if refusals(findings):
             raise SystemExit(2)          # same failure surface as a schema mismatch
     print(f"OK: {args.file} conforms to {name}")
     return 0

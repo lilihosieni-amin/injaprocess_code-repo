@@ -34,6 +34,10 @@ import re
 from merge_facts import KEY_RE, KIND_ORDER, PROC_ID_RE, SEGMENT_RE, is_open, path_exists
 from merge_facts.conventions import DEFAULT as DEFAULT_CONVENTIONS
 
+#: The content pass's REPAIR tier, run by `merge_facts.normalise.normalise_entry`
+#: in this order. `def fn(entry, ctx) -> list[Finding] | None`, mutating `entry`.
+CONTENT_REPAIRS = []
+
 JALALI_RE = re.compile(r"^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$")
 
 # §7 FEEL subset keywords — never checked against inputs/outputs/calls.
