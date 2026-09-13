@@ -6,7 +6,8 @@ from engine_common import read_json, validate
 from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _units_delta, _write
 from merge_facts import account_id, is_open, load_store
 from merge_facts.apply import apply, simulate, used
-from merge_facts.preconditions import process_source_problems
+from merge_facts.preconditions import process_findings
+from merge_facts.tiers import lines
 from validate.cli import main as validate_main
 
 def test_create_then_idempotent_reapply_is_byte_identical(tmp_path):
@@ -699,8 +700,8 @@ def test_an_accounts_source_into_a_tombstoned_process_is_noted(tmp_path):
     d = _const_delta(5)
     d["entries"][0]["accounts"] = [_account(4)]
     d["entries"][0]["accounts"][0]["source"] = {"type": "process", "ref": ref}
-    assert process_source_problems(root, d["entries"][0]) == \
-        ["accounts[0].source: process cooking-002 is tombstoned"]
+    assert lines(process_findings(root, d["entries"][0], "x")) == \
+        ["x: accounts[0].source: process cooking-002 is tombstoned"]
     # spec 2026-09-13 C35: kept, with a note — it was true when made
     apply(root, _write(root, "d.json", d), _run_dir(root, "1"))
     entry = _tol(load_store(root))[0]

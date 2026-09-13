@@ -442,7 +442,8 @@ def test_a_keyless_row_is_refused_unless_the_table_derives_its_keys(tmp_path):
     root, run_dir = _run(tmp_path)
     form = _paper()
     form["data"]["rows"] = [{"title": "شیفت صبح"}]
-    assert "new[0] mande_shab: data.rows[0]: 'key' is a required property" in \
+    assert "new[0] mande_shab: data.rows[0] has no key, and neither the table's key "\
+           "columns nor its title give one (QF-32)" in \
         validate_unit(root, run_dir, _write(run_dir, _doc(new=[form])))
     form["data"]["rows"][0]["key"] = "sobh"
     assert validate_unit(root, run_dir,
@@ -467,7 +468,8 @@ def test_a_reference_tables_keyless_rows_pass_the_gate_and_the_apply(tmp_path):
     table["data"]["rows"] = [{"nam": "پنیر"}]
     doc = _doc(new=[table])
     assert validate_unit(root, run_dir, _write(run_dir, doc)) == [
-        "new[0] mavad: data.rows[0]: 'key' is a required property"]
+        "new[0] mavad: data.rows[0] has no key, and neither the table's key columns "\
+        "nor its title give one (QF-32)"]
 
 
 def test_a_symbol_this_document_adds_to_the_units_record_is_its_own(tmp_path):

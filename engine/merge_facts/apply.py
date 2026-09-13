@@ -67,7 +67,7 @@ from merge_facts.normalise import normalise_entry
 from merge_facts.preconditions import (FACT_ID_RE, PACK_KEYS, TEMP_ID_RE,
                                        UNITS_KEY, UNKNOWN_UNIT,
                                        _declared_fields, _declared_rows,
-                                       _is_stub, _lookup, _source_path_problems,
+                                       _is_stub, _lookup,
                                        _unit_row_keys, fold_twins,
                                        normalise_key, preconditions)
 from merge_facts.tiers import apply_notes, notes, refuse, refusals

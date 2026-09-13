@@ -3,7 +3,7 @@ from facts_helpers import (_root, _seed_units, _const_delta, _write, _run_dir,
 from merge_facts import is_open, load_store
 from merge_facts.apply import apply
 from merge_facts.revert import revert
-from merge_facts.apply import _source_path_problems
+from merge_facts.preconditions import source_findings
 from merge_facts.verbs import (edit, export, promote, repair_source_refs,
                                resolve, retire)
 import pytest
@@ -234,7 +234,7 @@ def test_repair_is_revertible_and_its_result_passes_apply_s_own_check(tmp_path):
     run = _run_dir(root, "20260902-101500")
     repair_source_refs(root, run)
     e = [x for x in load_store(root)["record"]["entries"] if x["id"] == fid][0]
-    assert _source_path_problems(root, e, "x") == []
+    assert source_findings(root, e, "x") == []
     revert(root, run)
     e = [x for x in load_store(root)["record"]["entries"] if x["id"] == fid][0]
     assert e["source"][0]["ref"] == "12Q9yQ"

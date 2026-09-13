@@ -20,7 +20,7 @@ from dataclasses import replace
 
 from engine_common import (LINE_CAP, read_json, schema_dir, validate,
                            write_json_atomic, write_text_atomic)
-from merge_facts import (KIND_ORDER, SEGMENT_RE, _sheet_identities,
+from merge_facts import (KIND_ORDER, _sheet_identities,
                          canonical_scope, iter_ref_objects, load_store,
                          null_paths, set_path, tiers)
 from merge_facts.apply import _derive_row_keys
@@ -30,7 +30,8 @@ from merge_facts.conventions import DEFAULT as DEFAULT_CONVENTIONS
 from merge_facts.conventions import load as load_conventions
 from merge_facts.normalise import normalise_entry
 from merge_facts.preconditions import (REQUIRED_SLOTS, _ref_sites, _registered,
-                                       _unit_row_keys, process_findings,
+                                       _unit_row_keys, keyless_row_findings,
+                                       process_findings,
                                        undeclared_unit_findings)
 from merge_facts.preconditions import _sever as _sever_member
 from merge_facts.tiers import note, refuse
@@ -110,10 +111,9 @@ def _plain(value):
 
 def _labelled(label, items):
     """Findings from a producer handed `label` (or none), all under `label` —
-    `coerce` splits a legacy line at its first `: `, and an assembly label
-    (`u-a: key`) carries one of its own."""
+    an assembly label (`u-a: key`) carries a `: ` of its own."""
     out = []
-    for finding in tiers.coerce(items):
+    for finding in items:
         line = finding.line()
         message = line[len(label) + 2:] if line.startswith(label + ": ") else line
         out.append(replace(finding, label=label, message=message))
@@ -623,7 +623,8 @@ def _contract_problems(root, entries, named, symbols):
         if symbols:                                                 # A35
             found += undeclared_unit_findings(body, symbols, label)
         if body.get("kind") == "record" and isinstance(body.get("data"), dict):
-            found += _row_keys(body["data"], label)                 # A36
+            _derive_row_keys(body["data"])                          # A36
+            found += keyless_row_findings(body, label)
     delta = {"schema_version": 2, "entries": clean}
     # A `calls[]` ref this document could not resolve is `T-0`, so `_call_keys`
     # rescues nothing and every identifier that call declares reads as
@@ -647,41 +648,6 @@ def _contract_problems(root, entries, named, symbols):
         out += refused[:LINE_CAP] + tiers.notes(found)
         if len(refused) > LINE_CAP:
             out.append(refuse(label, f"… and {len(refused) - LINE_CAP} more"))
-    return out
-
-
-def _row_keys(data, label):
-    """A36 (section 9) — a record row with no `key` takes one from the table's
-    key columns (`primaryKey`, the join `apply` derives for a reference table),
-    else from its own title when that title is a segment no other row of the
-    table shares; else that decision is refused. Never a position: row order
-    moves between runs and a positional key would match the wrong row."""
-    _derive_row_keys(data)
-    rows = [r for r in data.get("rows") or [] if isinstance(r, dict)] \
-        if isinstance(data.get("rows"), list) else []
-    pk = [m for m in data.get("primaryKey") or [] if isinstance(m, str)] \
-        if isinstance(data.get("primaryKey"), list) else []
-
-    def segment(value):
-        value = _clean_key(value)
-        return value if isinstance(value, str) and SEGMENT_RE.fullmatch(value) else None
-    titles = collections.Counter(segment(r.get("title")) for r in rows)
-    taken = {r["key"] for r in rows if "key" in r}
-    out = []
-    for n, row in enumerate(data.get("rows") or []):
-        if not isinstance(row, dict) or "key" in row:
-            continue
-        values = [row.get(m) for m in pk]
-        key = "__".join(values) if values and all(
-            isinstance(v, str) and SEGMENT_RE.fullmatch(v) for v in values) else None
-        title = segment(row.get("title"))
-        if key is None and title and titles[title] == 1:
-            key = title
-        if key and key not in taken:
-            row["key"] = key
-            taken.add(key)
-        else:
-            out.append(refuse(label, f"data.rows[{n}]: 'key' is a required property"))
     return out
 
 

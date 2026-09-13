@@ -106,13 +106,6 @@ def _unit_holders(value, where="data"):
             yield from _unit_holders(member, f"{where}/{_member_seg(member, n)}")
 
 
-def _unit_symbols(entry):
-    """Every symbol this entry cites as a unit (QF-40). `facts_plan.assemble`
-    lints its decisions with it."""
-    return [h["unit"] for h, _ in _unit_holders(entry.get("data") or {})
-            if h["unit"] and h["unit"] != UNKNOWN_UNIT]
-
-
 def registered_scope(root):
     """The department and branch codes the estate registers (QF-33)."""
     root = pathlib.Path(root)
@@ -823,19 +816,6 @@ def _citation_state(root, ref):
         return "outside"
 
 
-def _source_path_problems(root, entry, label):
-    """QF-5's sentence — *"`ref` is a path relative to `data-repo/`… any other
-    unresolvable path fails `apply`"* — as one line per broken citation, for
-    `source[]` and `accounts[].source` alike (the evidence for one side of a
-    dispute, drawn on the same screen through the same route). The store gate
-    reads the same verdicts through `source_findings`, which tiers them."""
-    root = pathlib.Path(root)
-    return [f"{label}: source ref {src['ref']!r} names no file in this repo — a "
-            f"ref is a path relative to data-repo (QF-5)"
-            for src in _citations(entry)
-            if isinstance(src, dict) and _citation_state(root, src.get("ref")) != "ok"]
-
-
 def source_findings(root, entry, label):
     """C33 (spec §9 default). A citation outside the repo is REFUSED (R4). A
     citation to a file that is not there is dropped into `extra` with a NOTE
@@ -891,17 +871,6 @@ def _process_sources(root, entry):
         except (OSError, ValueError):
             doc = None
         yield where, pathlib.PurePosixPath(ref).stem, doc
-
-
-def process_source_problems(root, entry):
-    """I3 at the source side, one unprefixed line per `process` citation whose
-    file is tombstoned or gone — the unit gate's wording (`facts_plan.assemble`
-    adds its own label). The store gate tiers the same two facts in
-    `process_findings`."""
-    return [f"{where}: process {pid} has no file" if doc is None
-            else f"{where}: process {pid} is tombstoned"
-            for where, pid, doc in _process_sources(root, entry)
-            if doc is None or (isinstance(doc, dict) and doc.get("tombstoned"))]
 
 
 def process_findings(root, entry, label):
