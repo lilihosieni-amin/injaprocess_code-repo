@@ -793,6 +793,22 @@ def test_validate_store_run_groups_one_rule_into_one_line(tmp_path, capsys,
     assert "2 entries: T-1, T-2" in err
 
 
+def test_validate_store_passes_what_apply_repairs(tmp_path, capsys, monkeypatch):
+    """Spec 2026-09-13 principle 4: an unknown member (C5) fails the delta
+    schema as a whole document, but `apply` keeps it in `extra` and writes the
+    entry — so `validate --store` must pass it too, not refuse it up front."""
+    root = _root(tmp_path); _seed_units(root)
+    monkeypatch.setenv("DATA_ROOT", str(root))
+    d = _const_delta()
+    d["entries"][0]["data"]["outputs"][0]["note"] = "از جلسه"
+    path = _write(root, "dx.json", d)
+    assert validate_main(["facts-delta", str(path), "--store", "--run",
+                          str(_run_dir(root, "20260901-101501"))]) == 0
+    apply(root, path, _run_dir(root, "20260901-101502"))
+    [stored] = load_store(root)["rule"]["entries"]
+    assert stored["extra"] == {"data/outputs/v/note": "از جلسه"}
+
+
 # --- v3: record templates, instance identity, the used marker -------------- #
 
 _TABS = {"pz__s10": ("P0", 10, "chalebagh"), "pz__s11": ("P1", 11, "chalebagh"),

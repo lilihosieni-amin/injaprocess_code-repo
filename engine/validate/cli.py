@@ -58,7 +58,11 @@ def main(argv=None):
         print(f"validate: file not found: {args.file}", file=sys.stderr)
         raise SystemExit(2)
     try:
-        validate(name, instance)  # loads schema_dir()/name; raises ValueError on mismatch
+        # With --store the delta is judged per entry by `simulate` — `apply`'s
+        # own gate, repairs first — so a whole-document check here would refuse
+        # what `apply` repairs (spec 2026-09-13 principle 4, P3).
+        if not args.store:
+            validate(name, instance)  # loads schema_dir()/name; raises ValueError on mismatch
     except FileNotFoundError:
         print(f"validate: unknown schema '{name}' in {schema_dir()}", file=sys.stderr)
         raise SystemExit(2)
