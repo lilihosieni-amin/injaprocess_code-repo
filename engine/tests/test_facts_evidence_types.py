@@ -67,6 +67,25 @@ FORMS = [
 ]
 
 
+#: Where each form's evidence is, and so which unit writes it (F4): the unit
+#: type shown the evidence, a phrase of the evidence as that unit's `input.md`
+#: carries it, and the source the assembled entry must cite for it.
+TEXT = "departments/cooking/attachments/.text/"
+EVIDENCE = {
+    "form_tahvil_anbar": ("attachment", "فرم تحویل کالا از انبار",
+                          ("docx", TEXT + "فرم-تحویل-انبار.txt")),
+    "form_zayeat": ("attachment", "فرم ثبت ضایعات روزانه",
+                    ("pdf", TEXT + "فرم-ضایعات.pdf.md")),
+    "form_shomaresh_yakhchal": ("attachment", "عکس یک فرم کاغذی",
+                                ("photo", TEXT + "فرم-شمارش-یخچال.image.md")),
+    # I2 — one directory down
+    "form_anbargardani": ("attachment", "فرم انبارگردانی ماهانه",
+                          ("docx", TEXT + "forms__فرم-انبارگردانی.txt")),
+    "form_marjui": ("transcript", "فرم کاغذی هم داریم برای مرجوعی",
+                    ("voice", "meetings/transcripts/cooking-1405-05-26.txt")),
+}
+
+
 def _record(form):
     key, title, statement, location, fields = form
     return {"kind": "record", "key": key, "title": title,
@@ -99,10 +118,19 @@ def _run(tmp_path):
     run.mkdir(parents=True)
     build(root, "cooking", run, ["cooking-1405-05-26"])
     plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
-    # F4 — the attachments are their own unit now, and the forms they show are
-    # written by the unit that was shown them (provenance comes from its inputs).
-    unit = next(u for u in plan["units"] if u["type"] == "attachment")
-    return root, run, unit["id"]
+    # F4 — the attachments are a unit of their own, so a form is written by the
+    # unit that was shown its evidence: `{unit type: unit id}`, one of each.
+    units = {}
+    for unit in plan["units"]:
+        if unit["type"] in ("transcript", "attachment"):
+            assert unit["type"] not in units, "the mini estate fits one of each"
+            units[unit["type"]] = unit["id"]
+    return root, run, units
+
+
+def _writer(units, form):
+    """The unit that writes `form` — the one shown its evidence."""
+    return units[EVIDENCE[form[0]][0]]
 
 
 def _out(run, unit_id, entries, attempt=1):
@@ -114,27 +142,27 @@ def _out(run, unit_id, entries, attempt=1):
     return path
 
 
-def test_the_transcript_unit_is_shown_the_shape_section(tmp_path):
-    """The unit that writes a paper form from what was said is a transcript
-    unit, and §3.2 says it carries the contract — as does the attachment unit
-    that writes one from a photo or a document (F4)."""
-    root, run, unit_id = _run(tmp_path)
-    texts = {p.parent.name: p.read_text(encoding="utf-8")
-             for p in (run / "units").glob("*/input.md")}
-    for name, one in texts.items():
-        if name.startswith(("u-tr-", "u-att-")):
-            assert "Shape card" in one
-            assert "medium=paper: holder*، kept_at*" in one
-            # the card's enums are rendered in the agent's language
-            assert "* medium: یکی از: sheet | paper | external | native" in one
-    text = "\n".join(texts.values())
-    # the evidence itself, four sidecars deep
-    assert "فرم تحویل کالا از انبار" in text
-    assert "فرم ثبت ضایعات روزانه" in text
-    assert "عکس یک فرم کاغذی" in text
-    assert "فرم انبارگردانی ماهانه" in text      # I2 — one directory down
-    assert "فرم کاغذی هم داریم برای مرجوعی" in text
-    assert "چیدمان-انبار" not in text            # the one nothing could read
+@pytest.mark.parametrize("form", FORMS, ids=[f[0] for f in FORMS])
+def test_the_unit_that_writes_a_form_is_shown_its_evidence_and_the_shape(
+        tmp_path, form):
+    """The unit that writes a paper form — from what was said (a transcript
+    unit) or from a photo or a document (an attachment unit, F4) — has that
+    form's evidence in its own input, and §3.2 says it carries the contract."""
+    root, run, units = _run(tmp_path)
+    text = (run / "units" / _writer(units, form) / "input.md").read_text(
+        encoding="utf-8")
+    assert EVIDENCE[form[0]][1] in text
+    assert "Shape card" in text
+    assert "medium=paper: holder*، kept_at*" in text
+    # the card's enums are rendered in the agent's language, not the brief's
+    assert "* medium: یکی از: sheet | paper | external | native" in text
+
+
+def test_the_unreadable_file_reaches_no_unit_and_is_named_to_the_owner(
+        tmp_path):
+    root, run, _units = _run(tmp_path)
+    for path in (run / "units").glob("*/input.md"):
+        assert "چیدمان-انبار" not in path.read_text(encoding="utf-8"), path
     # I2 — invisible to the unit, visible to the owner, by its own file name.
     issues = json.loads(
         (run / "skeleton.json").read_text(encoding="utf-8"))["issues"]
@@ -145,8 +173,9 @@ def test_the_transcript_unit_is_shown_the_shape_section(tmp_path):
 @pytest.mark.parametrize("form", FORMS, ids=[f[0] for f in FORMS])
 def test_each_paper_form_passes_the_unit_gate(tmp_path, form):
     """I1 — the shape is one shape, whatever the evidence was."""
-    root, run, unit_id = _run(tmp_path)
-    assert validate_unit(root, run, _out(run, unit_id, [_record(form)])) == []
+    root, run, units = _run(tmp_path)
+    assert validate_unit(root, run, _out(run, _writer(units, form),
+                                         [_record(form)])) == []
 
 
 @pytest.mark.parametrize("form", FORMS, ids=[f[0] for f in FORMS])
@@ -158,7 +187,7 @@ def test_a_wrong_shape_is_refused_at_the_unit_gate_by_field(tmp_path, form,
     """The three shapes the 2026-09-07 run actually wrote. Each must be refused
     HERE — at the unit's own gate, within its two attempts — and the message
     must name the field, not dump the entry (§3.4)."""
-    root, run, unit_id = _run(tmp_path)
+    root, run, units = _run(tmp_path)
     entry = _record(form)
     if break_it == "type":
         entry["data"]["fields"][0]["type"] = "text"
@@ -166,7 +195,8 @@ def test_a_wrong_shape_is_refused_at_the_unit_gate_by_field(tmp_path, form,
         entry["data"]["signatures"] = [{"role": "انباردار", "sections": []}]
     else:
         entry["data"]["location"] = {}
-    problems = validate_unit(root, run, _out(run, unit_id, [entry]))
+    problems = validate_unit(root, run, _out(run, _writer(units, form),
+                                             [entry]))
     assert problems, f"{break_it} passed the gate"
     joined = "\n".join(problems)
     assert names in joined, joined
@@ -176,8 +206,10 @@ def test_a_wrong_shape_is_refused_at_the_unit_gate_by_field(tmp_path, form,
 def test_every_form_survives_assemble_and_simulate(tmp_path):
     """The whole of I1: what passes the unit's gate is what `apply` accepts. A
     per-entry refusal after this point is the defect §2 names."""
-    root, run, unit_id = _run(tmp_path)
-    _out(run, unit_id, [_record(f) for f in FORMS])
+    root, run, units = _run(tmp_path)
+    for kind, unit_id in units.items():
+        _out(run, unit_id, [_record(f) for f in FORMS
+                            if EVIDENCE[f[0]][0] == kind])
 
     assemble(root, run)
 
@@ -187,14 +219,19 @@ def test_every_form_survives_assemble_and_simulate(tmp_path):
     assert "چیدمان-انبار.xyz" in gate
 
     delta = json.loads((run / "facts-delta.json").read_text(encoding="utf-8"))
-    # the nested form was read, and is cited as the `.docx` it is
-    assert {(c["type"], c["ref"]) for e in delta["entries"]
-            for c in e.get("source") or []} >= {
-        ("docx", "departments/cooking/attachments/.text/"
-                 "forms__فرم-انبارگردانی.txt")}
     records = [e for e in delta["entries"] if e["kind"] == "record"
                and e["data"]["medium"] == "paper"]
     assert sorted(e["key"] for e in records) == sorted(f[0] for f in FORMS)
+    # each form cites its own evidence as what it is: the nested `.docx`, the
+    # pdf and the photo from the attachment unit, the spoken form as voice —
+    # and the spoken one cites no file it was never shown.
+    for entry in records:
+        cited = {(c["type"], c["ref"]) for c in entry.get("source") or []}
+        assert EVIDENCE[entry["key"]][2] in cited, (entry["key"], cited)
+        if EVIDENCE[entry["key"]][0] == "transcript":
+            assert {kind for kind, _ in cited} == {"voice"}, cited
+        else:
+            assert "voice" not in {kind for kind, _ in cited}, cited
     assert all(set(e["data"]["location"]) == {"kept_at", "holder"}
                for e in records)
     _store_after, problems = simulate(root, run / "facts-delta.json",
