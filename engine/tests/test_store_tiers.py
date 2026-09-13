@@ -306,6 +306,26 @@ def test_c13_a_value_outside_its_vocabulary_is_stored_and_marked(tmp_path):
     assert stored["source"][0]["type"] == "photo"
 
 
+def test_c13_a_mark_reaches_an_entry_the_delta_merges_into(tmp_path):
+    """Review of track S, Critical: a NOTE's `inferred` mark must reach the
+    store on a merge, not only on a create — and never overwrite a status the
+    stored entry already has. A re-apply stays byte-identical."""
+    root = _root(tmp_path); _seed_units(root)
+    first = _record()
+    first["field_status"] = {"data/fields/qty/title": "informal"}
+    _apply(root, _delta(first))
+    again = _record(cadence="fortnightly")                      # C13: off-list
+    again["field_status"] = {"data/fields/qty/title": "inferred"}
+    _apply(root, _delta(again), n="2")
+    stored = _one(root, "record", "barge_shab")
+    assert stored["data"]["cadence"] == "fortnightly"
+    assert stored["field_status"] == {"data/cadence": "inferred",
+                                      "data/fields/qty/title": "informal"}
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    _apply(root, _delta(copy.deepcopy(again)), n="3")
+    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
+
+
 def test_c14_an_unknown_account_status_is_stored_open(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     d = _const_delta()

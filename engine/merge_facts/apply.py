@@ -58,6 +58,7 @@ from merge_facts import (KEY_RE, KIND_FILES, KIND_ORDER, PROC_ID_RE,
 # dispute question is the ladder's too: `would_dispute` runs it.
 from merge_facts.ladder import (TOP_SKIP, UNION_FIELDS, _is_keyed_list,
                                 keyfn_for, merge_entry, merge_extra,
+                                merge_field_status,
                                 with_account_id, would_dispute)
 from merge_facts.conventions import load as load_conventions
 from merge_facts.normalise import normalise_entry
@@ -636,6 +637,7 @@ def _successor(match, incoming, fid):
                 seen.add(keyfn(member))
     _overwrite(successor, incoming, SUCCESSION_SKIP)
     merge_extra(successor, incoming)
+    merge_field_status(successor, incoming)
     # §11: the superseded era's accounts do NOT come along. An account is a
     # competing reading of the *old* value, and the successor's value is a
     # different one — so an inherited account is a dispute that is not the

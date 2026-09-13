@@ -69,6 +69,22 @@ def merge_extra(existing, incoming):
     return added
 
 
+def merge_field_status(existing, incoming):
+    """A NOTE's mark (spec 2026-09-13 §4: "stores the entry and marks it")
+    reaches an entry the delta merges into: an incoming `field_status` path
+    joins the stored map only where the stored entry has no status for it, so
+    `inferred` never overwrites a status already set. Returns the paths added."""
+    added = []
+    for path, value in sorted((incoming.get("field_status") or {}).items()):
+        status = existing.setdefault("field_status", {})
+        if path not in status:
+            status[path] = value
+            added.append(path)
+    if "field_status" in existing and not existing["field_status"]:
+        del existing["field_status"]
+    return added
+
+
 def keyfn_for(name):
     """The dedup key a member of collection `name` matches on (§11) — every
     keyed collection either has a dedicated matcher or is keyed by `key`."""
@@ -225,6 +241,8 @@ def merge_entry(existing, incoming, incoming_source):
     # a whole-dict blob.
     _merge_member(existing, existing, incoming, "", incoming_source, changes, skip=TOP_SKIP)
     changes += [(f"extra/{key}", "union") for key in merge_extra(existing, incoming)]
+    changes += [(f"field_status/{path}", "union")
+                for path in merge_field_status(existing, incoming)]
     # incoming accounts (the agent may state competing readings itself)
     if incoming.get("accounts"):
         _merge_collection(existing, existing.setdefault("accounts", []),
