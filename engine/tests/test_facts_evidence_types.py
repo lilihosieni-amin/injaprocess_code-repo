@@ -99,7 +99,9 @@ def _run(tmp_path):
     run.mkdir(parents=True)
     build(root, "cooking", run, ["cooking-1405-05-26"])
     plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
-    unit = next(u for u in plan["units"] if u["type"] == "transcript")
+    # F4 — the attachments are their own unit now, and the forms they show are
+    # written by the unit that was shown them (provenance comes from its inputs).
+    unit = next(u for u in plan["units"] if u["type"] == "attachment")
     return root, run, unit["id"]
 
 
@@ -114,13 +116,18 @@ def _out(run, unit_id, entries, attempt=1):
 
 def test_the_transcript_unit_is_shown_the_shape_section(tmp_path):
     """The unit that writes a paper form from what was said is a transcript
-    unit, and §3.2 says it carries the contract."""
+    unit, and §3.2 says it carries the contract — as does the attachment unit
+    that writes one from a photo or a document (F4)."""
     root, run, unit_id = _run(tmp_path)
-    text = (run / "units" / unit_id / "input.md").read_text(encoding="utf-8")
-    assert "Shape card" in text
-    assert "medium=paper: holder*، kept_at*" in text
-    # the card's enums are rendered in the agent's language, not the brief's
-    assert "* medium: یکی از: sheet | paper | external | native" in text
+    texts = {p.parent.name: p.read_text(encoding="utf-8")
+             for p in (run / "units").glob("*/input.md")}
+    for name, one in texts.items():
+        if name.startswith(("u-tr-", "u-att-")):
+            assert "Shape card" in one
+            assert "medium=paper: holder*، kept_at*" in one
+            # the card's enums are rendered in the agent's language
+            assert "* medium: یکی از: sheet | paper | external | native" in one
+    text = "\n".join(texts.values())
     # the evidence itself, four sidecars deep
     assert "فرم تحویل کالا از انبار" in text
     assert "فرم ثبت ضایعات روزانه" in text

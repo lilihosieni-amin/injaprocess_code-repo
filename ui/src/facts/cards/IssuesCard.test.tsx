@@ -35,6 +35,13 @@ describe('the issues card', () => {
     expect(screen.getByRole('button', { name: 'گزارش مرکزی — پیتزا' })).toBeInTheDocument()
   })
 
+  it('names a `shape` note in Persian — the store gate’s NOTE tier (P4d)', () => {
+    render(<IssuesCard bundle={bundleOf('record', { medium: 'sheet', role: 'log' }, {}, {
+      issues: [{ kind: 'shape', description: 'این مورد به شکلی ثبت شد که سامانه انتظار نداشت.', affects: [] }],
+    })} onOpen={vi.fn()} />)
+    expect(screen.getByText('نقص: شکل نامنتظره')).toBeInTheDocument()
+  })
+
   it('is not drawn when the entry has no issues', () => {
     const { container } = render(
       <IssuesCard bundle={bundleOf('note', {})} onOpen={vi.fn()} />,

@@ -50,6 +50,12 @@ function valueText(o: RuleOutput): { text: string; unanswered: boolean } {
   return { text: none(), unanswered: false }
 }
 
+/** An edge case's `input`/`expected`: the schema allows any JSON there, and an
+ *  object is not a React child, so a non-string is written as JSON text. */
+function jsonText(v: unknown): string {
+  return v == null ? '' : typeof v === 'string' ? v : JSON.stringify(v)
+}
+
 export function RuleValueCards({ bundle, onOpen }: {
   bundle: FactBundle; onOpen: (id: string) => void
 }) {
@@ -344,8 +350,8 @@ export function RuleCard({ bundle, onOpen }: {
             rows={(d.edge_cases ?? []).map((e, i) => ({
               key: String(i),
               cells: [
-                { node: <span className="text-fs-sm2 text-ink leading-sub">{e.input ?? ''}</span> },
-                { node: <span className="text-fs-sm2 font-semibold text-green">{e.expected ?? ''}</span> },
+                { node: <span className="text-fs-sm2 text-ink leading-sub">{jsonText(e.input)}</span> },
+                { node: <span className="text-fs-sm2 font-semibold text-green">{jsonText(e.expected)}</span> },
                 { node: <span className="text-fs-caption text-faint">{e.why ?? ''}</span> },
               ],
             }))}
@@ -527,11 +533,20 @@ function OutputRow({ bundle, output, onOpen }: {
 }) {
   const of = refTitle(bundle, output.of)
   const writes = refTitle(bundle, output.writes_to)
+  // B22/P4(a) — a threshold on a rule with inputs («حد شروع پخت») is stored as
+  // written, so it is drawn here as the constant card draws it.
+  const value = output.value !== undefined || output.range !== undefined
+    ? valueText(output) : undefined
   return (
     // :1313 — the same `13px 18px` as the input row above.
     <div className="px-s9 py-table-row-y border-b border-line-row">
       <div title={output.key} className="flex items-baseline gap-s4 flex-wrap">
         <FieldName title={output.title} name={output.key} />
+        {value !== undefined && (
+          <Mono className={`text-fs-body font-bold ${value.unanswered ? 'text-conflict' : 'text-ink'}`}>
+            {value.text}
+          </Mono>
+        )}
         {output.unit != null && (
           <Tag tone="ok"><Unit bundle={bundle} symbol={output.unit} /></Tag>
         )}

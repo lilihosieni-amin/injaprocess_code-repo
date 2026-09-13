@@ -242,7 +242,7 @@ export interface FactIssue {
   kind: 'scale' | 'unit_kind' | 'column_shift' | 'junk' | 'bug' | 'cross_record' | 'code_collision'
     | 'hand_maintained_index' | 'no_rule_applies' | 'broken_formula' | 'cached_error'
     | 'leading_offset' | 'unused_mirror' | 'unknown_source' | 'column_offset'
-    | 'per_cell_mirror' | 'ambiguous_row_header' | 'binding_gone'
+    | 'per_cell_mirror' | 'ambiguous_row_header' | 'binding_gone' | 'shape'
   description: string
   affects: FactRef[]
   /** The `instances[].key` this defect is about, when it is about one copy of
@@ -265,7 +265,7 @@ export interface ItemData {
   group?: string
   state?: 'raw' | 'cooked' | 'frozen' | 'prepared'
   grade?: string
-  pack?: { size: number; unit: string }
+  pack?: { size: number; unit: string } | null
   units?: { pack_unit: string; factor_to_base: number | null | { min: number; max: number } }[]
   tracked?: { record?: FactRef; value: boolean; reason?: string }[]
   stub?: boolean
@@ -359,7 +359,7 @@ export interface RecordData {
   rows?: (Record<string, unknown> & { key?: string; title?: string; retired?: boolean })[]
   header_fields?: { key: string; title?: string }[]
   sections?: { key: string; title: string; doc_number_field?: string }[]
-  signatures?: { role: string; row_range?: string }[]
+  signatures?: { role: string; row_range?: string | null }[]
   primaryKey?: string[]
   foreignKeys?: { fields: string[]; reference: FactRef; reference_fields?: string[]; transform?: string }[]
   reconciled_against?: { cell: { row?: string; field?: string }; against: FactRef }[]
@@ -438,7 +438,8 @@ export interface RuleData {
   calls?: FactRef[]
   template_of?: FactRef
   divergence?: 'none' | 'intentional' | 'drift' | 'unknown'
-  edge_cases?: { input?: string; expected?: string; why?: string }[]
+  /** `input`/`expected` may be any JSON — the card writes a non-string as JSON text. */
+  edge_cases?: { input?: unknown; expected?: unknown; why?: string }[]
   table?: {
     inputs?: string[]; outputs?: string[]
     /** Flat rows keyed by the table's columns (v3.7 I8). */
@@ -483,6 +484,8 @@ export interface FactEntry {
   superseded_by?: FactRef | null
   issues?: FactIssue[]
   processes?: { ref: string }[]
+  /** Members the engine kept rather than dropped (gate tiers P1) — no card draws them. */
+  extra?: Record<string, unknown>
 }
 
 export const isItem = (e: FactEntry): e is FactEntry & { data: ItemData } => e.kind === 'item'
