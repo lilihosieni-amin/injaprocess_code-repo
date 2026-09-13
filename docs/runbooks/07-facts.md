@@ -260,9 +260,12 @@ line — five answers, and no workbook denominator:
 readiness: units_done=True review_ran=True lint_failures=0 expr_missing=0 open_disputes=0
 ```
 
-Every unit of the last run is done; the review ran; no entry carries a lint
-failure; no rule bound to a formula is missing its expression; no dispute is
-still open. The last three are counts, so the ready state is `True True 0 0 0`.
+Every unit of the last run is done; the review ran; no rule bound to a formula
+is missing its expression; no dispute is still open. The last three are counts,
+so the ready state is `True True 0 0 0`. Since 2026-09-13 `lint_failures` is
+always 0: a style finding (a cell name, a Latin word, a spoken ending) is a note,
+and `audit` lists it as a `style` finding for a reader — it no longer blocks
+readiness (§12, "Refuse, repair, note").
 
 **The coverage line is gone**, and deliberately (v3 design §11, cause C —
 `docs/superpowers/specs/2026-09-06-quantitative-facts-v3-design.md`). It read
@@ -498,7 +501,9 @@ all nine departments exited 0.
 ### When a run stops, and when it does not (I5, added 2026-09-08)
 
 On 2026-09-08 one unfinished table cost the owner a whole run. **A run now
-stops only when nothing at all can be assembled.** Every other refusal names
+stops only when nothing at all can be assembled.** Since 2026-09-13 the same
+holds one level down, inside a unit and at the apply: a refusal costs one
+decision or one entry, never a unit or a file (§12, "Refuse, repair, note"). Every other refusal names
 one candidate or one entry, holds *it* back, and the rest of the run lands in
 the store. The held-back list is `assembly.json`'s `undecided[]`, and the owner
 reads it grouped by reason at the end of `report.md`.
@@ -511,14 +516,17 @@ reads it grouped by reason at the end of `report.md`.
 | an entry cites an `F-` id no store entry carries | the entry is held back, and whatever cites it waits with it | «به موردی ارجاع می‌داد که در سامانه نیست» |
 | an entry fails the assembly's own lint (step 8) | the entry is held back, dependants with it | «با قرارداد ثبت جور در نیامد» |
 | an entry cites a candidate a unit dropped or never decided | the entry waits for it | «منتظر بخشی است که در این اجرا تمام نشد» |
-| a unit spent both attempts and returned nothing usable | its candidates are held back | «در این اجرا بررسی نشد» |
+| a unit decision is refused at the unit's gate (added 2026-09-13) | that decision alone waits (`undecided[]`, reason `refused`, its lines kept); the unit's other decisions land, and one retry answers only the refused decisions | «با قرارداد ثبت جور در نیامد» if the retry does not fix it |
+| a unit leaves a candidate undecided (added 2026-09-13) | a note: the candidate waits (reason `not_decided`); it joins the retry only when the unit retries anyway | «در این اجرا درباره‌اش تصمیمی گرفته نشد» |
+| a unit spent both attempts and returned nothing usable | its candidates are held back, and its workbook, meeting or attachments are named as lost | «در این اجرا بررسی نشد», and the lost-source line at the top of `report.md` (§11) |
+| `merge facts apply` — an entry would break the store (added 2026-09-13) | that entry is held back (`precondition failed: held back: …` on stderr, a row in `{run_dir}/held.json`); every other entry is written and the apply exits 0 | the run goes on to the commit and the report |
 | `assemble` — a review decision fails the lint or an address lands nowhere | that decision is held back (`review_held`) and named in the report; the rest of the review applies | «بازبینی انجام شد؛ ۱ تصمیم آن کنار گذاشته شد:» and the entry's title with its reason |
 
 Eight stops remain, and none of them is one input's fault:
 
 | stop | why it stays |
 |---|---|
-| `build` — a candidate planned into two units or into none | an engine invariant; a candidate decided twice contradicts itself and one decided nowhere is lost work |
+| `build` — a candidate planned into two units or into none; since 2026-09-13 also a chosen transcript range or an attachment read by no unit, or by two (stderr names the file) | an engine invariant; a candidate decided twice contradicts itself and one decided nowhere is lost work — and an input nobody reads is how 13 form photos vanished from the 2026-09-12 preparation run |
 | `facts-plan build` without `--rebuild` once a unit is done | protects finished work; resume through `facts-plan status` |
 | `digest` / `assemble` — a unit's latest output does not validate and it still has an attempt | the run is not ready; Stage U re-dispatches that unit |
 | `digest` — the digest is over the 400 K ceiling | no reviewer can read it, and a run recorded without a review is not an outcome the design allows; report it as a defect |
@@ -586,7 +594,7 @@ either file.
 | file | written by | sent at | carries |
 |---|---|---|---|
 | `{run_dir}/gate-b.md` | `facts-plan assemble` | **not sent** since 2026-09-09 — kept on disk as the run's record | counts per kind; the first three rules in one sentence each; how many were dropped and the commonest reasons; how many went unexamined; the disputes numbered with lettered options; how many issues were found in the files, three of them named; how many cells are unanswered; and the one question «تأیید می‌کنید؟» |
-| `{run_dir}/report.md` | `facts-plan report` | after the apply and the commit | what was recorded, dropped and left unexamined; the open disputes numbered with lettered options; the unanswered cells grouped per entry; the dropped list by reason in the owner's own words; whether a part was left unfinished (the engine's file findings are **not** here since 2026-09-09 — they are on the entry in the panel and counted in `gate-b.md`); and how the review went — applied whole, or applied with the decisions that were set aside named one per line |
+| `{run_dir}/report.md` | `facts-plan report` | after the apply and the commit | first, since 2026-09-13, every lost source (below); then what was recorded, dropped and left unexamined; the open disputes numbered with lettered options; the unanswered cells grouped per entry; the dropped list by reason in the owner's own words; whether a part was left unfinished (the engine's file findings are **not** here since 2026-09-09 — they are on the entry in the panel and counted in `gate-b.md`); and how the review went — applied whole, or applied with the decisions that were set aside named one per line |
 
 A third line runs through both files: **a file this run could not read is named
 once.** An extension `extract-attachment` has no converter for, or a supported
@@ -598,6 +606,17 @@ never by a path. An `.xlsx` is the dumper's and is named by the workbook line
 instead; passthrough text (`.csv`, `.md`, `.txt`, `.gs`) is read directly and is
 never "unread". No unit ever sees such a file, and nothing is improvised over it
 (design addendum 2026-09-07, invariant I2).
+
+A fourth line leads `report.md` since 2026-09-13: **a source no unit carried
+into the store is named first** (spec 2026-09-13 F5). `assemble` writes
+`lost_sources[]` into `assembly.json` — the workbooks, meetings and attachments
+of a unit that ended `failed`, and any attachment no unit held — and `report`
+turns each into one plain Persian line in the owner's own names: «فایل اکسل
+«آماده‌سازی» ثبت نشد: ۷ جدول و ۳ فرمول آن بررسی نشد.», «بخشی از جلسهٔ
+«۱۴۰۵/۰۶/۰۱» بررسی نشد.», «۱۳ عکس فرم بررسی نشد.». No id, no path, no English.
+With per-decision hold-back and attachment units this should be rare; it is
+never hidden. The engine's notes (below, §12) are **not** in the report — they
+are on the entry in the panel.
 
 Validator output has the opposite contract and is **never** owner-facing: one
 line per distinct rule with the field path — `entries[3].data.fields[2].type:
@@ -667,10 +686,64 @@ genuinely cross-entry — twin titles, instance ownership, references between
 units — and each of those already names the unit that caused it.
 
 So the operator's reading of a failure changes: **a per-entry error at the final
-validation is a defect in the engine, not a unit to re-dispatch.** Stop the run
-before the checkpoint, record the message as it is, and report it. There is
-nothing to hand-repair — the delta is the assembly of every unit, and a
-hand-edited delta is how the 2026-09-02 run ended.
+validation is a defect in the engine, not a unit to re-dispatch.** Record the
+message as it is and report it. Since 2026-09-13 it no longer stops the run:
+`apply` holds that entry back and writes the rest. There is nothing to
+hand-repair — the delta is the assembly of every unit, and a hand-edited delta
+is how the 2026-09-02 run ended.
+
+### Refuse, repair, note — the gate tiers (added 2026-09-13)
+
+`docs/superpowers/specs/2026-09-13-facts-gate-tiers-design.md` is the design,
+approved by the owner in full on 2026-09-13 (ADR 0017's addendum of that date).
+The preparation run of 2026-09-12 was refused eight times on shape and style,
+none of it a real error, and lost its Excel file whole and its 13 form photos
+silently. Every rule the engine applies to what the AI writes now sits in one
+tier, and holds that tier at every gate — the unit gate, the assembly,
+`validate facts-delta --store`, `merge facts apply` and `merge facts edit`:
+
+| tier | when | what happens |
+|---|---|---|
+| **REFUSE** | only when accepting it would make the store unreadable or unwritable (not JSON; a missing `kind`/`key`/`title`/`scope`; an id the engine did not mint; a duplicate id; a wrong `schema_version`), give the panel or a CLI a container of the wrong type, leave a reference that cannot be cut, breach INV-1 or INV-3, scope an entry to an unregistered department, or name a path outside the data repo | only that decision or entry waits; the rest lands |
+| **REPAIR** | the engine can put it in the accepted form deterministically without changing its meaning — a synonym to its symbol, a scalar wrapped in its list, an engine-owned member the AI wrote dropped, an unknown member moved to the entry's `extra` bag | fixed silently; no retry, no note |
+| **NOTE** | everything else — plausible content in an unexpected shape, a style call | stored as written, marked `inferred` in `field_status` or given an `issues[]` entry of kind `shape` (the panel shows its Persian text); never a retry, never a failure, never in the owner's report |
+
+What that means per gate:
+
+- **The unit gate.** `validate facts-unit` exits 2 only on a REFUSE and prints
+  NOTEs as `note: …` lines. A unit's document is folded with its refused
+  decisions taken out: each refused candidate goes to `undecided[]` with
+  `reason: "refused"` and its lines. `status` prints such a unit `done`,
+  followed by `· retry` and the refused labels (`decisions[n]`, `new[n]`, and —
+  since the unit retries anyway — any candidate it left undecided). The retry,
+  `out.2.json`, answers only those, and is folded over `out.1.json` by candidate
+  id (`new[]` by kind and key). The cap stays two. A unit is `failed` only when
+  no attempt is usable — its latest refused as a whole with both spent.
+- **Columns under a header.** A unit's column may carry `group: {key, title}`,
+  the shape the store and the panel already had.
+- **Attachments.** A form photo, a pdf or a docx text never rides on a
+  transcript unit. They form `attachment` units, `u-att-1`, `u-att-2`, … in input
+  order, packed to the size budget; one too big for any unit goes alone with an
+  `oversized` issue. `facts-plan build` exits 2 naming the file when a chosen
+  transcript range or an attachment lands in no unit.
+- **Speech-only tables.** A record whose sources are only meetings, process
+  files or chat — no sheet, photo, pdf or docx — has its columns' titles, types
+  and units marked `inferred` at assembly, so the panel shows «استنباطی» on them.
+- **The store gate.** `merge facts apply` runs the deterministic repairs first,
+  then judges the delta **entry by entry**: a refused entry is held back —
+  `precondition failed: held back: <label>: <message>` on stderr and a
+  `{label, lines}` row in `{run_dir}/held.json` — and everything else is written.
+  It exits 2, with the store untouched, only when not one entry could be written.
+  An apply that exits 0 with held entries is finished; the playbook commits and
+  reports. `validate facts-delta --store` runs the same gate in memory.
+  `merge facts edit` schema-checks only the entry it touched, so one old
+  off-contract entry no longer blocks every chat edit of its kind.
+
+Reading a finished run: `{run_dir}/assembly.json`'s `undecided[]` (reason
+`refused`, with the lines) and `{run_dir}/held.json` are what waited; the
+entries' `issues[]` and `field_status` are what was noted. A person reads the
+«استنباطی» marks and the notes in the panel before ticking confirm — **the
+confirm tick is the quality gate, not the engine.**
 
 ### Re-validating an existing run under the new gate
 
@@ -685,8 +758,10 @@ docker compose exec control-bot sh -c \
 # stage U · plan_stale false · elapsed_s 0 · yield false
 ```
 
-`failed` is a unit with two parsing attempts whose latest one the gate refuses;
-one attempt and a refusal is still `pending`. The messages themselves come from
+`failed` is a unit with two parsing attempts none of which the gate can use;
+one attempt refused as a whole is still `pending`. Since 2026-09-13 a unit whose
+refusals name single decisions is `done`, with `· retry` and those decisions'
+labels on its line while its second attempt is unspent. The messages themselves come from
 the validator, on the failing unit's latest output:
 
 ```bash
