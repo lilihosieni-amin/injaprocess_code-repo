@@ -56,7 +56,6 @@ from merge_facts import (
     derive_status,
     get_path,
     is_open,
-    iter_ref_objects,
     load_store,
     path_exists,
     remove_path,
@@ -76,18 +75,19 @@ from merge_facts.apply import (KEY_RE, _recompute_location, _run_ref, _snapshot,
                                _today_jalali)
 from merge_facts.apply import _hash_of
 from merge_facts.audit import _manifest
-from merge_facts.preconditions import _source_path_problems, process_source_problems
 from merge_facts.content import check_document
+from merge_facts.normalise import normalise_entry
+from merge_facts.tiers import apply_notes, coerce, lines, notes, refusals
 # `edit` settles a dispute the way the ladder raised one: the same numeric
 # equality (`_equal`), the same account id (`with_account_id`), the same dedup
 # key for the chat citation it unions in (`UNION_FIELDS["source"]`) and the
 # same answer to "what makes two members of this collection the same one"
 # (`keyfn_for`). A second opinion on any of the four is a second store.
 from merge_facts.ladder import UNION_FIELDS, _equal, keyfn_for, with_account_id
-from merge_facts.preconditions import (FACT_ID_RE, _unit_row_keys,
-                                       registered_scope,
-                                       undeclared_unit_problems,
-                                       unregistered_scope_problems)
+from merge_facts.preconditions import (_unit_row_keys, process_findings,
+                                       reference_findings, registered_scope,
+                                       repaired_ref, scope_findings,
+                                       source_findings, undeclared_unit_findings)
 
 _KIND_DATA_STUBS = {
     # Neutral containers `promote` may inject — empty, so nothing is
@@ -371,38 +371,28 @@ def _settle(entry, path, value, chat_src):
     _clear_unit_ref(entry, path)
 
 
-def _gate(root, store, kind, entry):
-    """The store gate every run passes, on this one entry (§2.3 item 4): the
-    `save_store` schema pass, the content pass `validate facts` runs, QF-33's
-    registered scope, QF-40's declared unit symbols and QF-37's resolvable
-    `{ref}`s. Nothing less — an entry a chat instruction rewrote is written to
-    the same five files as one a delta wrote, and there is no second, softer
-    contract for it. (The rules `preconditions` runs that are about a delta
-    rather than an entry — a creation's department, QF-34's title twin, one
-    open record per tab — belong to `apply` and are not re-run here.)"""
-    problems = []
-    try:
-        validate("facts.schema.json", store[kind])
-    except ValueError as exc:
-        problems.append(str(exc))
+def _gate(root, store, entry):
+    """The store gate every run passes, on this one entry (§2.3 item 4), as
+    tiered by spec 2026-09-13 §5C — findings, never a raise. The content pass
+    `validate facts` runs, QF-33's registered scope (C24 refuses, C25 notes),
+    QF-40's declared unit symbols (C28 notes), QF-37's resolvable `{ref}`s (C29
+    severs, C30 refuses), QF-5's citations (C33) and I3's processes (C34/C35).
+    A NOTE that severs changes `entry` in place. The rules `preconditions` runs
+    that are about a delta rather than an entry — a creation's department,
+    QF-34's title twin, one open record per tab, C31's field check — belong to
+    `apply` and are not re-run here. The schema check is the caller's, on this
+    entry alone (P2)."""
+    label = entry["id"]
     unit_rows = _unit_row_keys(store, [])
-    doc = {"schema_version": store[kind]["schema_version"], "entries": [entry]}
-    problems += check_document(doc, "facts", store=store, unit_symbols=unit_rows,
-                               conventions=conventions.load(root))
-    problems += undeclared_unit_problems(entry, unit_rows, entry["id"])
-    problems += unregistered_scope_problems(entry, *registered_scope(root),
-                                            entry["id"])
-    for obj in iter_ref_objects(entry.get("data") or {}):
-        ref = obj.get("ref")
-        if isinstance(ref, str) and FACT_ID_RE.fullmatch(ref) \
-                and _find(store, ref)[1] is None:
-            problems.append(f"{entry['id']}: ref {ref} names no entry")
-    # A citation the instruction wrote faces QF-5 and I3 exactly as a delta's
-    # does: its `ref` names a file inside the repo, and no process it cites is
-    # tombstoned.
-    problems += _source_path_problems(root, entry, entry["id"])
-    problems += [f"{entry['id']}: {line}" for line in process_source_problems(root, entry)]
-    return problems
+    doc = {"schema_version": store[entry["kind"]]["schema_version"], "entries": [entry]}
+    found = coerce(check_document(doc, "facts", store=store, unit_symbols=unit_rows,
+                                  conventions=conventions.load(root)))
+    found += undeclared_unit_findings(entry, unit_rows, label)
+    found += scope_findings(entry, *registered_scope(root), label)
+    found += reference_findings(store, {}, entry, label, fields=False)
+    found += source_findings(root, entry, label)
+    found += process_findings(root, entry, label)
+    return found
 
 
 def _restamp_sources(root, before, after, run_ref):
@@ -463,6 +453,18 @@ def edit(root, fact_id, patch_path, run_dir, preview=False):
         except (AttributeError, TypeError, ValueError) as exc:
             problems.append(f"op {i} {op['op']} {op['path']}: {exc}")
             break
+    found = []
+    if not problems:
+        # Spec 2026-09-13: the store's own repairs, on the store's contract —
+        # an instruction that writes `role: ledger` is stored and marked, not
+        # refused.
+        found = normalise_entry(work, {
+            "root": root, "store": store, "label": fact_id,
+            "schema": "facts.schema.json", "entries": [],
+            "unit_rows": sorted(_unit_row_keys(store, [])),
+            "conventions": conventions.load(root)})
+        problems += lines(refusals(found))
+        apply_notes(work, found)
     if not problems:
         # The shape, before anything reads it. Every step below — the
         # `field_status` pruning, `_recompute_location`, the source union, the
@@ -487,12 +489,16 @@ def edit(root, fact_id, patch_path, run_dir, preview=False):
         source_key = UNION_FIELDS["source"]
         if source_key(chat_src) not in {source_key(s) for s in sources}:
             sources.append(chat_src)
-        work["status"] = derive_status(work)
         work["updated_at"] = _now()
         entries = [work if e["id"] == fact_id else e
                    for e in store[kind]["entries"]]
-        problems += _gate(root, {**store, kind: {**store[kind], "entries": entries}},
-                          kind, work)
+        gated = _gate(root, {**store, kind: {**store[kind], "entries": entries}}, work)
+        problems += lines(refusals(gated))
+        apply_notes(work, gated)
+        found += gated
+        work["status"] = derive_status(work)
+    for finding in notes(found):
+        print(f"note: {finding.line()}", file=sys.stderr)
     report = {"id": fact_id, "ops": ops, "problems": problems}
     if preview:
         for o in ops:
@@ -508,37 +514,11 @@ def edit(root, fact_id, patch_path, run_dir, preview=False):
         return report
     store[kind]["entries"] = entries
     _snapshot(root, run_dir)
-    save_store(root, store)
+    save_store(root, store, only={fact_id})
     _append_delta(run_dir, "edit", {"id": fact_id,
                                     "patch": pathlib.Path(patch_path).name,
                                     "ops": len(ops)})
     return report
-
-
-def _repaired_ref(root, manifest_by_id, ref):
-    """The path QF-5 requires for a `ref` that names no file, or `None`.
-
-    Two shapes, both read off what is actually on disk rather than guessed:
-
-    * a bare Google Drive **spreadsheet id** — the manifest maps it to the
-      workbook's directory and file, which is the whole reason the manifest
-      carries `dir` and `file` beside `spreadsheetId`;
-    * a path that **lost its root** — `Gozaresh markazi/Gozaresh markazi.gs`
-      instead of `attachments/sheets/Gozaresh markazi/…`. Written as "does
-      prefixing the estate root name a file that exists" rather than as a rule
-      about `.gs`, because it is the same slip whatever the extension.
-
-    Anything else answers `None` and is left exactly as it is. A repair that
-    guessed would put a citation on an entry pointing at evidence nobody
-    checked, which is worse than the broken one it replaced.
-    """
-    if (root / ref).exists():
-        return None                                  # already a real path
-    workbook = manifest_by_id.get(ref)
-    if workbook and workbook.get("dir") and workbook.get("file"):
-        return f"attachments/sheets/{workbook['dir']}/{workbook['file']}"
-    rooted = f"attachments/sheets/{ref}"
-    return rooted if (root / rooted).is_file() else None
 
 
 def repair_source_refs(root, run_dir):
@@ -582,7 +562,7 @@ def repair_source_refs(root, run_dir):
                 ref = src.get("ref")
                 if not isinstance(ref, str) or not ref:
                     continue
-                fixed = _repaired_ref(root, by_id, ref)
+                fixed = repaired_ref(root, by_id, ref)
                 if fixed is None:
                     if not (root / ref).exists():
                         unrepairable.append((entry["id"], ref))

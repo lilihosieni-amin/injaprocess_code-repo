@@ -314,9 +314,16 @@ def build_index(store):
                          "updated_at": e["updated_at"]})
     return {"schema_version": STORE_SCHEMA_VERSION, "entries": rows}
 
-def save_store(root, store):
+def save_store(root, store, only=None):
+    """Validate, then write the five files and the index. `only` (a set of
+    ids) validates just the entries a verb wrote (spec 2026-09-13 P2/C37): an
+    older off-contract entry elsewhere in a kind file is the audit's to report,
+    and must not block every later write of its kind."""
     for kind, name in KIND_FILES.items():
-        validate("facts.schema.json", store[kind])
+        doc = store[kind] if only is None else {
+            **store[kind], "entries": [e for e in store[kind]["entries"]
+                                       if e.get("id") in only]}
+        validate("facts.schema.json", doc)
     for kind, name in KIND_FILES.items():
         write_json_atomic(facts_dir(root) / name, store[kind])
     write_json_atomic(facts_dir(root) / ".index.json", build_index(store))

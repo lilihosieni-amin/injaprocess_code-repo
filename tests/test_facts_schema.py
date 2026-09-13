@@ -101,9 +101,14 @@ def test_manifest_short_pattern_and_confirmed(validate):
     assert validate("manifest.schema.json", m) != []
 
 
-def test_bad_jalali_date_fails(validate):
+def test_an_unreadable_date_is_admitted_as_a_string_but_not_as_a_number(validate):
+    # spec 2026-09-13 C17: the gate normalises `1404/09/01` and stores what it
+    # cannot read as written, with a note — any non-null `valid_to` closes an
+    # entry, so dropping it would reopen one. The shape is still a string.
     e = _load("entry-rule.json")
     e["valid_from"] = "1404/09/01"
+    assert validate("facts.schema.json", _wrap(e)) == []
+    e["valid_from"] = 14040901
     assert validate("facts.schema.json", _wrap(e)) != []
 
 
@@ -125,11 +130,21 @@ def test_sheet_record_with_instances_and_imports_validates(validate):
     assert validate("facts.schema.json", _wrap(_load("entry-record-sheet.json"))) == []
 
 
-def test_role_mirror_fails(validate):
-    # QF-48: a mirror is an edge, not a record — the role leaves the vocabulary.
+def test_a_role_outside_the_vocabulary_is_a_string_the_store_admits(validate):
+    # QF-48 took `mirror` out of the vocabulary, and spec 2026-09-13 C13 opened
+    # it: the gate stores the word with `field_status` inferred. The UI's label
+    # gate still reads the closed list as the `enum` under `anyOf`.
     e = _load("entry-record.json")
     e["data"]["role"] = "mirror"
+    assert validate("facts.schema.json", _wrap(e)) == []
+    assert "mirror" not in _defs()["recordData"]["properties"]["role"]["anyOf"][0]["enum"]
+    e["data"]["role"] = ["log"]
     assert validate("facts.schema.json", _wrap(e)) != []
+
+
+def _defs():
+    return json.loads((pathlib.Path(__file__).resolve().parents[1] / "schemas" /
+                       "facts.schema.json").read_text(encoding="utf-8"))["$defs"]
 
 
 def test_a_paper_records_location_is_where_it_is_kept_and_who_holds_it(validate):
@@ -142,7 +157,11 @@ def test_a_paper_records_location_is_where_it_is_kept_and_who_holds_it(validate)
     e["data"]["location"] = {"kept_at": "زونکن دفتر آشپزخانه",
                              "holder": "سرآشپز شیفت"}
     assert validate("facts.schema.json", _wrap(e)) == []
+    # spec 2026-09-13 C20: a key of another medium is stored with a note; the
+    # location object itself stays closed to keys no medium has
     e["data"]["location"]["path"] = "departments/cooking/attachments/photo.jpg"
+    assert validate("facts.schema.json", _wrap(e)) == []
+    e["data"]["location"]["drawer"] = "۳"
     assert validate("facts.schema.json", _wrap(e)) != []      # closed
 
 
@@ -156,7 +175,9 @@ def test_the_other_three_media_close_too(validate):
     e["data"]["medium"] = "native"
     e["data"]["location"] = {"kept_at": "خود سامانه"}
     assert validate("facts.schema.json", _wrap(e)) == []
-    e["data"]["location"] = {"holder": "کسی"}
+    e["data"]["location"] = {"holder": "کسی"}                 # C20: a note, not
+    assert validate("facts.schema.json", _wrap(e)) == []      # a refusal
+    e["data"]["location"] = {"who": "کسی"}
     assert validate("facts.schema.json", _wrap(e)) != []      # closed
 
 
@@ -188,8 +209,8 @@ def test_a_sheet_records_location_keeps_its_engine_written_shape(validate):
     assert validate("facts.schema.json", _wrap(e)) == []
     e["data"]["location"] = {}
     assert validate("facts.schema.json", _wrap(e)) == []
-    e["data"]["location"] = {"kept_at": "جایی"}
-    assert validate("facts.schema.json", _wrap(e)) != []
+    e["data"]["location"] = {"kept_at": "جایی"}               # C20: a note
+    assert validate("facts.schema.json", _wrap(e)) == []
 
 
 def test_a_sheet_location_admits_every_key_the_engine_writes(validate):
@@ -226,9 +247,10 @@ def test_quote_is_admitted_on_an_attachment_source(validate):
         e["source"].append({"type": kind, "ref": "attachments/form.txt",
                             "quote": "شمارش شب"})
         assert validate("facts.schema.json", _wrap(e)) == [], kind
+    # spec 2026-09-13 C20: a quote on a chat citation is stored with a note
     e = _load("entry-rule.json")
     e["source"].append({"type": "chat", "ref": None, "quote": "x"})
-    assert validate("facts.schema.json", _wrap(e)) != []
+    assert validate("facts.schema.json", _wrap(e)) == []
 
 
 #: The keys the store schema and the delta schema are sanctioned to differ in,
@@ -312,11 +334,13 @@ def test_delta_carrying_original_ref_fails(validate):
     assert validate("facts-delta.schema.json", _wrap(d)) != []
 
 
-def test_quote_is_admitted_on_voice_and_refused_on_chat(validate):
+def test_quote_is_admitted_on_voice_and_on_chat_the_gate_notes_it(validate):
     e = _load("entry-rule.json")
     e["source"][1]["quote"] = "انحراف را شب‌ها می‌گیریم"
     assert validate("facts.schema.json", _wrap(e)) == []
     e["source"].append({"type": "chat", "ref": None, "quote": "x"})
+    assert validate("facts.schema.json", _wrap(e)) == []      # C20
+    e["source"][-1]["quote"] = {"text": "x"}
     assert validate("facts.schema.json", _wrap(e)) != []
 
 
