@@ -585,3 +585,57 @@ def test_a41_a_review_decision_the_schema_refuses_holds_back_only_itself(tmp_pat
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     assert next(e for e in delta["entries"]
                 if e["key"] == "item_1")["title"] == "پنیر ورقه‌ای"
+
+
+def _lost(tmp_path, units, failed, candidates=()):
+    from facts_plan.assemble import _lost_sources
+    root = _a_root(tmp_path)
+    state = {"units": {u["id"]: u for u in units}, "failed": set(failed),
+             "department": "cooking", "hashes": {}}
+    return _lost_sources(root, {"candidates": list(candidates)}, state)
+
+
+def test_f5_a_meeting_is_named_once_however_many_chunks_were_lost(tmp_path):
+    """M-1 (a, c): two lost chunks of one meeting are one line; a meeting with
+    no date in its name is counted, never named by its file."""
+    units = [{"id": f"u-tr-{n}", "type": "transcript", "inputs": [ref]}
+             for n, ref in enumerate([
+                 "meetings/transcripts/cooking-1405-06-01.txt#L1-L200",
+                 "meetings/transcripts/cooking-1405-06-01.txt#L201-L400",
+                 "meetings/transcripts/voice-note.txt#L1-L50"])]
+    lost = _lost(tmp_path, units, ["u-tr-0", "u-tr-1", "u-tr-2"])
+    from facts_plan.assemble import _lost_block
+    lines = [line for line in _lost_block(lost) if line]
+    assert lines == ["بخشی از جلسهٔ «۱۴۰۵/۰۶/۰۱» بررسی نشد.",
+                     "بخشی از ۱ جلسهٔ دیگر بررسی نشد."]
+
+
+def test_f5_a_failed_part_of_a_workbook_whose_sibling_landed_is_a_part(tmp_path):
+    """M-1 (b): a split workbook one part of which landed is not wholly lost."""
+    units = [{"id": f"u-wb-x-s{n}", "type": "workbook", "inputs": ["pitza.xlsx"]}
+             for n in (41, 42, 43)]
+    candidates = [{"id": "S-rec-1", "kind": "record", "unit": "u-wb-x-s41"},
+                  {"id": "S-rec-2", "kind": "record", "unit": "u-wb-x-s43"}]
+    lost = _lost(tmp_path, units, ["u-wb-x-s41", "u-wb-x-s43"], candidates)
+    assert len(lost) == 1 and lost[0]["tables"] == 2 and lost[0]["part"] is True
+    from facts_plan.assemble import _lost_block
+    assert _lost_block(lost)[0].startswith("بخشی از فایل اکسل «")
+
+
+def test_f5_the_undecided_block_says_how_many_were_not_reviewed(tmp_path):
+    """M-1 (c, d): a refused `new[]` entry with no title is named in Persian,
+    and the block ends on a count, not «یک بخش از داده‌ها ناتمام ماند»."""
+    root = _a_root(tmp_path)
+    rule = _rule_out()
+    rule["new"] = [{"kind": "note", "key": "bad key!",
+                    "statement": "پرسش بی‌عنوان.",
+                    "data": {"about": [{"ref": "S-r-000000000002"}],
+                             "question": "چند؟"}}]
+    run_dir = _a_run(root, {"u-a": _record_out(), "u-b": rule})
+    assemble(root, run_dir)
+    (run_dir / "id-map.json").write_text("{}", encoding="utf-8")
+    text = report(root, run_dir).read_text(encoding="utf-8")
+    assert "بخش از داده‌ها" not in text
+    assert "«موردی بی‌عنوان»" in text
+    assert "۱ مورد در این اجرا بررسی نشد و در اجرای بعدی تکمیل می‌شود." in text
+    assert "bad" not in text

@@ -85,6 +85,7 @@ FA_NO_COLUMN = "توضیحی که برای یکی از عنوان‌های ای�
 FA_SEVERED = "پیوند این مورد به موردی که در این اجرا وجود ندارد برداشته شد."
 FA_SWAPPED = "ورودی‌های این قاعده ممکن است جابه‌جا نوشته شده باشند؛ پیش از تأیید بازبینی کنید."
 FA_UNIT_ON_TEXT = "برای مقداری که عددی نیست واحد نوشته شده است؛ پیش از تأیید بازبینی کنید."
+FA_UNTITLED = "موردی بی‌عنوان"
 FA_BRANCH = "شعبه‌ای که برای این مورد نوشته شد در فهرست شعبه‌ها نبود و کنار گذاشته شد."
 
 
@@ -1810,7 +1811,10 @@ def _build_entries(root, skeleton, state):
     for row in state.get("refused_new") or []:
         state["undecided"].append(                                  # F3
             {"skeleton": None, "kind": row["kind"], "unit": row["unit"],
-             "label": row["title"] or row["key"], "reason": "refused",
+             # never the minted key: a `new[]` entry refused for having no
+             # title is exactly the one without a Persian name (M-1 c)
+             "label": row["title"] if isinstance(row["title"], str)
+             and row["title"].strip() else FA_UNTITLED, "reason": "refused",
              "refused": row["lines"]})
     # A file too big for a unit is no candidate, so the pass above names it
     # nowhere: its issue is the whole record of it, and the owner reads it with
@@ -2491,25 +2495,40 @@ def _lost_sources(root, skeleton, state):
     units = state["units"]
     counts = collections.Counter((c.get("unit"), KIND_OF.get(c["kind"], c["kind"]))
                                  for c in skeleton["candidates"])
-    out, lost = [], set()
+    landed = {ref.partition("#")[0] for uid, u in units.items()
+              if uid not in state["failed"] for ref in u.get("inputs") or []}
+    out, lost, rows = [], set(), {}
     for uid in sorted(state["failed"]):
         unit = units.get(uid) or {}
         refs = [ref.partition("#")[0] for ref in unit.get("inputs") or []]
         if unit.get("type") == "workbook":
-            out.append({"kind": "workbook", "label": "، ".join(
-                _workbook_name(root, state["department"], f) for f in refs),
-                "tables": counts[(uid, "record")], "formulas": counts[(uid, "rule")]})
+            # One row per workbook, however many of its parts failed; `part`
+            # when another part of it landed (M-1 b).
+            label = "، ".join(_workbook_name(root, state["department"], f)
+                              for f in refs)
+            row = rows.get(("workbook", label))
+            if row is None:
+                row = rows[("workbook", label)] = {
+                    "kind": "workbook", "label": label, "tables": 0, "formulas": 0}
+                out.append(row)
+            row["tables"] += counts[(uid, "record")]
+            row["formulas"] += counts[(uid, "rule")]
+            if any(ref in landed for ref in refs):
+                row["part"] = True
         for ref in refs:
             if "/attachments/.text/" in ref:
                 lost.add(ref)
-            elif unit.get("type") == "transcript":
+            elif unit.get("type") == "transcript" and ("recording", ref) not in rows:
+                # One row per meeting, however many of its chunks were lost; a
+                # meeting with no date in its name has no Persian label (M-1 c).
                 stem = pathlib.PurePosixPath(ref).stem
                 date = re.search(r"([0-9]{4})-([0-9]{2})-([0-9]{2})(?:-0*([0-9]+))?$", stem)
                 label = (f"{_fa(date.group(1))}/{_fa(date.group(2))}/{_fa(date.group(3))}"
                          + (f" ({_fa(date.group(4))})" if date.group(4) else "")) \
-                    if date else stem
-                out.append({"kind": "recording", "label": label,
-                            "tables": 0, "formulas": 0})
+                    if date else None
+                rows[("recording", ref)] = {"kind": "recording", "label": label,
+                                            "tables": 0, "formulas": 0}
+                out.append(rows[("recording", ref)])
     placed = {ref.partition("#")[0] for u in units.values()
               for ref in u.get("inputs") or []}
     lost |= {rel for rel in state.get("hashes") or {}
@@ -2522,13 +2541,19 @@ def _lost_sources(root, skeleton, state):
 def _lost_block(lost):
     """F5's first block of `report.md`: what no unit could carry, in the owner's
     words and names — never a path, an id or a count of anything but files."""
-    out = []
+    out, undated = [], 0
     for row in lost:
         if row["kind"] == "workbook":
-            out.append(f'فایل اکسل «{row["label"]}» ثبت نشد: {_fa(row["tables"])} '
+            out.append(("بخشی از " if row.get("part") else "")
+                       + f'فایل اکسل «{row["label"]}» ثبت نشد: {_fa(row["tables"])} '
                        f'جدول و {_fa(row["formulas"])} فرمول آن بررسی نشد.')
-        elif row["kind"] == "recording":
+        elif row["kind"] == "recording" and row["label"]:
             out.append(f'بخشی از جلسهٔ «{row["label"]}» بررسی نشد.')
+        elif row["kind"] == "recording":
+            undated += 1
+    out = list(dict.fromkeys(out))
+    if undated:
+        out.append(f"بخشی از {_fa(undated)} جلسهٔ دیگر بررسی نشد.")
     files = [r["label"] for r in lost if r["kind"] == "attachment"]
     photos = [f for f in files if f.lower().endswith(PHOTO_SUFFIXES)]
     if photos:
@@ -2686,7 +2711,8 @@ def report(root, run_dir):
     if assembly["undecided"]:
         out.append("چه چیزهایی بررسی نشد و در اجرای بعدی تکمیل می‌شود:")
         out += _held_back_blocks(assembly["undecided"], UNDECIDED_FA, "    • ")
-        out.append("یک بخش از داده‌ها ناتمام ماند و در اجرای بعدی تکمیل می‌شود.")
+        out.append(f'{_fa(len(assembly["undecided"]))} مورد در این اجرا بررسی '
+                   "نشد و در اجرای بعدی تکمیل می‌شود.")
     # R9 — a review is never dropped whole any more, so «انجام نشد» is gone:
     # either it ran, or (engine-only) it was never asked for. A `partial` run
     # names each decision it held back, by the entry's own title and the
