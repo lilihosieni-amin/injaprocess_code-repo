@@ -50,23 +50,22 @@ TOP_SKIP = IMMUTABLE | frozenset(UNION_FIELDS) | frozenset({"accounts", "extra"}
 
 
 def merge_extra(existing, incoming):
-    """The preserved bag (spec 2026-09-13 C5): what the incoming entry kept
-    aside joins the stored bag — never disputed, never overwritten. A path the
-    bag already holds with another value is kept beside it as `path~2`.
-    Returns the keys added."""
-    added = []
+    """The preserved bag (spec 2026-09-13 C5; owner ruling 2026-09-13, option
+    b): the incoming entry's reading of a path replaces the stored one, and any
+    `path~n` an older run left beside it goes, so the bag never grows run over
+    run. Never disputed. Returns the keys added or replaced."""
+    changed = []
+    bag = existing.get("extra") or {}
     for path, value in (incoming.get("extra") or {}).items():
-        bag = existing.setdefault("extra", {})
-        if any(k == path or k.startswith(path + "~") for k in bag
-               if bag[k] == value):
+        stale = [k for k in bag if k.startswith(path + "~")]
+        if bag.get(path) == value and not stale:
             continue
-        key, n = path, 1
-        while key in bag:
-            n += 1
-            key = f"{path}~{n}"
-        bag[key] = copy.deepcopy(value)
-        added.append(key)
-    return added
+        for k in stale:
+            del bag[k]
+        bag[path] = copy.deepcopy(value)
+        existing["extra"] = bag
+        changed.append(path)
+    return changed
 
 
 def merge_field_status(existing, incoming):

@@ -295,4 +295,6 @@ names lost sources first, in plain Persian with the owner's file names (F5); spe
 have their columns marked inferred (F6); `apply` holds back per entry into `held.json` and exits 2
 only when nothing could be written; `edit` schema-checks only the entry it touched; style no longer
 blocks readiness and «بچ»/«پاس» leave the banned words. The v3.8 ruling stands: a stale review is
-redone, never skipped. Spec: `docs/superpowers/specs/2026-09-13-facts-gate-tiers-design.md`.
+redone, never skipped. Spec: `docs/superpowers/specs/2026-09-13-facts-gate-tiers-design.md`. Later the same day, after the local preparation run, the owner chose option (b) for the `extra` bag
+(*"for 3 i choce b"*): a newer run's value at a path replaces the stored one and any older `path~n`
+goes, so the bag never grows run over run — this overrides C5's "never overwritten".
