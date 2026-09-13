@@ -25,7 +25,7 @@ class Finding:
     label: str
     message: str
     path: str | None = None
-    mark: str = "issue"
+    mark: str = "issue"         # NOTE only: "inferred" | "issue" | "none"
     fa: str | None = None
 
     def line(self):
@@ -71,6 +71,8 @@ def item_of(finding):
 
 def apply_notes(entry, findings):
     for f in notes(findings):
+        if f.mark == "none":
+            continue                  # "store as written, no mark": reported, never recorded
         if f.mark == "inferred" and f.path:
             entry.setdefault("field_status", {})[f.path] = "inferred"
             continue

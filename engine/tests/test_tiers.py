@@ -55,3 +55,13 @@ def test_a_shape_note_is_a_legal_issue_in_both_store_schemas():
         text = (root / name).read_text(encoding="utf-8")
         enum_line = next(line for line in text.splitlines() if '"oversized"' in line)
         assert '"shape"' in enum_line, name
+
+
+def test_a_note_marked_none_is_reported_but_leaves_the_entry_untouched():
+    """Spec rows that say "store as written, no mark" (the style lint, B5, B15,
+    B19, B21, B24, B29, B30) still report a NOTE so validators and the audit can
+    list it, but must not grow a generic shape issue on every entry."""
+    entry = {"data": {}}
+    tiers.apply_notes(entry, [tiers.note("T-1", "cell reference in prose", mark="none")])
+    assert entry == {"data": {}}
+    assert tiers.notes([tiers.note("T-1", "x", mark="none")])
