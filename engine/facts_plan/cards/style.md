@@ -14,8 +14,8 @@ Never, in either field:
   or `Table_*` name;
 - formula text, a function name, `IMPORT_FROM_SHEET`, `LET(`, `LAMBDA`,
   `.xlsx`, `.gs`;
-- a schema field name, or this pipeline's vocabulary: «پاس», «اسکلت»,
-  «بخش از داده‌ها», «واحد کاری», «بچ», «original», «bindings», «FEEL»,
+- a schema field name, or this pipeline's vocabulary: «اسکلت»,
+  «بخش از داده‌ها», «واحد کاری», «original», «bindings», «FEEL»,
   «account», «expr»;
 - a Latin token of four letters or more — `csv`, `Excel`, `sheet`, a unit
   symbol and an item code are the only exceptions;

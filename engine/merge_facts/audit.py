@@ -46,7 +46,7 @@ from merge_facts.apply import (FACT_ID_RE, PROC_ID_RE, TEMP_ID_RE,
 from merge_facts.content import lint_prose
 # `_unit_row_keys` is `preconditions`' own (Task 5 moved it there; `apply`
 # re-exports the neighbours above but not this one), and it answers the same
-# question `_lint_failures` has to ask: which Latin symbols the units record
+# question `_style` has to ask: which Latin symbols the units record
 # licenses.
 from merge_facts.preconditions import _unit_row_keys
 
@@ -1118,12 +1118,30 @@ def _unknown_role(walk):
 FLAG_CHECKS = (_duplicate_output, _lookalike_title, _recurring_note_shape,
                _equal_expr, _duplicate_code, _edge_disagreement)
 
+
+def _style(walk):
+    """§5.2's lint over each open entry's title and statement, one `info`
+    finding per rule broken (spec 2026-09-13 B38–B44: style is a note, listed
+    here, and blocks neither a gate nor readiness). «ستون», «تب» and «سلول»
+    are allowed in a record's own statement (QF-50)."""
+    exemptions = _unit_row_keys(walk.store, [])
+    items = []
+    for entry in walk.open:
+        for name, allow in (("title", False),
+                            ("statement", entry["kind"] == "record")):
+            for found in lint_prose(entry.get(name) or "", exemptions=exemptions,
+                                    allow_sheet_words=allow):
+                items.append(_finding("style", entry["id"],
+                                      f"{name} {found.message}", "info"))
+    return items
+
+
 AUDIT_CHECKS = FLAG_CHECKS + (
     _orphan_ref, _dangling_ref_items, _process_link, _row_gone, _binding_gone,
     _expr_missing, _retired_row_live_edges, _template_drift, _reconciliation,
     _component_sum, _unconsumed_constant, _no_consumer, _quantity_off_enum,
     _note_targets_retired, _import_unresolved, _stale_prose, _stale_stub,
-    _natural_key_dup, _scope_shadow, _unknown_role)
+    _natural_key_dup, _scope_shadow, _unknown_role, _style)
 
 
 def flags_over(root, entries):
@@ -1178,6 +1196,7 @@ PERSIAN = {
     "natural_key_dup": "یک کلید برای دو مورد: «{title}»",
     "scope_shadow": "همین کلید در دامنهٔ عمومی هم هست: «{title}»",
     "unknown_role": "نقشی که در فرایندها نیامده است: «{title}»",
+    "style": "نگارش این مورد با راهنمای نگارش هم‌خوان نیست: «{title}»",
     "source_moved": "پروندهٔ استنادشده عوض شده است: «{title}»",
     "estate_absent": "پروندهٔ Excel روی این دستگاه نیست: «{title}»",
     "uncited_workbook": "فایلی که هیچ جدولی از آن خوانده نشده است: «{title}»",
@@ -1255,23 +1274,6 @@ def _run_units(run_dir):
         return []
 
 
-def _lint_failures(walk):
-    """Entries whose own prose fails §5.2's lint, counted per ENTRY — QF-44
-    (v3) asks that no entry carries a failure, not how many words each one
-    broke. «ستون», «تب» and «سلول» are allowed in a record's own statement
-    (QF-50), so records are linted with the sheet words admitted."""
-    exemptions = _unit_row_keys(walk.store, [])
-    failing = 0
-    for entry in walk.open:
-        problems = lint_prose(entry.get("title") or "", exemptions=exemptions)
-        problems += lint_prose(entry.get("statement") or "",
-                               exemptions=exemptions,
-                               allow_sheet_words=entry["kind"] == "record")
-        if problems:
-            failing += 1
-    return failing
-
-
 def check(root):
     """§12's `check` row and QF-44 (v3)'s readiness in one dict.
 
@@ -1279,7 +1281,8 @@ def check(root):
     files that are not here, the manifest workbooks nothing has read. Beside it
     are the five readiness answers. The workbook-coverage metric is withdrawn
     (§4): a department is ready when its units are done, its review has run,
-    and nothing is lint-failing, expression-less or still disputed — none of
+    and nothing is expression-less or still disputed (style is listed by
+    `audit`, never counted here) — none of
     which a denominator over the manifest ever measured.
 
     With no run directory at all both `units_done` and `review_ran` answer over
@@ -1331,6 +1334,9 @@ def check(root):
             "units_done": all(u.get("state") == "done" for u in units),
             "review_ran": all((run / "review" / "out.json").is_file()
                               for run in runs) if runs else False,
-            "lint_failures": _lint_failures(walk),
+            # B38–B44: style no longer blocks readiness — `audit` lists it as
+            # `style`. The key stays for the readiness line `merge facts
+            # check` prints, and is always 0.
+            "lint_failures": 0,
             "expr_missing": len(_expr_missing(walk)),
             "open_disputes": sum(len(open_accounts(e)) for e in walk.open)}
