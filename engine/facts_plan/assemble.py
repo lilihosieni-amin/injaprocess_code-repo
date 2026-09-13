@@ -2499,6 +2499,31 @@ def _lost_block(lost):
     return out + [""] if out else []
 
 
+def _store_held_block(run_dir):
+    """F5 at the store gate: the entries `apply` held back (`held.json`) are
+    named too — by the Persian title the delta gave them, else counted — so
+    nothing waits unsaid. Never the engine's lines, a temp id or a path."""
+    held = run_dir / "held.json"
+    labels = [row.get("label") for row in (read_json(held) if held.exists() else [])
+              if isinstance(row, dict)]
+    if not labels:
+        return []
+    delta = run_dir / "facts-delta.json"
+    entries = (read_json(delta).get("entries") or []) if delta.exists() else []
+    titles = {}
+    for entry in entries:
+        if isinstance(entry, dict) and isinstance(entry.get("title"), str) \
+                and entry["title"].strip():
+            for name in ("key", "id"):
+                if isinstance(entry.get(name), str):
+                    titles[entry[name]] = entry["title"].strip()
+    named = [titles[label] for label in labels if label in titles]
+    line = f"{_fa(len(labels))} مورد به‌دلیل ایراد ساختاری ثبت نشد"
+    if len(named) == len(labels):
+        line += ": " + "، ".join(f"«{t}»" for t in named)
+    return [line + ".", ""]
+
+
 def gate_b(root, skeleton, entries, state):
     """`gate-b.md` (§2.7) — a finished Persian message the playbook sends
     verbatim. No id, no path, no code, no command; an entry is its title."""
@@ -2617,6 +2642,7 @@ def report(root, run_dir):
     # can act on. Every one of them is still attached to the entry it concerns
     # and drawn in the panel (`IssuesCard`), still counted in `gate-b.md` as
     # the run's own record, and still `merge facts audit`'s to report.
+    out += _store_held_block(run_dir)
     out += _unread_block(root, skeleton["department"], skeleton["issues"])
     if assembly["undecided"]:
         out.append("چه چیزهایی بررسی نشد و در اجرای بعدی تکمیل می‌شود:")
