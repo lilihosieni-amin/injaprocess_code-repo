@@ -319,6 +319,13 @@ describe('the record card', () => {
     expect(screen.getByText('ردیف ۱ تا ۵ را امضا می‌کند')).toBeInTheDocument()
   })
 
+  it('draws a signature whose `row_range` is null as its role alone (P4c)', () => {
+    draw(bundleOf('record', { medium: 'paper', role: 'log',
+      signatures: [{ role: 'سرآشپز', row_range: null }] }))
+    expect(screen.getByText('سرآشپز')).toBeInTheDocument()
+    expect(screen.queryByText(/امضا می‌کند/)).toBeNull()
+  })
+
   it('draws no day-boundary sentence for a `null` boundary — never «ساعت null بامداد»', () => {
     draw(bundleOf('record', { medium: 'sheet', role: 'log', day_boundary: null }))
     expect(screen.queryByText(/بامداد/)).toBeNull()

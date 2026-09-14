@@ -29,6 +29,7 @@ import pytest
 from facts_plan.assemble import assemble, validate_unit
 from facts_plan.build import build
 from facts_plan.preflight import UNIT_OWED, bare_keeps
+from merge_facts import tiers
 from fixtures.facts_plan.synth import synth_estate
 from merge_facts.apply import simulate
 
@@ -60,7 +61,7 @@ def _bare_keep_gate(root, run_dir):
         path = run_dir / "units" / unit / "out.1.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-        lines = validate_unit(root, run_dir, path)
+        lines = tiers.lines(tiers.refusals(validate_unit(root, run_dir, path)))
         for line in lines:
             if any(pattern.search(line) for pattern in UNIT_OWED):
                 owed += 1
@@ -106,8 +107,9 @@ def test_a_generated_estate_plans_gates_and_assembles(seed, tmp_path, capsys):
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     validate("facts-delta.schema.json", delta)
     _store, problems = simulate(tmp_path, run_dir / "facts-delta.json", run_dir)
-    assert problems == [], f"seed {seed}: apply would refuse this delta: " \
-                           f"{problems[:2]}"
+    refusals = tiers.lines(tiers.refusals(problems))
+    assert refusals == [], f"seed {seed}: apply would refuse this delta: " \
+                           f"{refusals[:2]}"
 
     RUNS[seed] = {"candidates": sum(built["candidates"].values()),
                   "units": built["units"], "held_back": result["undecided"],

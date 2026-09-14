@@ -4,8 +4,15 @@ unit's decisions (§2.5), which is also what `facts-plan status` calls to say
 import json
 
 import pytest
-from facts_plan.assemble import validate_unit
+from facts_plan.assemble import validate_unit as _findings
+from merge_facts import tiers
 from validate.cli import main
+
+
+def validate_unit(root, run_dir, path):
+    """The gate's findings as the lines a reader sees — these tests read the
+    words; `test_unit_gate_tiers.py` reads the tiers."""
+    return tiers.lines(_findings(root, run_dir, path))
 
 #: What a candidate of each kind mechanically carries, and what a unit's `keep`
 #: writes over it — the store's own shapes, since the gate now holds a unit
@@ -93,14 +100,15 @@ def test_a_candidate_decided_twice_and_an_unknown_skeleton(tmp_path):
     assert any("decisions[2]" in p and "S-r-000000000009" in p for p in problems)
 
 
-def test_a_document_naming_another_unit_is_refused(tmp_path):
-    # The unit a document belongs to is the directory it sits in: a document
-    # naming a zero-candidate sibling would otherwise decide nothing and pass.
+def test_a_document_naming_another_unit_is_read_as_its_directorys(tmp_path):
+    # The unit a document belongs to is the directory it sits in (A4): a
+    # document naming a zero-candidate sibling is judged as the unit it sits
+    # in, so it still owes that unit's candidates.
     root, run_dir = _run(tmp_path)
     problems = validate_unit(root, run_dir,
                              _write(run_dir, _doc(unit="u-wb-other", decisions=[])))
-    assert any("u-wb-other" in p and "u-wb-pitza" in p for p in problems)
-    assert any("S-r-000000000001" in p and "no decision" in p for p in problems)
+    assert not any("u-wb-other" in p for p in problems)
+    assert problems == ["S-r-000000000001: has no decision"]
 
 
 def test_a_document_outside_a_unit_directory_is_refused(tmp_path):
@@ -132,12 +140,13 @@ def test_a_new_entrys_citation_is_checked_too(tmp_path):
                for p in validate_unit(root, run_dir, _write(run_dir, doc)))
 
 
-def test_provisional_field_ref_shape(tmp_path):
+def test_provisional_field_ref_shape_is_repaired(tmp_path):
+    # A21 — `C_H` is `c_h` written loudly, not a mistake worth an attempt.
     root, run_dir = _run(tmp_path)
     doc = _doc()
     doc["decisions"][0]["data"]["inputs"] = [
-        {"key": "a", "from": {"ref": "S-rec-000000000003", "field": "C_H"}}]
-    assert any("C_H" in p for p in validate_unit(root, run_dir, _write(run_dir, doc)))
+        {"key": "a", "from": {"ref": "S-r-000000000001", "field": "C_H"}}]
+    assert not any("C_H" in p for p in validate_unit(root, run_dir, _write(run_dir, doc)))
 
 
 def test_lint_runs_with_the_unit_symbols_exempted(tmp_path):
@@ -205,14 +214,27 @@ def test_the_cli_needs_a_run_directory(tmp_path, capsys):
 
 
 def test_the_cli_groups_the_messages_and_exits_2(tmp_path, capsys, monkeypatch):
-    root, run_dir = _run(tmp_path, ("S-r-000000000001", "S-r-000000000002"))
+    root, run_dir = _run(tmp_path)
     monkeypatch.setenv("DATA_ROOT", str(root))
-    path = str(_write(run_dir, _doc()))
+    doc = _doc()
+    doc["decisions"].append({"skeleton": "S-r-000000000009", "action": "drop",
+                             "reason_code": "cosmetic"})
+    path = str(_write(run_dir, doc))
     with pytest.raises(SystemExit) as excinfo:
         main(["facts-unit", path, "--run", str(run_dir)])
     assert excinfo.value.code == 2
     err = capsys.readouterr().err
-    assert "S-r-000000000002" in err and "1 entries" in err
+    assert "S-r-000000000009" in err and "1 entries" in err
+
+
+def test_the_cli_prints_a_note_and_still_passes(tmp_path, capsys, monkeypatch):
+    root, run_dir = _run(tmp_path, ("S-r-000000000001", "S-r-000000000002"))
+    monkeypatch.setenv("DATA_ROOT", str(root))
+    assert main(["facts-unit", str(_write(run_dir, _doc())),
+                 "--run", str(run_dir)]) == 0
+    captured = capsys.readouterr()
+    assert "note: " in captured.err and "S-r-000000000002" in captured.err
+    assert captured.out.startswith("OK: ")
 
 
 def test_the_cli_prints_ok_for_a_document_that_passes(tmp_path, capsys, monkeypatch):
@@ -248,14 +270,14 @@ def test_a_schema_error_in_a_big_review_is_still_reported(tmp_path):
     """The size is no longer a message of its own (R6), so the one real fault
     in a 61-decision document is the only thing said about it."""
     root, run_dir = _run(tmp_path)
-    doc = {"schema_version": 1, "unit": "review",
+    doc = {"schema_version": 2, "unit": "review", "attempt": 1,
            "decisions": [{"entry": {"kind": "rule", "key": f"k{n}"},
                           "action": "drop", "reason_code": "duplicate"}
-                         for n in range(61)]}      # …and no `attempt`
+                         for n in range(61)]}      # …and the wrong version
     path = run_dir / "review" / "out.json"
     (run_dir / "review").mkdir(exist_ok=True)
     path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-    assert any("attempt" in p for p in validate_unit(root, run_dir, path))
+    assert validate_unit(root, run_dir, path) == ["out.json: schema_version 2 is not 1"]
 
 
 def test_a_review_document_is_not_checked_for_completeness(tmp_path):
@@ -268,36 +290,25 @@ def test_a_review_document_is_not_checked_for_completeness(tmp_path):
     assert validate_unit(root, run_dir, path) == []
 
 
-def test_a_field_type_the_store_has_no_such_thing_as_fails_at_the_unit_gate(tmp_path):
+def test_a_field_type_written_as_a_synonym_is_repaired(tmp_path):
     """I1 — 30 of the 2026-09-07 run's 52 Stage V refusals were column types
-    written as `text`. The unit that wrote it is told, by field path, while it
-    still has an attempt."""
+    written as `text`. C13 maps the synonym to `string`: no finding, no retry."""
     root, run_dir = _run(tmp_path, kind="record")
     doc = _doc("record")
     doc["decisions"][0]["data"] = {
         "role": "log", "fields": [{"from": "c_h", "key": "masraf", "type": "text"}]}
-    problems = validate_unit(root, run_dir, _write(run_dir, doc))
-    assert any("decisions[0] S-r-000000000001" in p
-               and "data.fields[0].type" in p
-               and "'text' is not one of" in p for p in problems)
-    doc["decisions"][0]["data"]["fields"][0]["type"] = "number"
-    assert validate_unit(root, run_dir, _write(run_dir, doc, "out.2.json")) == []
+    assert validate_unit(root, run_dir, _write(run_dir, doc)) == []
 
 
-def test_a_new_paper_record_without_a_location_fails_at_the_unit_gate(tmp_path):
-    """§3.3 + I1 — the two photographed forms of the 2026-09-07 run, refused
-    where the unit can still fix them."""
+def test_a_new_paper_record_without_a_location_is_stored(tmp_path):
+    """§3.3 + I1 — the two photographed forms of the 2026-09-07 run. C10 fills
+    the missing `location` with `{}` (unknown, red in the panel): no refusal."""
     root, run_dir = _run(tmp_path)
     form = {"kind": "record", "key": "mande_shab", "title": "فرم مانده شب",
             "statement": "فرم کاغذی مانده شب که هر شیفت پر می‌شود.",
             "data": {"medium": "paper", "role": "log"}}
-    problems = validate_unit(root, run_dir,
-                             _write(run_dir, _doc(new=[form])))
-    assert any("new[0]" in p and "'location' is a required property" in p
-               for p in problems)
-    form["data"]["location"] = {"kept_at": "زونکن دفتر", "holder": "سرآشپز شیفت"}
-    assert validate_unit(root, run_dir,
-                         _write(run_dir, _doc(new=[form]), "out.2.json")) == []
+    assert tiers.refusals(_findings(root, run_dir,
+                                    _write(run_dir, _doc(new=[form])))) == []
 
 
 def test_a_paper_locations_prose_is_linted(tmp_path):
@@ -360,15 +371,18 @@ def _paper(**over):
     return form
 
 
-def test_a_branch_the_sheets_manifest_never_heard_of_is_refused_at_the_gate(tmp_path):
+def test_a_branch_the_sheets_manifest_never_heard_of_is_named_at_the_gate(tmp_path):
     """I1 — `preconditions` checks branch codes outside `check_document`, so an
-    invented branch used to pass the unit gate and die at Stage V."""
+    invented branch used to pass the unit gate and die at Stage V. A34: it is
+    dropped with a note, never a refusal."""
     root, run_dir = _run(tmp_path)
     _manifest(root, "chalebagh")
     problems = validate_unit(root, run_dir,
                              _write(run_dir, _doc(new=[_paper(branches=["nowhere"])])))
-    assert any("new[0] mande_shab" in p and "scope.branches[0]" in p
+    assert any("new[0] mande_shab" in p and "scope.branches" in p
                and "'nowhere'" in p for p in problems)
+    assert not tiers.refusals(_findings(root, run_dir, run_dir / "units" /
+                                        "u-wb-pitza" / "out.1.json"))
     assert validate_unit(root, run_dir,
                          _write(run_dir, _doc(new=[_paper(branches=["chalebagh"])]),
                                 "out.2.json")) == []
@@ -428,7 +442,8 @@ def test_a_keyless_row_is_refused_unless_the_table_derives_its_keys(tmp_path):
     root, run_dir = _run(tmp_path)
     form = _paper()
     form["data"]["rows"] = [{"title": "شیفت صبح"}]
-    assert "new[0] mande_shab: data.rows[0]: 'key' is a required property" in \
+    assert "new[0] mande_shab: data.rows[0] has no key, and neither the table's key "\
+           "columns nor its title give one (QF-32)" in \
         validate_unit(root, run_dir, _write(run_dir, _doc(new=[form])))
     form["data"]["rows"][0]["key"] = "sobh"
     assert validate_unit(root, run_dir,
@@ -453,7 +468,8 @@ def test_a_reference_tables_keyless_rows_pass_the_gate_and_the_apply(tmp_path):
     table["data"]["rows"] = [{"nam": "پنیر"}]
     doc = _doc(new=[table])
     assert validate_unit(root, run_dir, _write(run_dir, doc)) == [
-        "new[0] mavad: data.rows[0]: 'key' is a required property"]
+        "new[0] mavad: data.rows[0] has no key, and neither the table's key columns "\
+        "nor its title give one (QF-32)"]
 
 
 def test_a_symbol_this_document_adds_to_the_units_record_is_its_own(tmp_path):
@@ -486,16 +502,23 @@ def test_one_prose_nit_and_one_shape_error_are_one_line_each(tmp_path):
     doc["decisions"][0]["title"] = "گزارش H6"
     doc["decisions"][0]["data"] = {
         "role": "log", "fields": [{"from": "c_h", "key": "masraf", "type": "text"}]}
-    problems = validate_unit(root, run_dir, _write(run_dir, doc))
-    assert sum("H6" in p for p in problems) == 1
-    assert sum("'text' is not one of" in p for p in problems) == 1
+    found = _findings(root, run_dir, _write(run_dir, doc))
+    assert sum("H6" in p for p in tiers.lines(found)) == 1     # a note, said once
+    assert tiers.refusals(found) == []                          # `text` repaired
 
 
-def test_status_reports_a_third_attempt_as_failed(tmp_path):
+def test_status_reads_a_third_attempt_as_refused_and_the_first_two_as_done(tmp_path):
+    """A1 — the cap refuses the third file whole; the two attempts the run
+    allows still stand (F3: `failed` means nothing readable at all)."""
     from facts_plan.cli import unit_states
     root, run_dir = _run(tmp_path)
     for n in (1, 2, 3):
         _write(run_dir, _doc(), f"out.{n}.json")
+    states = {s["id"]: s for s in
+              unit_states(root, run_dir, [{"id": "u-wb-pitza", "type": "workbook"}])}
+    assert states["u-wb-pitza"]["state"] == "done"
+    for n in (1, 2):
+        _write(run_dir, _doc(schema_version=2), f"out.{n}.json")
     states = {s["id"]: s for s in
               unit_states(root, run_dir, [{"id": "u-wb-pitza", "type": "workbook"}])}
     assert states["u-wb-pitza"]["state"] == "failed"
@@ -519,14 +542,15 @@ def test_a_citation_into_a_tombstoned_process_is_in_no_index(tmp_path):
     doc = _doc()
     doc["decisions"][0]["processes"] = [{"process": "cooking-002",
                                          "node": "n001", "quote": "شمارش"}]
-    assert "decisions[0] S-r-000000000001: node n001 is in no process of cooking" \
-        in validate_unit(root, run_dir, _write(run_dir, doc))
+    assert "decisions[0] S-r-000000000001: node n001 is in no process of cooking; " \
+        "citation dropped" in validate_unit(root, run_dir, _write(run_dir, doc))
 
 
-def test_a_source_into_a_process_tombstoned_after_the_build_is_refused(tmp_path):
+def test_a_source_into_a_process_tombstoned_after_the_build_is_cut_at_the_gate(tmp_path):
     """I1 both ways — the run was planned while the process was live, so the
-    citation is at the index; the tombstone lands before the gate runs, and the
-    materialised entry has to be refused there in the same words `apply` uses.
+    citation is at the index; the tombstone lands before the gate runs. The
+    tombstoned process is in no index any more, so the gate cuts the citation
+    with a note (A23) and nothing about it reaches the store.
     """
     root, run_dir = _run(tmp_path)
     _process(root, "cooking-002")
@@ -536,10 +560,10 @@ def test_a_source_into_a_process_tombstoned_after_the_build_is_refused(tmp_path)
     assert validate_unit(root, run_dir, _write(run_dir, doc)) == []
     assert _simulate(root, run_dir, doc) == []
     _process(root, "cooking-002", tombstoned=True)
-    line = "source[0]: process cooking-002 is tombstoned"
-    assert f"new[0] mande_shab: {line}" in \
-        validate_unit(root, run_dir, _write(run_dir, doc, "out.2.json"))
-    assert any(p.endswith(line) for p in _simulate(root, run_dir, doc))
+    found = _findings(root, run_dir, _write(run_dir, doc, "out.2.json"))
+    assert tiers.refusals(found) == []
+    assert tiers.lines(found) == ["new[0] mande_shab: node n001 is in no process "
+                                  "of cooking; citation dropped"]
 
 
 def _materialised(root, run_dir, doc, key):
@@ -667,6 +691,8 @@ def test_the_content_half_of_the_gate_is_capped_like_the_schema_half(tmp_path):
          "refItems": {"namespace": "##", "resolved_by": "code"}}]
     form["data"]["rows"] = [{"key": f"r{n}", "ing": f"ماده {n}"}
                             for n in range(200)]
-    problems = validate_unit(root, run_dir, _write(run_dir, _doc(new=[form])))
-    assert len([p for p in problems if "refItems cell" in p]) == 80
-    assert problems[-1] == "… and 120 more"
+    # B7 — an unresolved cell is a note; notes are never capped (they carry
+    # marks), so nothing is refused and no "… and N more" line is written.
+    found = _findings(root, run_dir, _write(run_dir, _doc(new=[form])))
+    assert tiers.refusals(found) == []
+    assert not any("more" in p for p in tiers.lines(found))

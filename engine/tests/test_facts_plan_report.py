@@ -331,7 +331,8 @@ def test_every_held_back_reason_has_the_owner_s_words():
     nothing — so the two lists are held equal here."""
     from facts_plan.assemble import UNDECIDED_FA
     assert set(UNDECIDED_FA) == {"oversized", "cycle", "target_dropped",
-                                 "unknown_ref", "refused", "waits", "failed"}
+                                 "unknown_ref", "refused", "waits", "failed",
+                                 "not_decided"}
 
 
 def test_the_report_names_each_held_review_decision_in_persian(tmp_path):
@@ -358,3 +359,37 @@ def test_every_review_hold_back_reason_has_the_owner_s_words():
     assert set(REVIEW_HELD_FA) == {"no_match", "ambiguous", "no_drift",
                                    "unknown_skeleton", "fields_rewrite",
                                    "refused"}
+
+
+def test_an_entry_the_store_gate_held_back_is_named_by_its_title(tmp_path):
+    """Spec 2026-09-13 F5, "nothing lost silently": `apply` writes what it held
+    back to `held.json`; the owner's report names those entries by the title
+    the delta gave them — never the engine's lines, a temp id or a path — and
+    counts them when a title is missing."""
+    run_dir = _run(tmp_path)
+    _store(tmp_path, [])
+    (run_dir / "facts-delta.json").write_text(json.dumps(
+        {"schema_version": 2, "entries": [
+            {"id": "T-4", "kind": "rule", "key": "tol", "title": "تلورانس برش"},
+            {"id": "T-5", "kind": "rule", "key": "kasri", "title": "کسری انبار"}]},
+        ensure_ascii=False), encoding="utf-8")
+    held = [{"label": "T-4", "lines": ["data.fields: 7 is not of type 'array'"]},
+            {"label": "kasri", "lines": ["key: 'Kasri!' does not match"]}]
+    (run_dir / "held.json").write_text(json.dumps(held), encoding="utf-8")
+    text = report(tmp_path, run_dir).read_text(encoding="utf-8")
+    assert "۲ مورد به‌دلیل ایراد ساختاری ثبت نشد: «تلورانس برش»، «کسری انبار»." in text
+    for banned in ("T-4", "kasri", "data.fields", "array", "held"):
+        assert banned not in text
+
+    held.append({"label": "entries[2]", "lines": ["entry: 'title' is a required property"]})
+    (run_dir / "held.json").write_text(json.dumps(held), encoding="utf-8")
+    text = report(tmp_path, run_dir).read_text(encoding="utf-8")
+    assert "۳ مورد به‌دلیل ایراد ساختاری ثبت نشد." in text
+    assert "entries[2]" not in text and "«تلورانس برش»" not in text
+
+
+def test_a_run_with_nothing_held_back_says_nothing_about_it(tmp_path):
+    run_dir = _run(tmp_path)
+    _store(tmp_path, [])
+    (run_dir / "held.json").write_text("[]", encoding="utf-8")
+    assert "ایراد ساختاری" not in report(tmp_path, run_dir).read_text(encoding="utf-8")

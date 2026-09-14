@@ -1,0 +1,593 @@
+{
+  "schema_version": 1,
+  "unit": "u-tr-preparation-1405-06-04-l1",
+  "attempt": 1,
+  "decisions": [],
+  "new": [
+    {
+      "kind": "item",
+      "key": "shenisel_morgh",
+      "title": "سینهٔ مرغ خام",
+      "statement": "سینهٔ مرغ خام که با وزن از انبار به لاین تخته‌کاری تحویل می‌شود و در چند پارت بالا می‌آید. پس از پاک‌سازی، به لقمه، مرغ گریل، مرغ پیتزا و چیزا تفکیک می‌شود.",
+      "aliases": ["شنیسل"],
+      "data": {
+        "category": "ingredient",
+        "unit": "kg",
+        "unit_raw": "کیلو",
+        "group": "مرغ",
+        "state": "raw",
+        "code": null,
+        "code_absent": true
+      },
+      "processes": [
+        {
+          "process": "preparation-012",
+          "node": "preparation-012-n023",
+          "quote": "مرغ خام سینه خامی که برای ما میاد به اسم شنیسل و فیله است"
+        }
+      ]
+    },
+    {
+      "kind": "item",
+      "key": "file_morgh_kham",
+      "title": "فیلهٔ مرغ خام",
+      "statement": "فیلهٔ خام مرغ که جدا از سینه و با وزن از انبار تحویل می‌شود. روی یک طرف آن پوستی کشیده شده که در پاک‌سازی گرفته می‌شود، و پس از آن بر پایهٔ وزن هر عدد به فیلهٔ سوخاری یا مرغ پیتزا تفکیک می‌شود.",
+      "data": {
+        "category": "ingredient",
+        "unit": "kg",
+        "unit_raw": "کیلو",
+        "group": "مرغ",
+        "state": "raw",
+        "code": null,
+        "code_absent": true
+      },
+      "processes": [
+        {
+          "process": "preparation-012",
+          "node": "preparation-012-n023",
+          "quote": "بعد شنیسل تموم شد فیله میاد"
+        }
+      ]
+    },
+    {
+      "kind": "item",
+      "key": "loqme_morgh",
+      "title": "لقمهٔ مرغ",
+      "statement": "تکه‌های مکعبی مرغ که از سینهٔ پاک‌شده بریده می‌شوند و مبنای شمارش آن‌ها عدد است. هر بسته دویست عدد لقمه دارد و وزن هر عدد میان ده تا سیزده گرم است.",
+      "data": {
+        "category": "product",
+        "unit": "pcs",
+        "unit_raw": "عدد",
+        "group": "مرغ",
+        "state": "prepared",
+        "pack": {
+          "size": 200,
+          "unit": "pcs"
+        },
+        "code": null,
+        "code_absent": true
+      },
+      "processes": [
+        {
+          "process": "preparation-032",
+          "node": "preparation-032-n010",
+          "quote": "لقمه ها که بسته هاش ۲۰۰ تاییه ۲۰۰ عدد"
+        }
+      ]
+    },
+    {
+      "kind": "item",
+      "key": "morgh_grill",
+      "title": "مرغ گریل",
+      "statement": "سینهٔ مرغ برش‌خورده برای گریل که با وزن و در بسته‌های چهار کیلوگرمی بسته‌بندی می‌شود. اندازهٔ قطعات باید یکدست و نه خیلی بزرگ و نه خیلی کوچک باشد، زیرا همهٔ آن‌ها هم‌زمان و با دمای از پیش تعیین‌شده پخته می‌شوند؛ قطعهٔ کلفت از وسط دو قبضه می‌شود.",
+      "data": {
+        "category": "product",
+        "unit": "kg",
+        "unit_raw": "کیلو",
+        "group": "مرغ",
+        "state": "prepared",
+        "pack": {
+          "size": 4,
+          "unit": "kg"
+        },
+        "code": null,
+        "code_absent": true
+      },
+      "processes": [
+        {
+          "process": "preparation-032",
+          "node": "preparation-032-n010",
+          "quote": "من گریل رو بسته بندی میکنم ۴ کیلویی"
+        }
+      ]
+    },
+    {
+      "kind": "item",
+      "key": "morgh_pizza",
+      "title": "مرغ پیتزا",
+      "statement": "قطعات ریز، پاره و کناره‌های باقی‌مانده از برش سینه و فیله که با وزن و در بسته‌های چهار کیلوگرمی بسته‌بندی می‌شود. این قلم تنها پاک‌سازی می‌خواهد و برش دیگری روی آن انجام نمی‌شود؛ اندازهٔ قطعات در آن اهمیتی ندارد.",
+      "data": {
+        "category": "product",
+        "unit": "kg",
+        "unit_raw": "کیلو",
+        "group": "مرغ",
+        "state": "prepared",
+        "pack": {
+          "size": 4,
+          "unit": "kg"
+        },
+        "code": null,
+        "code_absent": true
+      },
+      "processes": [
+        {
+          "process": "preparation-012",
+          "node": "preparation-012-n020",
+          "quote": "اونا هم دوباره ۴ کیلویی بسته بندی میشه"
+        }
+      ]
+    },
+    {
+      "kind": "item",
+      "key": "chiza_morgh",
+      "title": "مرغ چیزا",
+      "statement": "قطعات مرغ آماده برای چیزا که وزن هر عدد حدود هشتاد گرم است و در بسته‌های چهل‌وهشت‌عددی بسته‌بندی می‌شود. اضافهٔ وزن بسته مشکلی ایجاد نمی‌کند، چون در مرحلهٔ فرآوری بعدی گرفته و به مرغ پیتزا تبدیل می‌شود.",
+      "data": {
+        "category": "product",
+        "unit": "pcs",
+        "unit_raw": "عدد",
+        "group": "مرغ",
+        "state": "prepared",
+        "pack": {
+          "size": 48,
+          "unit": "pcs"
+        },
+        "code": null,
+        "code_absent": true
+      },
+      "processes": [
+        {
+          "process": "preparation-014",
+          "node": "preparation-014-n002",
+          "quote": "هر بسته چیزا ۴۸ تاست"
+        }
+      ]
+    },
+    {
+      "kind": "item",
+      "key": "file_sukhari",
+      "title": "فیلهٔ سوخاری",
+      "statement": "فیله‌های پاک‌شدهٔ درشت با وزن پنجاه تا هشتاد گرم که برای سوخاری کنار گذاشته می‌شوند. هر بسته شصت عدد فیله دارد و تعداد، وزن و تاریخ روی بسته نوشته می‌شود.",
+      "data": {
+        "category": "product",
+        "unit": "pcs",
+        "unit_raw": "عدد",
+        "group": "مرغ",
+        "state": "prepared",
+        "pack": {
+          "size": 60,
+          "unit": "pcs"
+        },
+        "code": null,
+        "code_absent": true
+      },
+      "processes": [
+        {
+          "process": "preparation-032",
+          "node": "preparation-032-n010",
+          "quote": "فیله ها هم اونم ۶۰ عددیه"
+        }
+      ]
+    },
+    {
+      "kind": "item",
+      "key": "zayeat_morgh",
+      "title": "ضایعات سینهٔ مرغ",
+      "statement": "چربی، غضروف و استخوان جداشده از سینهٔ مرغ در مرحلهٔ پاک‌سازی و پیش از برش، که در هیچ محصولی مصرف نمی‌شود. با وزن و جدا از ضایعات فیله ثبت و تحویل انبار می‌شود.",
+      "data": {
+        "category": "other",
+        "unit": "kg",
+        "unit_raw": "کیلو",
+        "group": "مرغ",
+        "state": "raw",
+        "code": null,
+        "code_absent": true,
+        "tracked": [
+          {
+            "record": {
+              "ref": "S-rec-ef021443f7dc"
+            },
+            "value": true,
+            "reason": "ضایعات سینهٔ مرغ و ضایعات فیله جدا از هم ثبت می‌شوند."
+          }
+        ]
+      },
+      "processes": [
+        {
+          "process": "preparation-026",
+          "node": "preparation-026-n006",
+          "quote": "اینا همه میشه مرغ ضایعات"
+        }
+      ]
+    },
+    {
+      "kind": "item",
+      "key": "zayeat_file",
+      "title": "ضایعات فیله",
+      "statement": "پوست کشیده‌شده روی فیله که در پاک‌سازی جدا می‌شود و قابل مصرف نیست. جدا از ضایعات سینهٔ مرغ وزن و ثبت می‌شود؛ گوشت کنارهٔ فیله ضایعات به شمار نمی‌آید و برای غذای پرسنل مصرف می‌شود.",
+      "data": {
+        "category": "other",
+        "unit": "kg",
+        "unit_raw": "کیلو",
+        "group": "مرغ",
+        "state": "raw",
+        "code": null,
+        "code_absent": true,
+        "tracked": [
+          {
+            "record": {
+              "ref": "S-rec-ef021443f7dc"
+            },
+            "value": true,
+            "reason": "ضایعات فیله جدا از ضایعات سینهٔ مرغ ثبت می‌شود."
+          }
+        ]
+      },
+      "processes": [
+        {
+          "process": "preparation-026",
+          "node": "preparation-026-n006",
+          "quote": "به اون میگیم ضایعات کنار فیله"
+        }
+      ]
+    },
+    {
+      "kind": "item",
+      "key": "penne_pokhte",
+      "title": "پنهٔ پخته",
+      "statement": "پاستای پنه که در آب جوش پخته و در بسته‌های یک کیلو و دویست گرمی بسته‌بندی می‌شود. هر بسته وزن‌گیری و نام‌گذاری می‌شود و تعداد بسته‌ها بر پایهٔ سفارش روز تعیین می‌شود.",
+      "data": {
+        "category": "product",
+        "unit": "kg",
+        "unit_raw": "کیلو",
+        "state": "cooked",
+        "pack": {
+          "size": 1.2,
+          "unit": "kg"
+        },
+        "code": null,
+        "code_absent": true
+      },
+      "processes": [
+        {
+          "process": "preparation-011",
+          "node": "preparation-011-n006",
+          "quote": "هر بسته اش یک و دویست"
+        }
+      ]
+    },
+    {
+      "kind": "rule",
+      "key": "vazn_har_loqme",
+      "title": "وزن هر لقمهٔ مرغ",
+      "statement": "وزن هر لقمهٔ مرغ باید میان ده تا سیزده گرم باشد و مبنای ثابتی برای یکسان بودن همهٔ آن‌ها وجود ندارد. برای کنترل، نمونه‌ای ده‌عددی وزن می‌شود و وزن آن باید میان صد تا صد و سی گرم باشد.",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "vazn_loqme",
+            "title": "وزن هر لقمه",
+            "unit": "g",
+            "range": {
+              "min": 10,
+              "max": 13
+            },
+            "nature": "standard",
+            "per": "loqme_morgh"
+          }
+        ]
+      },
+      "processes": [
+        {
+          "process": "preparation-026",
+          "node": "preparation-026-n008",
+          "quote": "لقمه هامون بین ۱۰ تا ۱۳ گرمه هر عددش"
+        }
+      ]
+    },
+    {
+      "kind": "rule",
+      "key": "vazn_baste_loqme",
+      "title": "وزن بستهٔ دویست‌عددی لقمه",
+      "statement": "وزن هر بستهٔ دویست‌عددی لقمه باید حدود دو کیلو و صد و سی گرم و حداکثر دو کیلو و صد و پنجاه گرم باشد. اختلاف تا پنجاه گرم کم یا زیاد پذیرفته است و بیش از آن باید اصلاح شود، چون تعداد لقمه با وزن بسته باید بخواند.",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "vazn_baste",
+            "title": "وزن استاندارد بستهٔ لقمه",
+            "unit": "g",
+            "value": 2130,
+            "nature": "standard"
+          },
+          {
+            "key": "hadde_bala_vazn_baste",
+            "title": "بیشینهٔ وزن بستهٔ لقمه",
+            "unit": "g",
+            "value": 2150,
+            "nature": "limit"
+          },
+          {
+            "key": "tolerance_vazn_baste",
+            "title": "تلورانس وزن بستهٔ لقمه",
+            "unit": "g",
+            "value": 50,
+            "nature": "limit"
+          }
+        ]
+      },
+      "processes": [
+        {
+          "process": "preparation-026",
+          "node": "preparation-026-n008",
+          "quote": "۲۰۰ تا لقمه رو بسته بندی وزن میگیرم باید بشه ۲ کیلو و ۱۳۰"
+        }
+      ]
+    },
+    {
+      "kind": "rule",
+      "key": "taein_mahsul_shenisel",
+      "title": "تفکیک سینهٔ مرغ بر پایهٔ اندازه و بافت",
+      "statement": "سینهٔ مرغ پاک‌شده بر پایهٔ اندازه و بافت میان چهار محصول تفکیک می‌شود: سینهٔ بزرگ برای لقمه، سینهٔ یکدست برای گریل، قطعهٔ حدود هشتاد گرمی برای چیزا و هر قطعهٔ پاره یا ریز و کناره‌ها برای مرغ پیتزا. تشخیص بر عهدهٔ پرسنل لاین تخته‌کاری است و هیچ بخشی از مرغ دور ریخته نمی‌شود.",
+      "data": {
+        "lang": "table",
+        "expr": null,
+        "inputs": [
+          {
+            "key": "vaziate_sine",
+            "title": "اندازه و بافت سینهٔ مرغ"
+          }
+        ],
+        "outputs": [
+          {
+            "key": "mahsul",
+            "title": "محصول تعیین‌شده"
+          }
+        ],
+        "table": {
+          "inputs": ["vaziate_sine"],
+          "outputs": ["mahsul"],
+          "hit": "first",
+          "rows": [
+            {
+              "vaziate_sine": "سینهٔ بزرگ و با بافت خوب",
+              "mahsul": "لقمه"
+            },
+            {
+              "vaziate_sine": "سینهٔ یکدست، نه خیلی بزرگ و نه خیلی کوچک",
+              "mahsul": "مرغ گریل"
+            },
+            {
+              "vaziate_sine": "قطعهٔ حدود هشتاد گرمی",
+              "mahsul": "چیزا"
+            },
+            {
+              "vaziate_sine": "قطعهٔ پاره، ریز یا کنارهٔ بریده‌شده",
+              "mahsul": "مرغ پیتزا"
+            }
+          ]
+        }
+      },
+      "processes": [
+        {
+          "process": "preparation-012",
+          "node": "preparation-012-n003",
+          "quote": "این سینه مرغ چون بزرگه از این لقمه بهتری در میاد"
+        }
+      ]
+    },
+    {
+      "kind": "rule",
+      "key": "taein_mahsul_file",
+      "title": "تعیین محصول فیله بر پایهٔ وزن",
+      "statement": "فیله‌های سبک‌تر از پنجاه گرم به مرغ پیتزا تبدیل می‌شوند و فیله‌های پنجاه تا هشتاد گرم برای سوخاری کنار گذاشته می‌شوند. تشخیص وزن به تجربهٔ پرسنل لاین است و در آغاز کار با ترازو سنجیده می‌شد.",
+      "data": {
+        "lang": "table",
+        "expr": null,
+        "inputs": [
+          {
+            "key": "vazn_file",
+            "title": "وزن هر فیله",
+            "unit": "g"
+          }
+        ],
+        "outputs": [
+          {
+            "key": "mahsul_file",
+            "title": "محصول تعیین‌شدهٔ فیله"
+          }
+        ],
+        "table": {
+          "inputs": ["vazn_file"],
+          "outputs": ["mahsul_file"],
+          "hit": "first",
+          "rows": [
+            {
+              "vazn_file": "کمتر از ۵۰ گرم",
+              "mahsul_file": "مرغ پیتزا"
+            },
+            {
+              "vazn_file": "۵۰ تا ۸۰ گرم",
+              "mahsul_file": "فیلهٔ سوخاری"
+            }
+          ]
+        }
+      },
+      "processes": [
+        {
+          "process": "preparation-012",
+          "node": "preparation-012-n020",
+          "quote": "فیله های کوچیک از مثلا از ۵۰ گرم به پایین میشه مرغ پیتزا"
+        }
+      ]
+    },
+    {
+      "kind": "rule",
+      "key": "vazn_har_chiza",
+      "title": "وزن هر قطعهٔ چیزا",
+      "statement": "وزن هر قطعهٔ مرغ چیزا باید حدود هشتاد گرم باشد. برش با دست و بدون ترازو انجام می‌شود و قطعه‌ای که پاره شود کنار گذاشته و به مرغ پیتزا تبدیل می‌شود.",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "vazn_chiza",
+            "title": "وزن هر قطعهٔ چیزا",
+            "unit": "g",
+            "value": 80,
+            "nature": "standard",
+            "per": "chiza_morgh"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "zayeat_har_panjah_kilo_morgh",
+      "title": "ضایعات هر پنجاه کیلوگرم سینهٔ مرغ",
+      "statement": "از هر پنجاه کیلوگرم سینهٔ مرغ خام میان یک و نیم تا سه کیلوگرم ضایعات به دست می‌آید. این مقدار در مرحلهٔ پاک‌سازی و پیش از برش جدا می‌شود و شامل چربی، غضروف و استخوان است.",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "vazn_zayeat",
+            "title": "وزن ضایعات هر پنجاه کیلوگرم سینه",
+            "unit": "kg",
+            "range": {
+              "min": 1.5,
+              "max": 3
+            },
+            "nature": "standard"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "taraze_vazn_morgh",
+      "title": "برابری وزن تحویلی با وزن دریافتی مرغ",
+      "statement": "مجموع وزن محصولات بسته‌بندی‌شده و ضایعات تحویل‌شده به انبار با وزن مرغ خام دریافتی برابر است. در این لاین چیزی کم یا اضافه نمی‌آید و خروجی هر پارت پس از آماده شدن به انبار برگردانده می‌شود.",
+      "data": {
+        "lang": "feel",
+        "expr": "vazn_khorooji = vazn_morgh_daryafti",
+        "inputs": [
+          {
+            "key": "vazn_morgh_daryafti",
+            "title": "وزن مرغ خام دریافتی از انبار",
+            "unit": "kg"
+          }
+        ],
+        "outputs": [
+          {
+            "key": "vazn_khorooji",
+            "title": "مجموع وزن خروجی تحویلی به انبار",
+            "unit": "kg",
+            "nature": "observed"
+          }
+        ]
+      },
+      "processes": [
+        {
+          "process": "preparation-012",
+          "node": "preparation-012-n023",
+          "quote": "هر چیزی رو تحویل میگیرم به همون وزن بهشون تحویل میدم"
+        }
+      ]
+    },
+    {
+      "kind": "rule",
+      "key": "shoru_pokht_supe_shir",
+      "title": "مبنای شروع پخت سوپ شیر",
+      "statement": "پخت سوپ شیر تنها زمانی آغاز می‌شود که موجودی سوپ در ظرف نگهداری یخچال آماده‌سازی از حد نشان‌شده پایین‌تر برود؛ تا پیش از آن سوپ تازه پخته نمی‌شود. مقدار این حد در دسترس نیست. اقلام سوپ خشک است، پس اگر سفارش داده شود و مصرف نشود برای روز بعد نگه داشته می‌شود.",
+      "data": {
+        "lang": "text",
+        "expr": null,
+        "original": "نگاه میکنن بر مبنایی که بهشون داده شده که همیشه تا کجای دیپ سوپ داشتیم نزنید اگه از اون حد رفت پایین تر شروع کنید به پختن سوپ.",
+        "inputs": [
+          {
+            "key": "mojudi_sup",
+            "title": "موجودی سوپ شیر در ظرف نگهداری",
+            "from": null
+          }
+        ],
+        "outputs": [
+          {
+            "key": "hadde_shoru_pokht",
+            "title": "حد موجودی برای شروع پخت",
+            "value": null,
+            "nature": "limit"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "zaribe_depoye_tatilat",
+      "title": "ضریب دپوی روزهای تعطیلات",
+      "statement": "برای تعطیلات عید که حدود هفت روز بار تازه نمی‌رسد، مبنای دپوی محصولات دو برابر مصرف روزهای عادی در نظر گرفته می‌شود. تولید این مقدار از پیش و به‌تدریج انجام می‌شود.",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "zarib_depo",
+            "title": "ضریب دپوی تعطیلات",
+            "unit": "ratio",
+            "value": 2,
+            "nature": "standard"
+          },
+          {
+            "key": "moddate_tatilat",
+            "title": "مدت تعطیلات بدون بار",
+            "unit": "day",
+            "value": 7,
+            "nature": "standard"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "measurement",
+      "key": "vazn_giri_baste_loqme",
+      "title": "وزن‌کشی بستهٔ لقمه",
+      "statement": "هر بستهٔ دویست‌عددی لقمه پس از شمارش روی ترازوی لیبل‌گذاری وزن می‌شود تا درستی شمارش کنترل شود. اگر وزن بسته از حد مجاز بالاتر باشد، بسته باز و دوباره شمرده می‌شود و لقمهٔ اضافه برداشته می‌شود.",
+      "data": {
+        "quantity": "mass",
+        "unit": "g",
+        "method": "ترازوی لیبل‌گذاری",
+        "when": "پس از شمارش و بسته‌بندی هر بسته",
+        "by": "پرسنل لاین تخته‌کاری",
+        "exceptions": null
+      },
+      "processes": [
+        {
+          "process": "preparation-026",
+          "node": "preparation-026-n008",
+          "quote": "الان من ۲۰۰ تا لقمه رو بسته بندی وزن میگیرم"
+        }
+      ]
+    },
+    {
+      "kind": "note",
+      "key": "porsesh_barchasb_loqme",
+      "title": "ابهام در محتوای برچسب بستهٔ لقمه",
+      "statement": "دربارهٔ محتوای برچسب بستهٔ دویست‌عددی لقمه دو روایت متفاوت وجود دارد: یکی تنها درج تعداد و دیگری درج وزن و تاریخ در کنار تعداد.",
+      "data": {
+        "about": [
+          {
+            "ref": "S-rec-2c141582db58"
+          }
+        ],
+        "question": "روی برچسب بستهٔ دویست‌عددی لقمه، افزون بر تعداد، وزن و تاریخ هم درج می‌شود یا تنها تعداد؟"
+      }
+    }
+  ]
+}

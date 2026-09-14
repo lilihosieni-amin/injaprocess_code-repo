@@ -6,7 +6,8 @@ from engine_common import read_json, validate
 from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _units_delta, _write
 from merge_facts import account_id, is_open, load_store
 from merge_facts.apply import apply, simulate, used
-from merge_facts.preconditions import process_source_problems
+from merge_facts.preconditions import process_findings
+from merge_facts.tiers import lines
 from validate.cli import main as validate_main
 
 def test_create_then_idempotent_reapply_is_byte_identical(tmp_path):
@@ -52,9 +53,11 @@ def test_later_valid_from_supersedes(tmp_path):
     assert old["superseded_by"]["ref"] == new["id"]
     assert new["data"]["outputs"][0]["value"] == 4
 
-def test_unregistered_branch_or_department_refused_nothing_written(tmp_path):
+def test_unregistered_department_refused_nothing_written(tmp_path):
+    # spec 2026-09-13 C24 keeps the department (R4, the access boundary); C25
+    # drops an unregistered branch with a note — `test_store_tiers.py` has it.
     root = _root(tmp_path); _seed_units(root)
-    d = _const_delta(); d["entries"][0]["scope"]["branches"] = ["tehran"]
+    d = _const_delta(); d["entries"][0]["scope"]["departments"] = ["tehran"]
     before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
     try:
         apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
@@ -64,26 +67,23 @@ def test_unregistered_branch_or_department_refused_nothing_written(tmp_path):
     after = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
     assert before == after
 
-def test_unit_symbol_must_be_declared_and_message_names_it(tmp_path, capsys):
+def test_an_undeclared_unit_symbol_is_noted_and_the_message_names_it(tmp_path, capsys):
+    # spec 2026-09-13 C28: stored as written and marked inferred, not refused.
     root = _root(tmp_path); _seed_units(root)
     d = _const_delta(); d["entries"][0]["data"]["outputs"][0]["unit"] = "lb"
-    try:
-        apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
-        assert False
-    except SystemExit:
-        pass
-    assert "lb" in capsys.readouterr().err
+    apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
+    assert "note: T-1: unit 'lb'" in capsys.readouterr().err
+    assert _tol(load_store(root))[0]["field_status"] == {"data/outputs/v/unit": "inferred"}
 
 def test_title_guard_same_kind_and_scope(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     apply(root, _write(root, "d1.json", _const_delta(5, key="tol")), _run_dir(root, "1"))
     d = _const_delta(5, key="other_key")
     d["entries"][0]["title"] = "تلورانس tol"      # byte-equal title, new key
-    try:
-        apply(root, _write(root, "d2.json", d), _run_dir(root, "2"))
-        assert False
-    except SystemExit as e:
-        assert e.code == 2
+    apply(root, _write(root, "d2.json", d), _run_dir(root, "2"))
+    # spec 2026-09-13 C27: created, with the collision named on it
+    twin = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "other_key"][0]
+    assert "code_collision" in [i["kind"] for i in twin["issues"]]
 
 def test_original_moves_to_originals(tmp_path):
     root = _root(tmp_path); _seed_units(root)
@@ -272,16 +272,16 @@ def test_deferred_edge_into_a_stub_is_allowed(tmp_path):
     assert rule["data"]["inputs"][0]["from"]["ref"] == report["id_map"]["T-9"]
 
 
-def test_reference_to_no_entry_is_refused(tmp_path):
+def test_reference_to_no_entry_is_severed_with_a_note(tmp_path):
+    # spec 2026-09-13 C29: the dangling ref leaves the entry for `extra`.
     root = _root(tmp_path); _seed_units(root)
     d = _stub_delta()
     d["entries"] = [d["entries"][1]]                   # the stub itself is gone
     d["entries"][0]["data"]["inputs"][0]["from"] = {"ref": "F-99999"}
-    try:
-        apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
-        assert False, "expected SystemExit"
-    except SystemExit as e:
-        assert e.code == 2
+    apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
+    rule = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "uses_stub"][0]
+    assert "from" not in rule["data"]["inputs"][0]
+    assert rule["extra"] == {"data/inputs/x/from": '{"ref": "F-99999"}'}
 
 
 def test_key_is_immutable_for_a_matched_sheet_record(tmp_path):
@@ -298,12 +298,12 @@ def test_key_is_immutable_for_a_matched_sheet_record(tmp_path):
                                    "sheet": "روزانه", "hidden": False}}}]}
 
     apply(root, _write(root, "d1.json", sheet_record("g__ruzane")), _run_dir(root, "1"))
-    try:
-        apply(root, _write(root, "d2.json", sheet_record("g__daily")),
-              _run_dir(root, "2"))
-        assert False, "expected SystemExit"
-    except SystemExit as e:
-        assert e.code == 2
+    report = apply(root, _write(root, "d2.json", sheet_record("g__daily")),
+                   _run_dir(root, "2"))
+    # spec 2026-09-13 C22: applied to the holder, whose key stands
+    assert report["id_map"] == {}
+    assert [e["key"] for e in load_store(root)["record"]["entries"]] == \
+        ["units", "g__ruzane"]
 
 
 def test_updated_at_moves_only_when_the_run_changes_the_entry(tmp_path):
@@ -322,19 +322,18 @@ def test_updated_at_moves_only_when_the_run_changes_the_entry(tmp_path):
 
 # --- QF-43 scope creation, QF-20 stubs, QF-15 duplicate natural key -------- #
 
-def test_creating_for_another_department_is_refused_but_adding_to_it_is_not(tmp_path):
+def test_creating_for_another_department_is_noted_and_adding_to_it_is_not(tmp_path):
+    # spec 2026-09-13 C26: a cooking run creating a management fact creates it
+    # with a note; that department's editors confirm it.
     root = _root(tmp_path); _seed_units(root)
-    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
-    try:                                        # a cooking run, an accounting fact
-        apply(root, _write(root, "dx.json", _const_delta(dept="management")),
-              _run_dir(root, "9"))
-        assert False, "expected SystemExit"
-    except SystemExit as e:
-        assert e.code == 2
-    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
-    mrun = root / "runs" / "facts" / "management" / "1"      # its own run may
-    mrun.mkdir(parents=True)
+    apply(root, _write(root, "dx.json", _const_delta(key="tol2", dept="management")),
+          _run_dir(root, "9"))
+    created = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol2"][0]
+    assert [i["kind"] for i in created["issues"]] == ["shape"]
+    mrun = root / "runs" / "facts" / "management" / "1"      # its own run
+    mrun.mkdir(parents=True)                                 # notes nothing
     apply(root, _write(root, "dm.json", _const_delta(dept="management")), mrun)
+    assert "issues" not in _tol(load_store(root))[0]
     apply(root, _write(root, "d2.json", _const_delta(4, dept="management")),
           _run_dir(root, "3"))                  # and cooking may contradict it
     entry = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol"][0]
@@ -435,35 +434,31 @@ def test_workbook_stub_is_adopted_and_measurement_keys_are_rederived(tmp_path):
     assert store["measurement"]["entries"][0]["key"] == "ing_7__w__ruzane__masraf"
 
 
-def test_duplicate_natural_key_in_one_delta_is_refused(tmp_path):
+def test_duplicate_natural_key_in_one_delta_is_folded_into_one_entry(tmp_path):
+    # spec 2026-09-13 C21: the second folds into the first through the ladder.
     root = _root(tmp_path); _seed_units(root)
     d = _const_delta()
     twin = copy.deepcopy(d["entries"][0])
     twin["id"], twin["title"] = "T-2", "تلورانس دیگر"     # same kind, key and scope
     d["entries"].append(twin)
-    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
-    try:
-        apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
-        assert False, "expected SystemExit"
-    except SystemExit as e:
-        assert e.code == 2
-    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
+    report = apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
+    assert report["id_map"] == {"T-1": "F-00002"}        # one id, not two
+    [rule] = load_store(root)["rule"]["entries"]
+    assert {a["value"] for a in rule["accounts"]} == {"تلورانس tol", "تلورانس دیگر"}
 
 
-def test_duplicate_sheet_identity_in_one_delta_is_refused(tmp_path):
+def test_duplicate_sheet_identity_in_one_delta_is_folded_into_one_record(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     d = _record_stub_delta(stub=False)
     twin = copy.deepcopy(d["entries"][0])                # same tab, second key
     twin["id"], twin["key"] = "T-2", "s__ruzane_dobare"
     twin["title"] = "همان تب، کلید دیگر"
     d["entries"].append(twin)
-    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
-    try:
-        apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
-        assert False, "expected SystemExit"
-    except SystemExit as e:
-        assert e.code == 2
-    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
+    report = apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
+    # spec 2026-09-13 C22: one tab is one record, under the first claimant's key
+    assert list(report["id_map"]) == ["T-1"]
+    assert [e["key"] for e in load_store(root)["record"]["entries"]] == \
+        ["units", "s__ruzane"]
 
 
 # --- a stub delta re-read, minted row keys, and the ladder's dispute verdict - #
@@ -681,16 +676,19 @@ def test_a_missing_script_beside_it_does_not_get_the_exemption(tmp_path):
 
 def test_an_accounts_source_is_checked_too(tmp_path):
     """`accounts[].source` is evidence for one side of a dispute and is cited
-    on the same screen through the same route, so it takes the same rule."""
+    on the same screen through the same route, so it takes the same rule —
+    tiered by spec 2026-09-13 C33/C12: the account without its evidence is
+    dropped into `extra` with a note, and the entry lands."""
     root = _root(tmp_path); _seed_units(root)
     d = _const_delta(5)
     d["entries"][0]["accounts"] = [_account(4)]
     d["entries"][0]["accounts"][0]["source"] = {"type": "sheet", "ref": "nowhere/x.xlsx"}
-    with pytest.raises(SystemExit):
-        apply(root, _write(root, "d.json", d), _run_dir(root, "1"))
+    apply(root, _write(root, "d.json", d), _run_dir(root, "1"))
+    entry = _tol(load_store(root))[0]
+    assert not entry.get("accounts") and list(entry["extra"]) == ["accounts/0"]
 
 
-def test_an_accounts_source_into_a_tombstoned_process_is_refused(tmp_path):
+def test_an_accounts_source_into_a_tombstoned_process_is_noted(tmp_path):
     """I3 on the same footing: a `source[]` naming a tombstoned process is
     refused, and an account's source is cited on the same screen through the
     same route — so a dispute could not be evidenced by a document that is
@@ -702,10 +700,13 @@ def test_an_accounts_source_into_a_tombstoned_process_is_refused(tmp_path):
     d = _const_delta(5)
     d["entries"][0]["accounts"] = [_account(4)]
     d["entries"][0]["accounts"][0]["source"] = {"type": "process", "ref": ref}
-    assert process_source_problems(root, d["entries"][0]) == \
-        ["accounts[0].source: process cooking-002 is tombstoned"]
-    with pytest.raises(SystemExit):
-        apply(root, _write(root, "d.json", d), _run_dir(root, "1"))
+    assert lines(process_findings(root, d["entries"][0], "x")) == \
+        ["x: accounts[0].source: process cooking-002 is tombstoned"]
+    # spec 2026-09-13 C35: kept, with a note — it was true when made
+    apply(root, _write(root, "d.json", d), _run_dir(root, "1"))
+    entry = _tol(load_store(root))[0]
+    assert entry["accounts"][0]["source"]["ref"] == ref
+    assert [i["kind"] for i in entry["issues"]] == ["shape"]
 
 
 # --- v3 §4: the precondition module, the in-memory apply, the used guard --- #
@@ -753,7 +754,7 @@ def test_simulate_catches_a_store_schema_failure_the_delta_passes(tmp_path):
     # `--store --run` validates the STORE the delta would write, not the delta.
     _, problems = simulate(root, d, _run_dir(root, "20260901-101501"),
                            now="the ninth of Shahrivar")
-    assert any("would write is invalid" in p for p in problems)
+    assert any("would write is invalid" in p.line() for p in problems)
     store, problems = simulate(root, d, _run_dir(root, "20260901-101502"))
     assert problems == []
     assert store["rule"]["entries"][0]["updated_at"] == "2026-01-01T00:00:00Z"
@@ -779,7 +780,7 @@ def test_validate_store_run_groups_one_rule_into_one_line(tmp_path, capsys,
     root = _root(tmp_path); _seed_units(root)
     monkeypatch.setenv("DATA_ROOT", str(root))
     d = _const_delta()
-    d["entries"][0]["scope"]["branches"] = ["tehran"]       # not in the manifest
+    d["entries"][0]["scope"]["departments"] = ["tehran"]    # not in the registry
     second = copy.deepcopy(d["entries"][0])
     second.update({"id": "T-2", "key": "tol2", "title": "تلورانس دوم"})
     d["entries"].append(second)
@@ -789,8 +790,24 @@ def test_validate_store_run_groups_one_rule_into_one_line(tmp_path, capsys,
         validate_main(["facts-delta", str(path), "--store", "--run", str(run)])
     assert e.value.code == 2
     err = capsys.readouterr().err
-    assert err.count("is not in attachments/sheets/manifest.json") == 1
+    assert err.count("is not in departments/registry.json") == 1
     assert "2 entries: T-1, T-2" in err
+
+
+def test_validate_store_passes_what_apply_repairs(tmp_path, capsys, monkeypatch):
+    """Spec 2026-09-13 principle 4: an unknown member (C5) fails the delta
+    schema as a whole document, but `apply` keeps it in `extra` and writes the
+    entry — so `validate --store` must pass it too, not refuse it up front."""
+    root = _root(tmp_path); _seed_units(root)
+    monkeypatch.setenv("DATA_ROOT", str(root))
+    d = _const_delta()
+    d["entries"][0]["data"]["outputs"][0]["note"] = "از جلسه"
+    path = _write(root, "dx.json", d)
+    assert validate_main(["facts-delta", str(path), "--store", "--run",
+                          str(_run_dir(root, "20260901-101501"))]) == 0
+    apply(root, path, _run_dir(root, "20260901-101502"))
+    [stored] = load_store(root)["rule"]["entries"]
+    assert stored["extra"] == {"data/outputs/v/note": "از جلسه"}
 
 
 # --- v3: record templates, instance identity, the used marker -------------- #
@@ -856,23 +873,23 @@ def test_a_second_run_over_another_instance_extends_and_raises_no_account(tmp_pa
     assert rec["status"] == "confirmed"
 
 
-def test_an_instance_match_under_another_key_is_refused_nothing_written(tmp_path,
-                                                                        capsys):
+def test_an_instance_match_under_another_key_is_applied_to_the_holder(tmp_path,
+                                                                       capsys):
+    # spec 2026-09-13 C22: one tab is one template entry (QF-47); the delta
+    # lands on the record holding it, whose key and scope stand.
     root = _root(tmp_path); _seed_units(root)
     apply(root, _write(root, "d1.json", _template_delta()), _run_dir(root, "1"))
-    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
     d = _template_delta(key="gozaresh_pitza")
     # A DIFFERENT title as well as a different key: the same-title road is the
-    # title twin's (QF-34), and it would refuse this delta before the instance
-    # guard was ever asked — hiding the one §3.2 case this test is for.
+    # title twin's (QF-34), and it would answer before the instance guard.
     d["entries"][0]["title"] = "گزارش پیتزا"
-    with pytest.raises(SystemExit) as exc:
-        apply(root, _write(root, "d2.json", d), _run_dir(root, "2"))
-    assert exc.value.code == 2
+    report = apply(root, _write(root, "d2.json", d), _run_dir(root, "2"))
     err = capsys.readouterr().err
     assert "already belongs to" in err                  # the instance guard's
     assert "in this kind and scope" not in err          # not the title twin's
-    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
+    assert report["id_map"] == {}
+    assert [e["key"] for e in load_store(root)["record"]["entries"]] == \
+        ["units", "gozaresh_shabane_pitza"]
 
 
 def test_a_crash_before_the_id_map_still_marks_the_run_directory(tmp_path,
@@ -922,13 +939,14 @@ def _note_delta(key, title):
 
 def test_the_title_twin_guard_covers_notes(tmp_path):
     root = _root(tmp_path); _seed_units(root)
-    apply(root, _write(root, "n1.json", _note_delta("note_aa11bb22cc33", "واحد نامعلوم")),
-          _run_dir(root, "1"))
-    with pytest.raises(SystemExit) as exc:
-        apply(root, _write(root, "n2.json",
-                           _note_delta("note_aa11bb22cc34", "واحد نامعلوم")),
-              _run_dir(root, "2"))
-    assert exc.value.code == 2
+    first = apply(root, _write(root, "n1.json",
+                               _note_delta("note_aa11bb22cc33", "واحد نامعلوم")),
+                  _run_dir(root, "1"))
+    apply(root, _write(root, "n2.json", _note_delta("note_aa11bb22cc34", "واحد نامعلوم")),
+          _run_dir(root, "2"))
+    twin = [e for e in load_store(root)["note"]["entries"]
+            if e["key"] == "note_aa11bb22cc34"][0]
+    assert twin["issues"][0]["affects"] == [{"ref": first["id_map"]["T-1"]}]
 
 
 def test_a_supersession_with_no_valid_from_closes_with_the_run_date(tmp_path):
@@ -1003,6 +1021,10 @@ def test_apply_accepts_the_v3_rule_members_and_checks_their_field_refs(tmp_path)
     rule_entry = _bound_rule_delta()["entries"][0]
     rule_entry["data"]["applies_to"][0]["params"]["ref_1"]["field"] = "nadarad"
     bad["entries"].append(rule_entry)
-    with pytest.raises(SystemExit) as exc:
-        apply(root, _write(root, "d2.json", bad), _run_dir(root, "2"))
-    assert exc.value.code == 2
+    apply(root, _write(root, "d2.json", bad), _run_dir(root, "2"))
+    # spec 2026-09-13 C31: the undeclared field is dropped with a note, the link
+    # kept — and the dropped name is kept in `extra`, never lost
+    rule = [e for e in load_store(root)["rule"]["entries"]
+            if e["key"] == "enheraf_ba_tolerance"][0]
+    assert rule["extra"] == {
+        "data/applies_to/pz__s11__l__r6/params/ref_1/field": "nadarad"}

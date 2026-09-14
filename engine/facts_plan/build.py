@@ -1692,8 +1692,10 @@ def plan_units(skeleton, groups, chunks, items, attachments,
 
     `chunks` is `[(recording, path, (first, last), text)]`, `items` the item
     candidate ids in code order, `attachments` the cached `.text`/`.md` paths;
-    they are appended to the last transcript unit, or become one unit when the
-    owner chose no recording (§2.3).
+    they become `attachment` units of their own (`u-att-1`, … in input order),
+    packed to the budget. Until 2026-09-13 they rode on the last transcript
+    unit, and when that unit split on its line range every one of them was
+    dropped: 13 form photos of the preparation run reached no unit (F4).
     """
     by_id = {c["id"]: c for c in skeleton["candidates"]}
     units = []
@@ -1761,14 +1763,20 @@ def plan_units(skeleton, groups, chunks, items, attachments,
         units.append({"id": f"u-items-{slug}",
                       "type": "items", "inputs": [], "candidates": list(items),
                       "nodes": [], "est_tokens_in": 0, "est_tokens_out": 0})
-    if attachments:
-        transcripts = [u for u in units if u["type"] == "transcript"]
-        if transcripts:
-            transcripts[-1]["inputs"] += list(attachments)
-        else:
-            units.append({"id": "u-attachments", "type": "attachment",
-                          "inputs": list(attachments), "candidates": [],
-                          "nodes": [], "est_tokens_in": 0, "est_tokens_out": 0})
+    packed = None
+    for path in attachments:
+        # A file joins the unit before it while the two still fit; one too big
+        # for any unit goes alone, and `split_unit` names it `oversized`.
+        if packed is not None:
+            trial = dict(packed, inputs=packed["inputs"] + [path])
+            if fits(trial, render(trial)):
+                packed["inputs"] = trial["inputs"]
+                continue
+        n = sum(u["type"] == "attachment" for u in units) + 1
+        packed = {"id": f"u-att-{n}", "type": "attachment", "inputs": [path],
+                  "candidates": [], "nodes": [], "est_tokens_in": 0,
+                  "est_tokens_out": 0}
+        units.append(packed)
     out = []
     for unit in units:
         unit["est_tokens_out"] = est_tokens_out(
@@ -1791,9 +1799,30 @@ def plan_units(skeleton, groups, chunks, items, attachments,
     aside = {i["target"] for i in skeleton.get("issues") or []
              if i["kind"] == "oversized"}
     nowhere = sorted(set(by_id) - set(placed) - aside)
-    if twice or nowhere:
-        print(f"facts-plan: {len(twice)} candidate(s) in two units {twice[:3]}, "
-              f"{len(nowhere)} in none {nowhere[:3]}", file=sys.stderr)
+    # The same invariant over inputs (F4): every chosen transcript line and
+    # every attachment is read by exactly one unit. A workbook's `.xlsx` is
+    # read through its candidates, which the lines above already count.
+    wanted = collections.Counter(
+        [(path, n) for _, path, (first, last), _ in chunks
+         for n in range(first, last + 1)] + [(path, 0) for path in attachments])
+    read = collections.Counter()
+    for unit in out:
+        if unit["type"] in ("transcript", "attachment"):
+            for ref in unit["inputs"]:
+                path, _, span = ref.partition("#")
+                first, last = (int(n[1:]) for n in span.split("-")) \
+                    if span else (0, 0)
+                read.update((path, n) for n in range(first, last + 1))
+    lost = sorted({key[0] for key in wanted.keys() | read.keys()
+                   if read[key] != wanted[key]})
+    if twice or nowhere or lost:
+        if lost:
+            print(f"facts-plan: {len(lost)} input(s) not read by exactly one "
+                  f"unit {lost}", file=sys.stderr)
+        if twice or nowhere:
+            print(f"facts-plan: {len(twice)} candidate(s) in two units "
+                  f"{twice[:3]}, {len(nowhere)} in none {nowhere[:3]}",
+                  file=sys.stderr)
         raise SystemExit(2)
     return out
 
@@ -1909,6 +1938,11 @@ def _atom(node, seen):
         return TERSE[name]
     if name:
         return f"→ {name}، مثل بالا"
+    branches = node.get("anyOf") or []
+    if len(branches) == 2 and set(branches[1]) == {"type"}:
+        # An open vocabulary (spec 2026-09-13 C13): the preferred form is the
+        # one the unit is shown; the bare fallback type is the store's.
+        return _atom(branches[0], seen)
     if "enum" in node:
         return "یکی از: " + " | ".join("null" if v is None else str(v)
                                        for v in node["enum"])
@@ -2379,8 +2413,8 @@ def _wrap(line):
 
 
 def _unit_text(root, unit):
-    """The text a unit carries: its transcript chunk's lines and any attachment
-    appended to it, wrapped and otherwise verbatim. A workbook unit's `inputs`
+    """The text a unit carries: its transcript chunk's lines or its attachments,
+    wrapped and otherwise verbatim. A workbook unit's `inputs`
     name `.xlsx` files, which are not text and are never read."""
     root, parts = pathlib.Path(root), []
     for ref in unit["inputs"]:

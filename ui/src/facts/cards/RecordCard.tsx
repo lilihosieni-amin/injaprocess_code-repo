@@ -681,7 +681,7 @@ function StructureCard({ bundle, data, onOpen }: {
           {(data.signatures ?? []).map((s) => (
             <div key={s.role} className="flex items-center gap-s5 py-s3">
               <span className="text-fs-menu font-semibold text-ink">{s.role}</span>
-              {s.row_range !== undefined && (
+              {s.row_range != null && (
                 // :4943 — the design replaces the hyphen with « تا », so a
                 // reviewer reads «ردیف ۱ تا ۵ را امضا می‌کند» rather than a
                 // latin range operator inside a Persian sentence.

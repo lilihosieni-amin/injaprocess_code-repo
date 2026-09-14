@@ -27,12 +27,28 @@ intra-file, unchanged from the frozen interface).
 differs is the constant-rule shape (#7): a delta's verbatim body is still
 `data.original`; the store's has already been moved to `facts/originals/`
 and become `data.original_ref` (§4, QF-31).
+
+Tiers (spec 2026-09-13-facts-gate-tiers §5B). Every check returns a
+`tiers.Finding`, and only a key that stays off the grammar after the safe key
+repair is REFUSED (B4/B6). Everything else is a NOTE: marked `inferred` at the
+QF-7 path the row names, an `issues[]` entry where the row asks for one, or
+`NO_MARK` where the row says "no mark". The REPAIR rows live in
+`CONTENT_REPAIRS` at the bottom, which every gate runs before this pass, so a
+gate never sees what they fix; a caller that skips them (the standalone
+validator) sees it as an unmarked NOTE, never as a refusal.
 """
 import functools
+import pathlib
 import re
 
 from merge_facts import KEY_RE, KIND_ORDER, PROC_ID_RE, SEGMENT_RE, is_open, path_exists
 from merge_facts.conventions import DEFAULT as DEFAULT_CONVENTIONS
+from merge_facts.tiers import note, refuse
+
+#: A NOTE the row stores with no mark on the entry: no `field_status` path and
+#: no `issues[]` entry. It is reported (validator stderr, the unit's own check)
+#: and nothing else.
+NO_MARK = "none"
 
 JALALI_RE = re.compile(r"^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$")
 
@@ -49,9 +65,23 @@ RESERVED_ROW_NAMES = frozenset({"key", "title", "unit", "unit_raw", "section",
                                 "supersedes"})
 
 
+def _inferred(entry, label, message, path):
+    """A NOTE marking `path` inferred — or, where the path does not resolve
+    (a member with no key), an issue, so the mark is never dropped silently by
+    the `field_status` path repair (B33)."""
+    if path_exists(entry, path):
+        return note(label, message, path, mark="inferred")
+    return note(label, message, path)
+
+
+def _unmarked(label, message, path=None):
+    return note(label, message, path, mark=NO_MARK)
+
+
 def check_document(doc, kind_of_file, store=None, unit_symbols=None,
-                   conventions=DEFAULT_CONVENTIONS):
-    """Every content-pass message for `doc`, empty when it may pass. Never
+                   conventions=DEFAULT_CONVENTIONS, labels=None):
+    """Every content-pass finding for `doc` (`list[tiers.Finding]`, labelled by
+    `labels[id(entry)]` when given, else the entry's id or key), empty when it is clean. Never
     raises on a malformed shape — a missing/wrong-typed field is the schema's
     job to have already refused; this pass only adds messages.
 
@@ -79,7 +109,8 @@ def check_document(doc, kind_of_file, store=None, unit_symbols=None,
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        label = entry.get("id") or entry.get("key") or "?"
+        label = (labels or {}).get(id(entry)) or entry.get("id") \
+            or entry.get("key") or "?"
         _check_expr(entry, combined_by_id, messages, label)
         _check_unit_edges(entry, doc_by_id, messages, label)
         _check_keys(entry, messages, label, conventions)
@@ -191,9 +222,10 @@ def _check_expr(entry, by_id, messages, label):
         input_key = m.group(1)
         frm = (inputs_by_key.get(input_key) or {}).get("from")
         if not _aggregate_shape_ok(frm):
-            messages.append(f"{label}: aggregate 'sum over {input_key} of' "
-                            f"requires {input_key!r}'s from to be "
-                            f"{{ref, field}} with no row")
+            messages.append(_inferred(
+                entry, label, f"aggregate 'sum over {input_key} of' requires "
+                f"{input_key!r}'s from to be {{ref, field}} with no row",
+                "data/expr"))
 
     # The aggregate form (§7): "<a>/<b> are columns of that table or inputs
     # joined on the row key" — so, ONLY inside a `(<a> * <b>)` body that
@@ -218,9 +250,10 @@ def _check_expr(entry, by_id, messages, label):
             text = tok.group()
             if text[0].isdigit() or text in KEYWORDS or text in body_allowed:
                 continue
-            messages.append(f"{label}: expr identifier {text!r} is not "
-                            f"declared by inputs, outputs, a resolvable "
-                            f"call, or the aggregate's table columns")
+            messages.append(_inferred(
+                entry, label, f"expr identifier {text!r} is not declared by "
+                f"inputs, outputs, a resolvable call, or the aggregate's table "
+                f"columns", "data/expr"))
 
     for tok in TOKEN_RE.finditer(expr):
         s, e = tok.span()
@@ -229,8 +262,9 @@ def _check_expr(entry, by_id, messages, label):
         text = tok.group()
         if text[0].isdigit() or text in KEYWORDS or text in base_allowed:
             continue
-        messages.append(f"{label}: expr identifier {text!r} is not declared "
-                        f"by inputs, outputs or a resolvable call")
+        messages.append(_inferred(
+            entry, label, f"expr identifier {text!r} is not declared by "
+            f"inputs, outputs or a resolvable call", "data/expr"))
 
 
 # --------------------------------------------------------------------------- #
@@ -276,21 +310,59 @@ def _check_unit_edges(entry, by_id, messages, label):
         target_unit = _target_unit(target, frm.get("field"), frm.get("row"))
         own_unit = inp.get("unit")
         if target_unit and own_unit and target_unit != own_unit:
-            messages.append(f"{label}: input {inp.get('key')!r} unit "
-                            f"{own_unit!r} disagrees with {frm.get('ref')}'s "
-                            f"{target_unit!r} and names no via")
+            messages.append(_inferred(
+                entry, label, f"input {inp.get('key')!r} unit {own_unit!r} "
+                f"disagrees with {frm.get('ref')}'s {target_unit!r} and names "
+                f"no via", f"data/inputs/{inp.get('key')}/unit"))
 
 
 # --------------------------------------------------------------------------- #
 # 3. key patterns + __ reservation; refItems cell values
 # --------------------------------------------------------------------------- #
 
+def _fix_segment(key):
+    """B4's safe repair: trim, lower-case, spaces and `-` to `_`, repeated `_`
+    collapsed. Nothing else — `_qty` or a Persian key stays what it was."""
+    return re.sub(r"_{2,}", "_", re.sub(r"[\s\-]+", "_", key.strip().lower()))
+
+
+def _fix_row_key(key):
+    """B6: the same repair per segment, so the `__` joins survive."""
+    return "__".join(_fix_segment(part) for part in key.strip().split("__"))
+
+
+def _renames(keys, pattern, fix):
+    """`{old: new}` for every off-grammar string key whose repaired form
+    matches `pattern` and is unique among the list's keys after the repair.
+    The repair and the check both read this, so they never disagree on which
+    key is repairable."""
+    fixed = {k: fix(k) for k in keys
+             if isinstance(k, str) and not pattern.fullmatch(k)}
+    final = [fixed.get(k, k) if isinstance(k, str) else k for k in keys]
+    return {k: new for k, new in fixed.items()
+            if pattern.fullmatch(new) and final.count(new) == 1}
+
+
+def _key_findings(members, pattern, fix, messages, label, message):
+    """B4/B6: a key the safe repair makes valid is an unmarked NOTE (a gate
+    repairs it before it gets here); any other off-grammar key is REFUSED —
+    `save_store` validates every key against the grammar (R1) and `edit`
+    addresses members by it (R2)."""
+    members = [m for m in members if isinstance(m, dict)
+               and m.get("key") is not None]
+    renames = _renames([m["key"] for m in members], pattern, fix)
+    for m in members:
+        key = m["key"]
+        if not pattern.fullmatch(str(key)):
+            text = message.format(key=repr(key))
+            messages.append(_unmarked(label, text)
+                            if isinstance(key, str) and key in renames
+                            else refuse(label, text))
+
+
 def _check_key_list(members, messages, label, what):
-    for m in members or []:
-        if isinstance(m, dict) and m.get("key") is not None \
-                and not SEGMENT_RE.fullmatch(str(m["key"])):
-            messages.append(f"{label}: {what} key {m['key']!r} is not a "
-                            f"minted segment")
+    _key_findings(_list(members), SEGMENT_RE, _fix_segment, messages, label,
+                  what + " key {key} is not a minted segment")
 
 
 def _check_keys(entry, messages, label, conventions=DEFAULT_CONVENTIONS):
@@ -303,13 +375,10 @@ def _check_keys(entry, messages, label, conventions=DEFAULT_CONVENTIONS):
     for o in data.get("outputs") or []:
         if isinstance(o, dict) and o.get("per") is not None \
                 and not SEGMENT_RE.fullmatch(str(o["per"])):
-            messages.append(f"{label}: output per {o['per']!r} is not a "
-                            f"minted segment")
-    for row in data.get("rows") or []:
-        if isinstance(row, dict) and row.get("key") is not None \
-                and not KEY_RE.fullmatch(str(row["key"])):
-            messages.append(f"{label}: row key {row['key']!r} is not a "
-                            f"minted key")
+            messages.append(_unmarked(label, f"output per {o['per']!r} is not "
+                                             f"a minted segment"))
+    _key_findings(_list(data.get("rows")), KEY_RE, _fix_row_key, messages,
+                  label, "row key {key} is not a minted key")
     default_namespace = conventions.item_namespace
     refitem_fields = {f["key"]: (f["refItems"].get("namespace")
                                  or default_namespace)
@@ -328,21 +397,29 @@ def _check_keys(entry, messages, label, conventions=DEFAULT_CONVENTIONS):
             # form made a unit that followed its card fail at the cap.
             if isinstance(value, str) and not SEGMENT_RE.fullmatch(value) \
                     and not conventions.matches_code(namespace, value):
-                messages.append(f"{label}: refItems cell {name}={value!r} "
-                                f"on row {row.get('key')!r} is neither an "
-                                f"item key nor a {namespace} code")
+                messages.append(_inferred(
+                    entry, label, f"refItems cell {name}={value!r} on row "
+                    f"{row.get('key')!r} is neither an item key nor a "
+                    f"{namespace} code", f"data/fields/{name}/refItems"))
 
 
 # --------------------------------------------------------------------------- #
 # 4. processes[].ref grammar re-assertion (already schema-carried)
 # --------------------------------------------------------------------------- #
 
+def _bad_process_ref(label, ref):
+    """B8: no process can carry this id, so the link is removed (by
+    `repair_process_links`) and the entry keeps an issue quoting it."""
+    return note(label, f"processes[] ref {ref!r} does not match the process "
+                       f"id grammar",
+                fa=f"پیوند به فرایندی با شناسهٔ نادرست «{ref}» ثبت نشد.")
+
+
 def _check_process_grammar(entry, messages, label):
     for p in entry.get("processes") or []:
         ref = (p or {}).get("ref") if isinstance(p, dict) else None
         if not (isinstance(ref, str) and PROC_ID_RE.fullmatch(ref)):
-            messages.append(f"{label}: processes[] ref {ref!r} does not "
-                            f"match the process id grammar")
+            messages.append(_bad_process_ref(label, ref))
 
 
 # --------------------------------------------------------------------------- #
@@ -372,15 +449,19 @@ def _check_record_shape(entry, messages, label):
     declared_all = declared_fields | declared_header
     declared_sections = {s["key"] for s in data.get("sections") or []
                          if isinstance(s, dict) and s.get("key")}
-    for f in fields + header_fields:
-        if f.get("key") in RESERVED_ROW_NAMES:
-            messages.append(f"{label}: field key {f['key']!r} is a reserved "
-                            f"row-member name")
+    for collection, members in (("fields", fields),
+                                ("header_fields", header_fields)):
+        for f in members:
+            if f.get("key") in RESERVED_ROW_NAMES:
+                messages.append(_inferred(
+                    entry, label, f"field key {f['key']!r} is a reserved "
+                    f"row-member name", f"data/{collection}/{f['key']}"))
     pk = data.get("primaryKey") or []
     for m in pk:
         if m not in declared_all:
-            messages.append(f"{label}: primaryKey member {m!r} is not a "
-                            f"declared field")
+            messages.append(_inferred(entry, label, f"primaryKey member {m!r} "
+                                      f"is not a declared field",
+                                      "data/primaryKey"))
     # §8's shape — `{fields, reference, reference_fields, transform?}` — and both
     # halves are required: a key naming neither its own columns nor the entry it
     # points at declares no join at all. 84 stored records carried an IMPORT
@@ -390,32 +471,44 @@ def _check_record_shape(entry, messages, label):
     # has no `fields[]` to join on in the first place; its `mirror_of` and
     # `import` already say where it comes from.
     for fk in data.get("foreignKeys") or []:
+        # B11: `repair_foreign_keys` drops or sets aside all three shapes.
         if not isinstance(fk, dict):
-            messages.append(f"{label}: foreignKeys member is not an object")
+            messages.append(_unmarked(label, "foreignKeys member is not an "
+                                             "object"))
             continue
         members = fk.get("fields") if _fk_fields_ok(fk) else []
         if not members:
-            messages.append(f"{label}: foreignKeys member declares no fields "
-                            f"naming the columns it joins on")
+            messages.append(_unmarked(label, "foreignKeys member declares no "
+                                             "fields naming the columns it "
+                                             "joins on"))
         if not _fk_reference_ok(fk):
-            messages.append(f"{label}: foreignKeys member declares no reference "
-                            f"naming the entry it points at")
+            messages.append(_unmarked(label, "foreignKeys member declares no "
+                                             "reference naming the entry it "
+                                             "points at"))
         for m in members:
             if m not in declared_all:
-                messages.append(f"{label}: foreignKeys field {m!r} is not a "
-                                f"declared field")
+                messages.append(_inferred(entry, label, f"foreignKeys field "
+                                          f"{m!r} is not a declared field",
+                                          "data/foreignKeys"))
     rows = [r for r in data.get("rows") or [] if isinstance(r, dict)]
     for row in rows:
         section = row.get("section")
         if section is not None and section not in declared_sections:
-            messages.append(f"{label}: row {row.get('key')!r} names "
-                            f"undeclared section {section!r}")
+            messages.append(_inferred(
+                entry, label, f"row {row.get('key')!r} names undeclared "
+                f"section {section!r}", f"data/rows/{row.get('key')}/section"))
         for member in row:
             if member in RESERVED_ROW_NAMES:
                 continue
             if member not in declared_fields:
-                messages.append(f"{label}: row {row.get('key')!r} member "
-                                f"{member!r} is not a declared field")
+                # B14: the panel draws declared columns only, so the value
+                # would go unseen — an issue names the member (once per
+                # member, however many rows carry it).
+                messages.append(note(
+                    label, f"row {row.get('key')!r} member {member!r} is not "
+                    f"a declared field",
+                    fa=f"ردیف‌های این جدول مقداری به نام «{member}» دارند که "
+                       f"جزو فیلدهای تعریف‌شدهٔ جدول نیست."))
     # v3 §4: only a record the model typed — a paper form, an external system,
     # the native `units` table. A sheet-derived record's rows ARE the dump's,
     # and `build` omits a cell the dump left empty (§2.3), so a missing member
@@ -428,9 +521,9 @@ def _check_record_shape(entry, messages, label):
                 continue
             for key in sorted(non_derived):
                 if key not in row:
-                    messages.append(f"{label}: reference row "
-                                    f"{row.get('key')!r} is missing declared "
-                                    f"field {key!r}")
+                    messages.append(_unmarked(
+                        label, f"reference row {row.get('key')!r} is missing "
+                        f"declared field {key!r}"))
 
 
 # --------------------------------------------------------------------------- #
@@ -448,12 +541,14 @@ def _check_shares(entry, messages, label):
         share = o["share"]
         if not (isinstance(share, (int, float)) and not isinstance(share, bool)
                 and 0 < share <= 1):
-            messages.append(f"{label}: output {o.get('key')!r} share "
-                            f"{share!r} is not in (0, 1]")
+            messages.append(_inferred(
+                entry, label, f"output {o.get('key')!r} share {share!r} is "
+                f"not in (0, 1]", f"data/outputs/{o.get('key')}/share"))
         else:
             shares.append(share)
     if len(shares) > 1 and abs(sum(shares) - 1) > 0.001:
-        messages.append(f"{label}: shares sum to {sum(shares)} not 1 +/- 0.001")
+        messages.append(_inferred(entry, label, f"shares sum to {sum(shares)} "
+                                  f"not 1 +/- 0.001", "data/outputs"))
 
 
 # --------------------------------------------------------------------------- #
@@ -471,27 +566,35 @@ def _check_constant_shape(entry, kind_of_file, messages, label):
         # rule, not a malformed constant. Only a computed shape contradicts
         # "no inputs": an `expr`, or a `lang` that declares one.
         if data.get("expr") is not None or data.get("lang") in ("feel", "table"):
-            messages.append(f"{label}: a constant (no inputs) carries "
-                            f"expr/lang")
+            # B18: the expr is kept and marked; a bare `lang` with no body is
+            # `repair_constant_lang`'s, so it is unmarked here.
+            message = "a constant (no inputs) carries expr/lang"
+            if data.get("expr") is not None:
+                messages.append(_inferred(entry, label, message, "data/expr"))
+            elif data.get("table") is None:
+                messages.append(_unmarked(label, message))
+            else:
+                messages.append(_inferred(entry, label, message, "data/lang"))
         for o in outputs:
             if isinstance(o, dict) and not ("value" in o or "range" in o):
-                messages.append(f"{label}: constant output {o.get('key')!r} "
-                                f"carries no value or range")
+                # B19: `repair_constant_value` stores `value: null` («؟»).
+                messages.append(_unmarked(label, f"constant output "
+                                                 f"{o.get('key')!r} carries "
+                                                 f"no value or range"))
     elif inputs:
         if data.get("lang") is None:
-            messages.append(f"{label}: a rule with inputs carries no lang")
+            messages.append(_unmarked(label, "a rule with inputs carries no "
+                                             "lang"))
         original_key = "original_ref" if kind_of_file == "facts" else "original"
         # A decision table IS the body (§4, I8) — as much one as a formula or
         # the verbatim original, and the only body a table rule ever carries.
         if not (data.get("expr") or data.get(original_key)
                 or (data.get("lang") == "table"
                     and isinstance(data.get("table"), dict))):
-            messages.append(f"{label}: a rule with inputs carries no expr "
-                            f"or {original_key}")
-        for o in outputs:
-            if isinstance(o, dict) and ("value" in o or "range" in o):
-                messages.append(f"{label}: output {o.get('key')!r} of a "
-                                f"rule with inputs carries value or range")
+            messages.append(_unmarked(label, f"a rule with inputs carries no "
+                                             f"expr or {original_key}"))
+        # B22: a threshold or a target band on a computed output («حد شروع
+        # پخت») is legitimate — the rule is gone, not relaxed.
 
 
 # --------------------------------------------------------------------------- #
@@ -513,13 +616,18 @@ def _check_table_shape(entry, messages, label):
     table = data.get("table")
     if data.get("lang") == "table":
         if not isinstance(table, dict):
-            messages.append(f"{label}: lang: table carries no table")
+            messages.append(_inferred(entry, label, "lang: table carries no "
+                                                    "table", "data/lang"))
             return
         if data.get("expr") is not None:
-            messages.append(f"{label}: a table rule carries expr — a table "
-                            f"has no formula")
+            messages.append(_unmarked(label, "a table rule carries expr — a "
+                                             "table has no formula"))
     elif table is not None:
-        messages.append(f"{label}: carries a table but its lang is not table")
+        message = "carries a table but its lang is not table"
+        # B25: an absent lang is `repair_table_lang`'s; another body is marked.
+        messages.append(_unmarked(label, message)
+                        if data.get("lang") is None and isinstance(table, dict)
+                        else _inferred(entry, label, message, "data/table"))
         return
     else:
         return
@@ -531,31 +639,35 @@ def _check_table_shape(entry, messages, label):
     outs = [k for k in table.get("outputs") or [] if isinstance(k, str)]
     for k in ins:
         if k not in declared_in:
-            messages.append(f"{label}: table input {k!r} is not a declared "
-                            f"input")
+            messages.append(_inferred(entry, label, f"table input {k!r} is not "
+                                      f"a declared input", "data/table"))
     for k in outs:
         if k not in declared_out:
-            messages.append(f"{label}: table output {k!r} is not a declared "
-                            f"output")
+            messages.append(_inferred(entry, label, f"table output {k!r} is "
+                                      f"not a declared output", "data/table"))
     columns = set(ins) | set(outs)
     for n, row in enumerate(table.get("rows") or [], 1):
         if not isinstance(row, dict):
-            messages.append(f"{label}: table row {n} is not an object")
+            messages.append(_unmarked(label, f"table row {n} is not an "
+                                             f"object"))       # B27
             continue
         if "when" in row or "then" in row:
-            messages.append(f"{label}: table row {n} carries when/then — a row "
-                            f"is flat, keyed by the table's columns")
+            message = (f"table row {n} carries when/then — a row is flat, "
+                       f"keyed by the table's columns")
+            messages.append(_unmarked(label, message) if _flattenable(row)
+                            else _inferred(entry, label, message, "data/table"))
             continue
         for k in row:
             if k not in columns:
-                messages.append(f"{label}: table row {n} key {k!r} is not a "
-                                f"table column")
+                messages.append(_unmarked(label, f"table row {n} key {k!r} is "
+                                                 f"not a table column"))
         if not any(k in row for k in outs):
-            messages.append(f"{label}: table row {n} names no output")
+            messages.append(_unmarked(label, f"table row {n} names no output"))
     for k in table.get("default") or {}:
         if k not in outs:
-            messages.append(f"{label}: table default key {k!r} is not a table "
-                            f"output")
+            messages.append(_inferred(entry, label, f"table default key {k!r} "
+                                      f"is not a table output",
+                                      "data/table/default"))
 
 
 # --------------------------------------------------------------------------- #
@@ -564,12 +676,15 @@ def _check_table_shape(entry, messages, label):
 
 def _check_field_status(entry, messages, label):
     for path, value in (entry.get("field_status") or {}).items():
+        # B32/B33: both are `repair_field_status_*`'s.
         if value not in ("inferred", "informal"):
-            messages.append(f"{label}: field_status {path!r} has value "
-                            f"{value!r}, not inferred/informal")
+            messages.append(_unmarked(label, f"field_status {path!r} has value "
+                                             f"{value!r}, not "
+                                             f"inferred/informal"))
         if not path_exists(entry, path):
-            messages.append(f"{label}: field_status names path {path!r}, "
-                            f"which does not exist")
+            messages.append(_unmarked(label, f"field_status names path "
+                                             f"{path!r}, which does not "
+                                             f"exist"))
 
 
 # --------------------------------------------------------------------------- #
@@ -588,11 +703,13 @@ def _check_reconciled_against(entry, messages, label):
         cell = (ra or {}).get("cell") or {} if isinstance(ra, dict) else {}
         field, row = cell.get("field"), cell.get("row")
         if field is not None and field not in declared_fields:
-            messages.append(f"{label}: reconciled_against cell field "
-                            f"{field!r} is not declared here")
+            messages.append(_inferred(entry, label, f"reconciled_against cell "
+                                      f"field {field!r} is not declared here",
+                                      "data/reconciled_against"))
         if row is not None and row not in declared_rows:
-            messages.append(f"{label}: reconciled_against cell row "
-                            f"{row!r} is not declared here")
+            messages.append(_inferred(entry, label, f"reconciled_against cell "
+                                      f"row {row!r} is not declared here",
+                                      "data/reconciled_against"))
 
 
 # --------------------------------------------------------------------------- #
@@ -606,8 +723,8 @@ def _check_issue_dates(entry, messages, label):
         for key in ("from_date", "to_date"):
             val = issue.get(key)
             if val is not None and not JALALI_RE.fullmatch(str(val)):
-                messages.append(f"{label}: issue {key} {val!r} is not a "
-                                f"Jalali date")
+                messages.append(_unmarked(label, f"issue {key} {val!r} is not "
+                                                 f"a Jalali date"))    # B35
 
 
 # --------------------------------------------------------------------------- #
@@ -615,17 +732,28 @@ def _check_issue_dates(entry, messages, label):
 # --------------------------------------------------------------------------- #
 
 def _check_source_exclusions(entry, messages, label):
-    for src in entry.get("source") or []:
+    for n, src in enumerate(entry.get("source") or []):
         ref = (src or {}).get("ref") if isinstance(src, dict) else None
         if isinstance(ref, str) and (ref.endswith(".structure.md")
                                      or ref.endswith("NAMED_FUNCTIONS.md")):
-            messages.append(f"{label}: source ref {ref!r} may not cite "
-                            f".structure.md or NAMED_FUNCTIONS.md")
+            message = (f"source ref {ref!r} may not cite .structure.md or "
+                       f"NAMED_FUNCTIONS.md")
+            # B36: a dump is re-pointed at its workbook by
+            # `repair_generated_sources`; the functions file is kept, marked.
+            messages.append(_unmarked(label, message)
+                            if ref.endswith(".structure.md")
+                            else _inferred(entry, label, message, f"source/{n}"))
 
 
 # --------------------------------------------------------------------------- #
 # 12. processes[] source presence
 # --------------------------------------------------------------------------- #
+
+def _cites_process(sources, proc_id):
+    return any(isinstance(s, dict) and s.get("type") == "process"
+               and isinstance(s.get("ref"), str)
+               and s["ref"].endswith(f"{proc_id}.json") for s in sources)
+
 
 def _check_process_links(entry, messages, label):
     processes = entry.get("processes") or []
@@ -636,12 +764,11 @@ def _check_process_links(entry, messages, label):
         proc_id = (p or {}).get("ref") if isinstance(p, dict) else None
         if not proc_id:
             continue
-        cited = any(isinstance(s, dict) and s.get("type") == "process"
-                   and isinstance(s.get("ref"), str)
-                   and s["ref"].endswith(f"{proc_id}.json") for s in sources)
-        if not cited:
-            messages.append(f"{label}: processes[] link to {proc_id!r} has "
-                            f"no process-type source naming its file")
+        if not _cites_process(sources, proc_id):
+            # B37: `repair_process_links` cites the file or removes the link.
+            messages.append(_unmarked(label, f"processes[] link to {proc_id!r} "
+                                             f"has no process-type source "
+                                             f"naming its file"))
 
 
 # --------------------------------------------------------------------------- #
@@ -690,7 +817,9 @@ def group_messages(messages):
 #: string verbatim, which is why it is a module constant and not inline.
 REF_TOKEN = (r"(?:'[^']+'!)?(?<![A-Za-z0-9_$])\$?[A-Z]{1,3}\$?(?:N|\d{1,5})"
              r"(?![A-Za-z0-9_(])(?::\$?[A-Z]{1,3}\$?(?:N|\d{1,5}))?")
-PIPELINE_WORDS = ("پاس", "اسکلت", "بخش از داده‌ها", "واحد کاری", "بچ",
+#: «بچ» and «پاس» are not here (B40): in this restaurant they are a batch of
+#: sauce and the pass, and the pipeline sense is caught by the words that stay.
+PIPELINE_WORDS = ("اسکلت", "بخش از داده‌ها", "واحد کاری",
                   "original", "bindings", "FEEL", "account", "expr")
 COLLOQUIAL = ("می‌زنن", "می‌کنن", "داشته باشن", "بگیم", "می‌گیم")
 #: Allowed only in a record's own `statement` and a field's `description`.
@@ -720,8 +849,7 @@ def artefact_re(table_prefix):
 
 def _whole_word_re(words):
     """Persian gives `re` no `\\b` to work with, and these words are short:
-    «تب» sits inside «مرتب», «پاس» inside «پاسخ» — which the owner's own
-    report uses («بی‌پاسخ»). So a word counts only when no letter touches it
+    «تب» sits inside «مرتب». So a word counts only when no letter touches it
     on either side."""
     body = "|".join(re.escape(w) for w in words)
     return re.compile(rf"(?<![^\W\d_])(?:{body})(?![^\W\d_])")
@@ -734,8 +862,10 @@ SHEET_WORDS_RE = _whole_word_re(SHEET_WORDS)
 
 def lint_prose(text, *, exemptions, allow_sheet_words=False,
                conventions=DEFAULT_CONVENTIONS):
-    """§5.2's style card as a check: the messages a sentence earns, empty when
-    it may be stored. One message per rule broken, not one per occurrence.
+    """§5.2's style card as a check: the findings a sentence earns, empty when
+    it is in the register. One finding per rule broken, not one per
+    occurrence. Every rule is an unmarked NOTE (B38–B44): style never stops a
+    sentence from being stored, and `merge facts audit` lists it.
 
     QF-50's reason for existing: `title` and `statement` are definitions, and
     a definition that says «ستون J تب پیتزا» is a locator wearing a
@@ -790,7 +920,7 @@ def lint_prose(text, *, exemptions, allow_sheet_words=False,
             out.append(f"quotes {words} words — a quotation belongs in "
                        f"source[].quote, not in a definition")
             break
-    return out
+    return [_unmarked("", message) for message in out]
 
 
 def _check_prose(entry, unit_symbols, messages, label,
@@ -832,7 +962,334 @@ def _check_prose(entry, unit_symbols, messages, label,
             targets.append((f"issues/{i}/description", issue.get("description"),
                             False))
     for path, text, allow_sheet_words in targets:
-        for msg in lint_prose(text, exemptions=unit_symbols or (),
-                              allow_sheet_words=allow_sheet_words,
-                              conventions=conventions):
-            messages.append(f"{label}: {path} {msg}")
+        for found in lint_prose(text, exemptions=unit_symbols or (),
+                                allow_sheet_words=allow_sheet_words,
+                                conventions=conventions):
+            messages.append(_unmarked(label, f"{path} {found.message}", path))
+
+
+# --------------------------------------------------------------------------- #
+# the REPAIR tier (spec 2026-09-13 §5B) — run by `normalise.normalise_entry`
+# before any gate judges the entry. Each repair keeps the meaning, is
+# idempotent, and never raises on a malformed shape (the store gate refuses
+# those).
+# --------------------------------------------------------------------------- #
+
+def _list(value):
+    return value if isinstance(value, list) else []
+
+
+def _dicts(value):
+    return [m for m in _list(value) if isinstance(m, dict)]
+
+
+def _data(entry, kind=None):
+    if not isinstance(entry, dict) or (kind and entry.get("kind") != kind):
+        return None
+    data = entry.get("data")
+    return data if isinstance(data, dict) else None
+
+
+def _to_extra(entry, path, values):
+    """Keep `values` unchanged in the envelope's `extra` bag under the QF-7
+    path they came from (spec C5). False when the bag cannot take them, and
+    the caller then leaves them where they were."""
+    extra = entry.setdefault("extra", {})
+    if not isinstance(extra, dict) or not isinstance(extra.setdefault(path, []), list):
+        return False
+    extra[path].extend(values)
+    return True
+
+
+def _swap(values, old, new):
+    return [new if v == old else v for v in values]
+
+
+def _rekey(obj, old, new):
+    return {new if k == old else k: v for k, v in obj.items()}
+
+
+def _rekey_rows(rows, old, new):
+    for i, row in enumerate(_list(rows)):
+        if isinstance(row, dict) and old in row and new not in row:
+            rows[i] = _rekey(row, old, new)
+
+
+def _rename_member(entry, data, collection, old, new):
+    """Everything in the same entry that names the renamed member (B4)."""
+    def path(p):
+        segs = p.split("/")
+        if segs[:3] == ["data", collection, old]:
+            segs[2] = new
+        elif collection == "fields" and segs[:2] == ["data", "rows"] \
+                and segs[3:4] == [old]:
+            segs[3] = new
+        return "/".join(segs)
+    status = entry.get("field_status")
+    if isinstance(status, dict):
+        entry["field_status"] = {path(p) if isinstance(p, str) else p: v
+                                 for p, v in status.items()}
+    if collection in ("fields", "header_fields"):
+        if isinstance(data.get("primaryKey"), list):
+            data["primaryKey"] = _swap(data["primaryKey"], old, new)
+        for fk in _dicts(data.get("foreignKeys")):
+            if isinstance(fk.get("fields"), list):
+                fk["fields"] = _swap(fk["fields"], old, new)
+        for ra in _dicts(data.get("reconciled_against")):
+            if isinstance(ra.get("cell"), dict) and ra["cell"].get("field") == old:
+                ra["cell"]["field"] = new
+    if collection == "fields":
+        _rekey_rows(data.get("rows"), old, new)
+    if collection == "sections":
+        for row in _dicts(data.get("rows")):
+            if row.get("section") == old:
+                row["section"] = new
+    if collection in ("inputs", "outputs"):
+        table = data.get("table")
+        if isinstance(table, dict):
+            if isinstance(table.get(collection), list):
+                table[collection] = _swap(table[collection], old, new)
+            _rekey_rows(table.get("rows"), old, new)
+            if collection == "outputs" and isinstance(table.get("default"), dict):
+                table["default"] = _rekey(table["default"], old, new)
+        # Only a key that is one FEEL token can be named in `expr` at all.
+        if isinstance(data.get("expr"), str) and TOKEN_RE.fullmatch(old):
+            data["expr"] = re.sub(rf"(?<![A-Za-z0-9_]){re.escape(old)}"
+                                  rf"(?![A-Za-z0-9_])", new, data["expr"])
+
+
+def repair_keys(entry, ctx):
+    """B4/B6: the safe key repair, where the result is unique in its list."""
+    data = _data(entry)
+    if data is None:
+        return
+    for collection in ("fields", "header_fields", "sections", "inputs", "outputs"):
+        members = _dicts(data.get(collection))
+        renames = _renames([m.get("key") for m in members], SEGMENT_RE, _fix_segment)
+        for old, new in renames.items():
+            for m in members:
+                if m.get("key") == old:
+                    m["key"] = new
+            _rename_member(entry, data, collection, old, new)
+    rows = _dicts(data.get("rows"))
+    for old, new in _renames([r.get("key") for r in rows], KEY_RE, _fix_row_key).items():
+        for row in rows:
+            if row.get("key") == old:
+                row["key"] = new
+        for ra in _dicts(data.get("reconciled_against")):
+            if isinstance(ra.get("cell"), dict) and ra["cell"].get("row") == old:
+                ra["cell"]["row"] = new
+        status = entry.get("field_status")
+        if isinstance(status, dict):
+            prefix = f"data/rows/{old}/"
+            entry["field_status"] = {
+                f"data/rows/{new}/{p[len(prefix):]}"
+                if isinstance(p, str) and p.startswith(prefix) else p: v
+                for p, v in status.items()}
+
+
+def repair_foreign_keys(entry, ctx):
+    """B11: a null or empty member is dropped; any other malformed one (in
+    practice an import descriptor) is kept unchanged in `extra`."""
+    data = _data(entry, "record")
+    if data is None or not isinstance(data.get("foreignKeys"), list):
+        return
+    kept, odd = [], []
+    for fk in data["foreignKeys"]:
+        if fk in (None, "", [], {}):
+            continue
+        ok = isinstance(fk, dict) and _fk_fields_ok(fk) and _fk_reference_ok(fk)
+        (kept if ok else odd).append(fk)
+    if odd and not _to_extra(entry, "data/foreignKeys", odd):
+        kept += odd
+    data["foreignKeys"] = kept
+
+
+def repair_constant_lang(entry, ctx):
+    """B18: a constant whose `feel`/`table` lang has no body is the store's
+    own policy shape, `lang: text`."""
+    data = _data(entry, "rule")
+    if data is not None and data.get("inputs") == [] \
+            and data.get("lang") in ("feel", "table") \
+            and data.get("expr") is None and data.get("table") is None:
+        data["lang"] = "text"
+
+
+def repair_constant_value(entry, ctx):
+    """B19 (section 9 default): a constant with no number stores
+    `value: null`, which the panel shows as a question («؟»)."""
+    data = _data(entry, "rule")
+    if data is None or data.get("inputs") != []:
+        return
+    for output in _dicts(data.get("outputs")):
+        if "value" not in output and "range" not in output:
+            output["value"] = None
+
+
+def repair_table_lang(entry, ctx):
+    """B20/B25: a rule carrying a table object and no lang is a table rule."""
+    data = _data(entry, "rule")
+    if data is not None and data.get("lang") is None \
+            and isinstance(data.get("table"), dict):
+        data["lang"] = "table"
+
+
+def _table_rows(entry):
+    data = _data(entry, "rule")
+    table = data.get("table") if data is not None else None
+    rows = table.get("rows") if isinstance(table, dict) else None
+    return (table, rows) if isinstance(rows, list) else (None, None)
+
+
+def repair_table_rows(entry, ctx):
+    """B27: a null or empty row is dropped; another scalar row is kept
+    unchanged in `extra` — `row[k]` on it would crash the decision table."""
+    table, rows = _table_rows(entry)
+    if rows is None:
+        return
+    odd = [r for r in rows if not isinstance(r, dict) and r not in (None, "", [])]
+    if odd and not _to_extra(entry, "data/table/rows", odd):
+        return
+    table["rows"] = [r for r in rows if isinstance(r, dict)]
+
+
+def _flattenable(row):
+    when, then = row.get("when"), row.get("then")
+    return set(row) == {"when", "then"} and isinstance(when, dict) \
+        and isinstance(then, dict) and not set(when) & set(then)
+
+
+def repair_nested_table_rows(entry, ctx):
+    """B28: `{when, then}` is `{...when, ...then}` when the two do not clash."""
+    _table, rows = _table_rows(entry)
+    for i, row in enumerate(rows or []):
+        if isinstance(row, dict) and _flattenable(row):
+            rows[i] = {**row["when"], **row["then"]}
+
+
+def _marker(value):
+    if isinstance(value, dict):
+        value = "inferred" if value.get("inferred") else value.get("value")
+    if isinstance(value, str):
+        value = value.strip().lower()
+    if value in ("inferred", "informal"):
+        return value
+    if value is None or value is False or value in ("", "confirmed", "stated"):
+        return None
+    return "inferred"                         # the cautious reading
+
+
+def repair_field_status_values(entry, ctx):
+    """B32: any other non-empty marker is `inferred`; false, null, confirmed
+    and stated say nothing and are dropped."""
+    status = entry.get("field_status") if isinstance(entry, dict) else None
+    if isinstance(status, dict):
+        entry["field_status"] = {p: _marker(v) for p, v in status.items()
+                                 if _marker(v)}
+
+
+def repair_field_status_paths(entry, ctx):
+    """B33: a status on a path that resolves to nothing means nothing. A path
+    that does resolve — `data/fields/<key>/title` on a field that has a
+    title — is kept."""
+    status = entry.get("field_status") if isinstance(entry, dict) else None
+    if isinstance(status, dict):
+        entry["field_status"] = {p: v for p, v in status.items()
+                                 if isinstance(p, str) and path_exists(entry, p)}
+
+
+_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+
+
+def _jalali(text):
+    parts = text.translate(_DIGITS).strip().replace("/", "-").split("-")
+    if len(parts) not in (2, 3) or not all(p.isdigit() for p in parts):
+        return None
+    fixed = "-".join([parts[0]] + [p.zfill(2) for p in parts[1:]])
+    return fixed if JALALI_RE.fullmatch(fixed) else None
+
+
+def repair_issue_dates(entry, ctx):
+    """B35: Persian digits, `/` and missing zeros are normalised. A date that
+    still does not read is removed and its raw text appended to the issue's
+    description, so nothing is lost."""
+    for issue in _dicts(entry.get("issues") if isinstance(entry, dict) else None):
+        for key, word in (("from_date", "از"), ("to_date", "تا")):
+            value = issue.get(key)
+            if value is None or JALALI_RE.fullmatch(str(value)):
+                continue
+            fixed = _jalali(str(value))
+            description = issue.get("description")
+            if fixed:
+                issue[key] = fixed
+            elif description is None or isinstance(description, str):
+                del issue[key]
+                issue["description"] = f"{description or ''} ({word} {value})".strip()
+
+
+def repair_generated_sources(entry, ctx):
+    """B36: a generated `<book>.structure.md` is cited as its sibling
+    `<book>.xlsx`, a sheet source, with `sheet`/`cell` kept."""
+    for source in _dicts(entry.get("source") if isinstance(entry, dict) else None):
+        ref = source.get("ref")
+        if isinstance(ref, str) and ref.endswith(".structure.md"):
+            source["ref"] = ref[:-len(".structure.md")] + ".xlsx"
+            source["type"] = "sheet"
+
+
+def repair_process_links(entry, ctx):
+    """B8, then B37. A link off the id grammar is removed with an issue
+    quoting it. A link with no citation of its process file gets one when
+    `departments/<dept>/processes/<id>.json` exists; otherwise it is removed
+    with an issue. With no `root` there is no file to look at, and B37 waits
+    for a gate that has one."""
+    if not isinstance(entry, dict) or not isinstance(entry.get("processes"), list):
+        return None
+    label = ctx.get("label") or ""
+    out, kept = [], []
+    for link in entry["processes"]:
+        ref = link.get("ref") if isinstance(link, dict) else None
+        if isinstance(ref, str) and PROC_ID_RE.fullmatch(ref):
+            kept.append(link)
+        else:
+            out.append(_bad_process_ref(label, ref))
+    root = ctx.get("root")
+    if root is not None:
+        if entry.get("source") is None:
+            entry["source"] = []
+        sources = entry["source"]
+        for link in list(kept):
+            ref = link["ref"]
+            if isinstance(sources, list) and _cites_process(sources, ref):
+                continue
+            path = f"departments/{ref.rsplit('-', 1)[0]}/processes/{ref}.json"
+            if isinstance(sources, list) and (pathlib.Path(root) / path).is_file():
+                sources.append({"type": "process", "ref": path})
+                continue
+            kept.remove(link)
+            out.append(note(label, f"processes[] link to {ref!r} names no "
+                                   f"process file",
+                            fa=f"پیوند به فرایند «{ref}» ثبت نشد، چون پروندهٔ "
+                               f"این فرایند پیدا نشد."))
+    entry["processes"] = kept
+    return out
+
+
+#: The content pass's REPAIR tier, run by `merge_facts.normalise.normalise_entry`
+#: in this order (after the store's). `def fn(entry, ctx) -> list[Finding] | None`,
+#: mutating `entry`. The key repair runs first, so everything after it reads
+#: the repaired keys.
+CONTENT_REPAIRS = [
+    repair_keys,                    # B4/B6
+    repair_foreign_keys,            # B11
+    repair_constant_lang,           # B18
+    repair_constant_value,          # B19 (section 9 default)
+    repair_table_lang,              # B20 + B25
+    repair_table_rows,              # B27
+    repair_nested_table_rows,       # B28
+    repair_field_status_values,     # B32
+    repair_field_status_paths,      # B33
+    repair_issue_dates,             # B35
+    repair_generated_sources,       # B36
+    repair_process_links,           # B8 + B37
+]

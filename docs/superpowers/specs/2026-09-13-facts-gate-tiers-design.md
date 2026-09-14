@@ -1,6 +1,6 @@
-# Facts engine: fewer stops, nothing lost silently — design proposal
+# Facts engine: fewer stops, nothing lost silently — design
 
-**Status:** proposal for the owner's approval, 2026-09-13. **Nothing in this document is implemented.**
+**Status:** approved by the owner 2026-09-13 (every row tier and every section 9 default); implemented on branch `gate-tiers` — see ADR 0017 and plan `2026-09-13-facts-gate-tiers.md`.
 **Scope:** the quantitative-facts engine (`engine/facts_plan`, `engine/merge_facts`), its two JSON
 contracts (`schemas/facts-unit.schema.json`, `schemas/facts.schema.json`, `schemas/facts-delta.schema.json`),
 and the quantify playbook. The panel is read to ground the rules; it is not changed except where named.

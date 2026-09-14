@@ -1,9 +1,11 @@
 """`merge facts apply` — the one writing entry point of the facts store (QF-2).
 
-Spec §12, row 1. The precondition pass runs over the **whole** delta before the
-first byte is written: every problem is printed as `precondition failed: {msg}`
-and the run exits 2 with the store untouched, so a pipeline that retries on
-exit 2 cannot double-apply.
+Spec §12, row 1, as tiered by spec 2026-09-13 (§5C, P3). The gate runs over
+the whole delta before the first byte is written, and judges it entry by entry:
+an entry that would break the store is held back (`precondition failed: held
+back: {msg}` on stderr, `held.json` in the run directory), a note is stored on
+its entry, and the rest is written. Only a delta of which nothing at all can be written exits 2 with
+the store untouched, so a pipeline that retries on exit 2 cannot double-apply.
 
 Idempotency (§17): `updated_at` is stamped only on the entries the run actually
 changed — any ladder action other than `noop`, a creation, or a supersession.
@@ -47,23 +49,28 @@ from engine_common import (read_json, validate, write_json_atomic,
 # `KEY_RE` and `PROC_ID_RE` are unused here and imported anyway: `verbs.py`
 # and `audit.py` read them off this module.
 from merge_facts import (KEY_RE, KIND_FILES, KIND_ORDER, PROC_ID_RE,
-                         SEGMENT_RE, canonical_scope, derive_status, facts_dir,
-                         find_match, is_open, iter_ref_objects,
-                         load_store, save_store, sha256_file)
+                         SEGMENT_RE, STORE_SCHEMA_VERSION, canonical_scope,
+                         derive_status, facts_dir, find_match, is_open,
+                         iter_ref_objects, load_store, save_store, sha256_file)
 # `_is_keyed_list` and `keyfn_for` are the ladder's own answers to "is this a
 # list merged member by member, and what matches its members" — a successor's
 # copy walks the same shapes, so they are borrowed rather than restated. The
 # dispute question is the ladder's too: `would_dispute` runs it.
 from merge_facts.ladder import (TOP_SKIP, UNION_FIELDS, _is_keyed_list,
-                                keyfn_for, merge_entry, with_account_id,
-                                would_dispute)
+                                keyfn_for, merge_entry, merge_extra,
+                                merge_field_status,
+                                with_account_id, would_dispute)
+from merge_facts.conventions import load as load_conventions
+from merge_facts.normalise import normalise_entry
 # The precondition pass and the helpers that moved with it (v3 §4). Imported,
 # not re-declared — and re-exported by being imported.
 from merge_facts.preconditions import (FACT_ID_RE, PACK_KEYS, TEMP_ID_RE,
                                        UNITS_KEY, UNKNOWN_UNIT,
                                        _declared_fields, _declared_rows,
                                        _is_stub, _lookup,
-                                       _source_path_problems, preconditions)
+                                       _unit_row_keys, fold_twins,
+                                       normalise_key, preconditions)
+from merge_facts.tiers import apply_notes, notes, refuse, refusals
 
 SUCCESSION_SKIP = TOP_SKIP | frozenset({"supersedes", "superseded_by"})
 
@@ -72,7 +79,13 @@ LOCATION_KEYS = ("spreadsheetId", "sheetId", "sheet", "hidden")
 
 
 def apply(root, delta_path, run_dir):
-    """Apply one delta to the store. Returns `{created, updated, id_map}`."""
+    """Apply one delta to the store. Returns `{created, updated, id_map}`.
+
+    Spec 2026-09-13 P3: the gate judges **each entry**. An entry that would
+    break the store is held back — `precondition failed: held back: …` on stderr,
+    listed in `{run_dir}/held.json` as `{label, lines}` — and every other entry
+    is written. The run exits 2 only when the delta had entries and not one of
+    them could be written, with the store untouched."""
     root, delta_path, run_dir = (pathlib.Path(root), pathlib.Path(delta_path),
                                  pathlib.Path(run_dir))
     if used(run_dir):
@@ -80,40 +93,168 @@ def apply(root, delta_path, run_dir):
               f"applied a delta — its id-map.json is the record of it",
               file=sys.stderr)
         raise SystemExit(2)
-    delta = read_json(delta_path)
-    validate("facts-delta.schema.json", delta)                       # 1
-    # The ladder installs incoming subtrees by reference; every entry is copied
-    # first so the delta file the run keeps stays exactly what its author wrote.
-    entries = [copy.deepcopy(e) for e in delta.get("entries") or []]
-    for e in entries:
-        e["scope"] = canonical_scope(e.get("scope"))
-    store = load_store(root)
-    # The keys merge owns (9's step 5) are derived before the match, not after
-    # it: a measurement matched on its delta's advisory key would miss its own
-    # entry on the next run and mint a duplicate.
-    _derive_keys(store, entries)
-    problems = preconditions(root, store, entries, run_dir)          # 2
-    if problems:
-        for msg in problems:
-            print(f"precondition failed: {msg}", file=sys.stderr)
+    entries = _delta_entries(read_json(delta_path))
+    if entries is None:
+        print("precondition failed: a delta is an object with schema_version 2 "
+              "and an entries list", file=sys.stderr)
+        raise SystemExit(2)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    store, live, found, held, _ = _gate(root, entries, run_dir, now)   # 1-2
+    for finding in notes(found):
+        print(f"note: {finding.line()}", file=sys.stderr)
+    for finding in (f for fs in held.values() for f in fs):
+        # `precondition failed:` first, as every refusal has always begun, so
+        # a caller reading stderr for it still finds it; `held back:` says the
+        # rest of the delta was written.
+        print(f"precondition failed: held back: {finding.line()}", file=sys.stderr)
+    if entries and not live:
         raise SystemExit(2)
     # `partial`, not the bare `next_fact_id`: `_plan` calls its minter with no
     # arguments, and a bare `next_fact_id()` would resolve the root from
     # DATA_ROOT instead of the one this call was handed.
-    plans, id_map, resolution = _plan(root, store, entries,
+    plans, id_map, resolution = _plan(root, store, [e for _, e in live],
                                       partial(next_fact_id, root))   # 3
-    _rewrite_refs(entries, resolution)                               # 4
+    _rewrite_refs([e for _, e in live], resolution)                  # 4
     touched, adopted = _upsert(store, plans)                         # 6
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     _stamp(root, store, touched, now)                                # 7
     originals = [(root / t["original_ref"], t["original"]) for t in touched
                  if t.get("original_ref")]
     _write(root, store, run_dir, delta_path, id_map, touched, adopted,
-           originals)                                                # 8-9
+           originals, held)                                          # 8-9
     return {"created": [t["id"] for t in touched if t["changed"] and t["created"]],
             "updated": [t["id"] for t in touched
                         if t["changed"] and not t["created"]],
             "id_map": id_map}
+
+
+def _delta_entries(delta):
+    """C1: the delta's plumbing — an object, `schema_version: 2`, an `entries`
+    list — or `None`. Any other top-level member is ignored."""
+    if isinstance(delta, dict) and delta.get("schema_version") == 2 \
+            and isinstance(delta.get("entries"), list):
+        return delta["entries"]
+    return None
+
+
+def _label(entry, n):
+    """The name a held-back entry is listed under: its temp id, else its key,
+    else its position."""
+    if isinstance(entry, dict):
+        for name in ("id", "key"):
+            if isinstance(entry.get(name), str) and entry[name]:
+                return entry[name]
+    return f"entries[{n}]"
+
+
+def _schema_refusals(entry, label):
+    """The delta schema, on this one entry, after its repairs (P3)."""
+    try:
+        validate("facts-delta.schema.json", {"schema_version": 2, "entries": [entry]})
+        return []
+    except ValueError as exc:
+        return [refuse(label, line.replace("entries[0].", "", 1).replace(
+                    "entries[0]", "entry", 1))
+                for line in str(exc).splitlines()[1:]]
+
+
+def _prepare(root, entries, run_dir, held):
+    """One pass of the gate over the entries not yet held: repairs and notes,
+    the per-entry schema, canonical scope, the in-delta folds, the derived keys
+    and the document pass. Returns `(store, live, notes, refused)` — `live` as
+    `(label, entry)` pairs, `refused` as `{label: [Finding]}`."""
+    store = load_store(root)
+    raw = [e for e in entries if isinstance(e, dict)]
+    ctx = {"root": root, "store": store, "entries": raw,
+           "unit_rows": sorted(_unit_row_keys(store, raw)),
+           "conventions": load_conventions(root)}
+    live, found, refused = [], [], {}
+    for n, source in enumerate(entries):
+        label = _label(source, n)
+        if label in held:
+            continue
+        if not isinstance(source, dict):
+            refused.setdefault(label, []).append(refuse(label, "an entry is not an object"))
+            continue
+        entry = copy.deepcopy(source)
+        findings = normalise_entry(entry, {**ctx, "label": label})
+        stops = refusals(findings) + _schema_refusals(entry, label)
+        if stops:
+            refused.setdefault(label, []).extend(stops)
+            continue
+        apply_notes(entry, findings)
+        found += notes(findings)
+        entry["scope"] = canonical_scope(entry.get("scope"))
+        live.append((label, entry))
+    folded, folds = fold_twins([e for _, e in live])
+    kept = {id(e) for e in folded}
+    live = [(label, e) for label, e in live if id(e) in kept]
+    found += folds
+    # The keys merge owns (9's step 5) are derived before the match, not after
+    # it: a measurement matched on its delta's advisory key would miss its own
+    # entry on the next run and mint a duplicate.
+    _derive_keys(store, [e for _, e in live])
+    labels = {label for label, _ in live}
+    # The label each entry was judged under so far, by identity: a repair may
+    # have re-keyed an id-less entry since (C15, C22, the derived keys), and
+    # its findings must still name it, not read as document-level (M-3).
+    named = {id(e): label for label, e in live}
+    for finding in preconditions(root, store, [e for _, e in live], run_dir, named):
+        if finding.tier == "note":
+            found.append(finding)
+        elif finding.label in labels:
+            refused.setdefault(finding.label, []).append(finding)
+        else:                             # a document-level stop holds everything
+            for label in labels:
+                refused.setdefault(label, []).append(finding)
+    by_label = {}
+    for finding in found:
+        by_label.setdefault(finding.label, []).append(finding)
+    for label, entry in live:
+        apply_notes(entry, by_label.get(label, []))
+    return store, live, found, refused
+
+
+def _gate(root, entries, run_dir, now):
+    """Hold back, pass after pass, every entry a pass refuses — a held entry
+    can leave a ref dangling or a note about nothing, so the survivors are
+    judged again — then write the result in memory and hold back any entry
+    whose stored form `facts.schema.json` refuses (C37). Deterministic: the
+    same delta and store hold back the same entries.
+
+    Returns `(store, live, notes, held, store_after)`; `store` and `live` are
+    untouched by the in-memory write, ready for the real one."""
+    held = {}
+    while True:
+        store, live, found, refused = _prepare(root, entries, run_dir, held)
+        if not refused:
+            after, refused = _dry_run(root, store, live, now)
+            if not refused:
+                return store, live, found, held, after
+        for label, stops in refused.items():
+            held.setdefault(label, []).extend(stops)
+
+
+def _dry_run(root, store, live, now):
+    """The write, on copies, with the in-memory minter — and the store schema
+    on every entry it would write."""
+    store = copy.deepcopy(store)
+    incoming = copy.deepcopy([e for _, e in live])
+    label_of = {id(e): label for (label, _), e in zip(live, incoming)}
+    plans, _id_map, resolution = _plan(root, store, incoming, _MemoryMinter(root))
+    _rewrite_refs(incoming, resolution)
+    touched, _adopted = _upsert(store, plans)
+    _stamp(root, store, touched, now)
+    refused = {}
+    for _action, _match, entry, fid in plans:
+        written = next(e for e in store[entry["kind"]]["entries"] if e["id"] == fid)
+        try:
+            validate("facts.schema.json", {"schema_version": STORE_SCHEMA_VERSION,
+                                           "entries": [written]})
+        except ValueError as exc:
+            label = label_of[id(entry)]
+            refused[label] = [refuse(label, f"{entry['kind']}: the store this delta "
+                                            f"would write is invalid: {exc}")]
+    return store, refused
 
 
 def used(run_dir):
@@ -183,43 +324,20 @@ class _MemoryMinter:
 
 def simulate(root, delta_path, run_dir, now="2026-01-01T00:00:00Z"):
     """The whole of `apply` on a copy of the store, writing nothing. Returns
-    `(store_after, problems)`; `problems` is empty exactly when this delta may
-    be applied.
+    `(store_after, findings)`: the store with every entry the gate would let
+    through written, and every finding by tier — the notes it would store and
+    one refusal per line of every entry it would hold back.
 
-    §4: a delta that reaches Gate B must be one `apply` cannot refuse, and the
-    2026-09-02 run proved that validating the delta alone does not establish
-    that — the store it would WRITE is what `apply` validates on the way out.
-    So this runs the same pipeline over `copy.deepcopy(load_store(root))` with
-    an in-memory minter, stamps the derived leaves, and validates the result
-    against `facts.schema.json`.
-
-    The delta's own schema is the caller's first step (`validate` runs it
-    before this, `apply` runs it itself); this starts where both leave off.
-    """
-    root, delta_path = pathlib.Path(root), pathlib.Path(delta_path)
-    delta = read_json(delta_path)
-    entries = [copy.deepcopy(e) for e in delta.get("entries") or []]
-    for e in entries:
-        e["scope"] = canonical_scope(e.get("scope"))
-    # `load_store` re-parses from disk, so the copy guards nothing today; it
-    # states the guarantee rather than resting on that.
-    store = copy.deepcopy(load_store(root))
-    _derive_keys(store, entries)
-    problems = preconditions(root, store, entries, run_dir)
-    if problems:
-        return store, problems
-    plans, _id_map, resolution = _plan(root, store, entries,
-                                       _MemoryMinter(root))
-    _rewrite_refs(entries, resolution)
-    touched, _adopted = _upsert(store, plans)
-    _stamp(root, store, touched, now)
-    for kind in KIND_ORDER:
-        try:
-            validate("facts.schema.json", store[kind])
-        except ValueError as exc:
-            problems.append(f"{kind}: the store this delta would write is "
-                            f"invalid: {exc}")
-    return store, problems
+    §4: what `validate facts-delta --store --run` answers must be what `apply`
+    does, so this is `apply`'s own gate (`_gate`), in-memory minter included;
+    the ledger and the run directory stay byte-identical."""
+    root = pathlib.Path(root)
+    entries = _delta_entries(read_json(delta_path))
+    if entries is None:
+        return load_store(root), [refuse("", "a delta is an object with "
+                                             "schema_version 2 and an entries list")]
+    _store, _live, found, held, after = _gate(root, entries, run_dir, now)
+    return after, found + [f for fs in held.values() for f in fs]
 
 
 # --------------------------------------------------------------------------- #
@@ -264,24 +382,42 @@ def _substitute_ref_items(store, by_temp, data):
 
 
 def _derive_row_keys(data):
-    # Only a reference table's rows are keyed by their primaryKey join (§9). A
-    # log's or a config table's rows are minted once and kept as written — the
-    # unit table's `g` is a key, not a derivation, and re-keying it under merge
-    # would move the rows the unit precondition reads.
-    if data.get("role") != "reference":
-        return
+    # Only a reference table's rows are RE-keyed by their primaryKey join (§9).
+    # A log's or a config table's rows are minted once and kept as written —
+    # the unit table's `g` is a key, not a derivation, and re-keying it under
+    # merge would move the rows the unit precondition reads.
     pk, rows = data.get("primaryKey"), data.get("rows")
-    if not (isinstance(pk, list) and pk and isinstance(rows, list)):
+    if not isinstance(rows, list):
         return
     declared = {f.get("key") for f in data.get("fields") or [] if isinstance(f, dict)}
-    if not all(m in declared for m in pk):
-        return
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
+    joinable = isinstance(pk, list) and pk and all(m in declared for m in pk)
+
+    def joined(row):
         values = [row.get(m) for m in pk]
         if all(isinstance(v, str) and SEGMENT_RE.fullmatch(v) for v in values):
-            row["key"] = "__".join(values)
+            return "__".join(values)
+        return None
+
+    if data.get("role") == "reference" and joinable:
+        for row in rows:
+            if isinstance(row, dict) and joined(row):
+                row["key"] = joined(row)
+    # Spec 2026-09-13 C9 (§9 default for A36): a row still without a key takes
+    # the join, else its title when that title is unique in the table and
+    # normalises to a minted key. Never its position: row order moves between
+    # runs, and a positional key would match the wrong row.
+    titles = [r.get("title") for r in rows if isinstance(r, dict)]
+    taken = {r.get("key") for r in rows if isinstance(r, dict)}
+    for row in rows:
+        if not isinstance(row, dict) or row.get("key"):
+            continue
+        key = joinable and joined(row)
+        title = row.get("title")
+        if not key and isinstance(title, str) and titles.count(title) == 1:
+            key = normalise_key(title)
+        if key and KEY_RE.fullmatch(key) and key not in taken:
+            row["key"] = key
+            taken.add(key)
 
 
 def _measurement_key(store, by_temp, data):
@@ -504,6 +640,8 @@ def _successor(match, incoming, fid):
                 current.append(copy.deepcopy(member))
                 seen.add(keyfn(member))
     _overwrite(successor, incoming, SUCCESSION_SKIP)
+    merge_extra(successor, incoming)
+    merge_field_status(successor, incoming)
     # §11: the superseded era's accounts do NOT come along. An account is a
     # competing reading of the *old* value, and the successor's value is a
     # different one — so an inherited account is a dispute that is not the
@@ -688,7 +826,8 @@ def _stamp(root, store, touched, now):
             entry["updated_at"] = now
 
 
-def _write(root, store, run_dir, delta_path, id_map, touched, adopted, originals):
+def _write(root, store, run_dir, delta_path, id_map, touched, adopted, originals,
+           held=None):
     """The writing half: the originals `_stamp` named, the source stamps, the
     snapshot, the five files, and the run directory's own records. Nothing
     here derives anything — `_stamp` has run, and `validate --store --run`
@@ -700,7 +839,7 @@ def _write(root, store, run_dir, delta_path, id_map, touched, adopted, originals
         if record["changed"]:
             _stamp_sources(root, record["entry"], run_ref)
     _snapshot(root, run_dir)
-    save_store(root, store)
+    save_store(root, store, only={t["id"] for t in touched})
     kept = run_dir / "facts-delta.json"
     # The pipeline's own delta is already written there (QF-7); a caller from
     # elsewhere — `edit-fact`, the ui-backend — hands us one to copy in.
@@ -728,3 +867,9 @@ def _write(root, store, run_dir, delta_path, id_map, touched, adopted, originals
     # adopted, so a MISSING file unambiguously means "a run that predates
     # this artifact" rather than "nothing adopted".
     _write_once(run_dir / "adopted.json", sorted(adopted))
+    # Spec 2026-09-13 P3: what the gate held back, so the run's report can say
+    # what waited. A file of its own rather than a member of `touched.json`,
+    # which `facts-plan report` reads as a list of ids.
+    _write_once(run_dir / "held.json",
+                [{"label": label, "lines": [f.message for f in stops]}
+                 for label, stops in (held or {}).items()])

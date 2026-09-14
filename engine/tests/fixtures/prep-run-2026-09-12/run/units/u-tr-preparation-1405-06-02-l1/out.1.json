@@ -1,0 +1,528 @@
+{
+  "schema_version": 1,
+  "unit": "u-tr-preparation-1405-06-02-l1",
+  "attempt": 1,
+  "decisions": [],
+  "new": [
+    {
+      "kind": "rule",
+      "key": "resepi_marinate_morgh",
+      "title": "نسخهٔ مواد مرینت مرغ",
+      "statement": "به ازای هر کیلوگرم مرغ آماده‌شده، سی گرم پودر مرینت معمولی و هفتاد گرم آب لازم است. مسئول لاین مرینت پس از شستشو و توزین هر نوع مرغ، مواد را به همین نسبت مخلوط می‌کند و همراه مرغ در دستگاه مرینیتور می‌ریزد.",
+      "aliases": ["مواد مرینت هر کیلو مرغ"],
+      "processes": [
+        {
+          "process": "preparation-010",
+          "node": "preparation-010-n006",
+          "quote": "به ازای هر یک کیلو ۳۰ گرم پودر مرینت لازم داریم و ۷۰ گرم هم آبه"
+        }
+      ],
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "pudr_marinate",
+            "title": "پودر مرینت به ازای هر کیلوگرم مرغ",
+            "unit": "g",
+            "value": 30,
+            "nature": "standard"
+          },
+          {
+            "key": "ab_marinate",
+            "title": "آب به ازای هر کیلوگرم مرغ",
+            "unit": "g",
+            "value": 70,
+            "nature": "standard"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "estesnaye_marinate_dastgahi",
+      "title": "استثنای مرینت با دستگاه",
+      "statement": "فیله و سینهٔ مخصوص چیزا در دستگاه مرینیتور مرینت نمی‌شوند، زیرا بافت نرم دارند و در دستگاه له می‌شوند. مرینت این دو قلم بیرون از دستگاه انجام می‌شود.",
+      "processes": [
+        {
+          "process": "preparation-012",
+          "node": "preparation-012-n003",
+          "quote": "به جز فیله و چیزا چون بافتشون نرمه له میشه"
+        }
+      ],
+      "data": {
+        "lang": "text",
+        "expr": null,
+        "original": "فیله و چیزا به دلیل نرمی بافت در دستگاه مرینیتور ریخته نمی‌شوند.",
+        "inputs": [
+          { "key": "noe_morgh", "title": "نوع مرغ" }
+        ],
+        "outputs": [
+          { "key": "ravesh_marinate", "title": "روش مرینت" }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "vazn_baste_khamir",
+      "title": "وزن هر بستهٔ خمیر",
+      "statement": "خمیر آمادهٔ شعبه در بسته‌های هفت کیلوگرمی پلاستیکی بسته‌بندی و برچسب‌گذاری می‌شود و وزن هیچ بسته‌ای از هشت کیلوگرم بیشتر نمی‌رود، زیرا خمیر ور می‌آید و از بسته بیرون می‌زند.",
+      "aliases": ["بستهٔ هفت کیلویی خمیر"],
+      "processes": [
+        {
+          "process": "preparation-016",
+          "node": "preparation-016-n008",
+          "quote": "خمیر آماده شده توی بسته های هفت کیلویی بسته بندی میشه"
+        }
+      ],
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "vazn_baste_khamir",
+            "title": "وزن بستهٔ خمیر",
+            "unit": "kg",
+            "value": 7,
+            "range": { "min": 7, "max": 8 },
+            "nature": "standard"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "tedad_pors_chizza_az_sine",
+      "title": "تعداد پرس چیزا از سینه‌های تحویلی",
+      "statement": "هر پرس سالاد چیزا با دو رول مرغ سرو می‌شود، بنابراین تعداد پرس قابل تولید نصف تعداد سینه‌های تک‌عددی تحویل‌گرفته‌شده از انبار است.",
+      "processes": [
+        {
+          "process": "preparation-014",
+          "node": "preparation-014-n002",
+          "quote": "۴۸ تا تک دونه بهشون میده که جمعا میشه ۲۴ تا چیزا"
+        }
+      ],
+      "data": {
+        "lang": "feel",
+        "expr": "tedad_pors_chizza = tedad_sine_morgh / 2",
+        "inputs": [
+          {
+            "key": "tedad_sine_morgh",
+            "title": "تعداد سینهٔ تک‌عددی تحویلی",
+            "unit": "pcs"
+          }
+        ],
+        "outputs": [
+          {
+            "key": "tedad_pors_chizza",
+            "title": "تعداد پرس چیزا",
+            "unit": "portion",
+            "nature": "observed"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "vazn_chune_panir_chizza",
+      "title": "وزن چانهٔ پنیر چیزا",
+      "statement": "مخلوط پنیر پس از آماده شدن روی ترازو به چانه‌های سی و چهار گرمی تقسیم و رول می‌شود. هر چانه یک رول پنیر چیزا است.",
+      "processes": [
+        {
+          "process": "preparation-014",
+          "node": "preparation-014-n023",
+          "quote": "به وزن ۳۴ گرم روی ترازو چونه میشه"
+        }
+      ],
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "vazn_chune",
+            "title": "وزن هر چانهٔ پنیر",
+            "unit": "g",
+            "value": 34,
+            "nature": "standard"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "resepi_makhlut_panir_chizza",
+      "title": "نسبت مخلوط پنیر چیزا",
+      "statement": "مخلوط پنیر چیزا از وزن برابر پنیر لبنه و پنیر پیتزا ساخته می‌شود؛ یک کیلوگرم از هر کدام. پنیر پیتزا پیش از میکس کمی به دمای محیط می‌رسد تا از حالت منجمد خارج شود، اما نباید شل شود چون آب می‌اندازد.",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "panir_labne",
+            "title": "پنیر لبنه در هر مخلوط",
+            "unit": "kg",
+            "value": 1,
+            "nature": "standard"
+          },
+          {
+            "key": "panir_pitza",
+            "title": "پنیر پیتزا در هر مخلوط",
+            "unit": "kg",
+            "value": 1,
+            "nature": "standard"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "chidman_zarf_chizza",
+      "title": "ترکیب هر ظرف چیزا",
+      "statement": "در هر ظرف نهایی چیزا دوازده رول مرغ چیزا و شش رول پنیر چیزا چیده می‌شود. ظرف پس از برچسب‌گذاری سلفون‌کشی و در فریزر گذاشته می‌شود.",
+      "processes": [
+        {
+          "process": "preparation-014",
+          "node": "preparation-014-n039",
+          "quote": "۱۲ تا مرغ چیزا چیده میشه ۶ تا هم پنیر چیزا"
+        }
+      ],
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "tedad_morgh_chizza",
+            "title": "تعداد رول مرغ چیزا در هر ظرف",
+            "unit": "pcs",
+            "value": 12,
+            "nature": "standard"
+          },
+          {
+            "key": "tedad_panir_chizza",
+            "title": "تعداد رول پنیر چیزا در هر ظرف",
+            "unit": "pcs",
+            "value": 6,
+            "nature": "standard"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "zarib_sefaresh_aqlam_nimsakhte",
+      "title": "ضریب سفارش اقلام نیم‌ساخته",
+      "statement": "سفارش آشپزخانه برای اقلام نیم‌ساخته باید مضرب ضریب بسته‌بندی همان قلم باشد و مقدار خارج از ضریب تحویل نمی‌شود؛ برای نمونه به جای بیست و پنج پرس چیزا، بیست و چهار پرس تحویل می‌شود.",
+      "data": {
+        "lang": "table",
+        "expr": null,
+        "inputs": [
+          { "key": "goruh_qalam", "title": "گروه قلم نیم‌ساخته" }
+        ],
+        "outputs": [
+          { "key": "zarib_sefaresh", "title": "ضریب سفارش" }
+        ],
+        "table": {
+          "inputs": ["goruh_qalam"],
+          "outputs": ["zarib_sefaresh"],
+          "rows": [
+            { "goruh_qalam": "چیزا", "zarib_sefaresh": "مضرب شش پرس" },
+            { "goruh_qalam": "برگر", "zarib_sefaresh": "مضرب پنج عدد" },
+            { "goruh_qalam": "رست‌بیف و گوشت چرخ‌شده", "zarib_sefaresh": "مضرب دو کیلوگرم" }
+          ]
+        }
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "zarfiat_sini_chizza",
+      "title": "ظرفیت هر سینی چیزا",
+      "statement": "رول‌های آماده‌شدهٔ چیزا دانه‌دانه روی سینی بزرگ چیده می‌شوند و در هر سینی به‌طور معمول بیست و هشت رول جا می‌گیرد. سینی سلفون‌کشی و به فریزر منتقل می‌شود.",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "tedad_rol_dar_sini",
+            "title": "تعداد رول در هر سینی",
+            "unit": "pcs",
+            "value": 28,
+            "nature": "standard"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "zaman_enjemad_chizza",
+      "title": "زمان انجماد رول‌های چیزا",
+      "statement": "رول‌های چیزا پیش از پانکو زدن باید بیست و چهار ساعت در فریزر بمانند تا کاملاً منجمد شوند. پانکو زدن روز بعد انجام می‌شود.",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "zaman_enjemad",
+            "title": "زمان ماندن در فریزر",
+            "unit": "hour",
+            "value": 24,
+            "nature": "standard"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "bardasht_zarf_kamel_chizza",
+      "title": "شرط برداشت ظرف چیزا توسط انبار",
+      "statement": "انبار در غروب فقط ظرف‌های کامل و برچسب‌خوردهٔ چیزا را از فریزر برمی‌دارد. ظرف ناقص و بدون برچسب تا تکمیل شدن در روز بعد در فریزر باقی می‌ماند.",
+      "processes": [
+        {
+          "process": "preparation-014",
+          "node": "preparation-014-n039",
+          "quote": "اونایی که لیبل نخورده یعنی ناقصه دست بهش نمیزنن"
+        }
+      ],
+      "data": {
+        "lang": "text",
+        "expr": null,
+        "original": "فقط ظرف کامل و لیبل‌خورده از فریزر برداشته می‌شود؛ ظرف ناقص تا تکمیل در فریزر می‌ماند.",
+        "inputs": [
+          { "key": "vaziat_zarf", "title": "وضعیت کامل بودن و برچسب ظرف" }
+        ],
+        "outputs": [
+          { "key": "mojavez_bardasht", "title": "مجوز برداشت ظرف" }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "resepi_sos_alfredo_pitza",
+      "title": "نسخهٔ سس آلفردو پیتزا",
+      "statement": "هر بچ سس آلفردو پیتزا از هشت عدد خامه، سیصد و بیست گرم سیر، سیصد و بیست گرم روغن، نود و هشت گرم فلفل و هشت کیلوگرم سس مایونز ساخته می‌شود. سیر و روغن ابتدا میکس و به سیرروغن تبدیل می‌شوند و سپس همهٔ مواد با هم ترکیب می‌شوند.",
+      "processes": [
+        {
+          "process": "preparation-022",
+          "node": "preparation-022-n012",
+          "quote": "۳۲۰ گرم سیر ۳۲۰ گرم روغن که میکس میشه"
+        }
+      ],
+      "data": {
+        "inputs": [],
+        "outputs": [
+          { "key": "khame", "title": "خامه", "unit": "pcs", "value": 8, "nature": "standard" },
+          { "key": "sir", "title": "سیر", "unit": "g", "value": 320, "nature": "standard" },
+          { "key": "roghan", "title": "روغن", "unit": "g", "value": 320, "nature": "standard" },
+          { "key": "felfel", "title": "فلفل", "unit": "g", "value": 98, "nature": "standard" },
+          { "key": "sos_mayonez", "title": "سس مایونز", "unit": "kg", "value": 8, "nature": "standard" }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "eslah_tedad_ruye_barchasb",
+      "title": "اصلاح تعداد روی برچسب بسته",
+      "statement": "برچسب هر قلم با تعداد استاندارد همان قلم چاپ شده است؛ برای نمونه فیله شصت عددی و بیکن لایه‌ای سی ورقی. اگر شعبه یا آشپزخانه تعداد کمتری بخواهد، تعداد چاپ‌شده خط زده و تعداد واقعی روی برچسب نوشته می‌شود و نام و تاریخ دست‌نخورده می‌ماند.",
+      "processes": [
+        {
+          "process": "preparation-006",
+          "node": "preparation-006-n020",
+          "quote": "دست به تاریخ و اسم نمیزنن فقط تعداد رو تغییر میدن"
+        }
+      ],
+      "data": {
+        "lang": "text",
+        "expr": null,
+        "original": "تعداد استاندارد روی برچسب خط زده و تعداد درخواستی نوشته می‌شود؛ نام و تاریخ تغییر نمی‌کند.",
+        "inputs": [
+          { "key": "tedad_darkhasti", "title": "تعداد درخواستی", "unit": "pcs" },
+          { "key": "tedad_estandard_barchasb", "title": "تعداد استاندارد برچسب", "unit": "pcs" }
+        ],
+        "outputs": [
+          { "key": "tedad_sabt_shode", "title": "تعداد ثبت‌شده روی برچسب", "unit": "pcs" }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "tedad_sabzijat_dourchin_dah_pors",
+      "title": "تعداد سبزیجات دورچین ده پرسی",
+      "statement": "دورچین سبزیجات کنار چیکن استیک سرو می‌شود و برای هر ده پرس، پنج عدد کدو و پنج عدد هویج ریز می‌شود. فلفل دلمه رنگی و بروکلی نیز طبق سفارش روز به دورچین اضافه می‌شوند.",
+      "processes": [
+        {
+          "process": "preparation-015",
+          "node": "preparation-015-n006",
+          "quote": "برای هر ۱۰ پرس ۵ تا کدو و ۵ تا هویج ریز میشه"
+        }
+      ],
+      "data": {
+        "lang": "table",
+        "expr": null,
+        "inputs": [
+          { "key": "noe_sabzi", "title": "نوع سبزی دورچین" }
+        ],
+        "outputs": [
+          { "key": "tedad_dar_dah_pors", "title": "تعداد در هر ده پرس", "unit": "pcs" }
+        ],
+        "table": {
+          "inputs": ["noe_sabzi"],
+          "outputs": ["tedad_dar_dah_pors"],
+          "rows": [
+            { "noe_sabzi": "کدو", "tedad_dar_dah_pors": 5 },
+            { "noe_sabzi": "هویج", "tedad_dar_dah_pors": 5 }
+          ]
+        }
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "mabnaye_tahvil_dourchin",
+      "title": "مبنای تحویل دورچین استیک",
+      "statement": "دورچین استیک بر مبنای تعداد سبزی و نه وزن بسته تحویل می‌شود و برچسب ده پرسی می‌خورد. چون اندازهٔ سبزی‌ها یکسان نیست، در صورت کوچک‌تر بودن هویج یا کدو نسبت به روز قبل، برش‌ها بزرگ‌تر یا کوچک‌تر گرفته می‌شود.",
+      "data": {
+        "lang": "text",
+        "expr": null,
+        "original": "وزن دورچین ملاک نیست؛ برچسب ده پرسی و تعداد سبزی ملاک تحویل است.",
+        "inputs": [
+          { "key": "tedad_sabzi", "title": "تعداد سبزی ریزشده", "unit": "pcs" }
+        ],
+        "outputs": [
+          { "key": "mabnaye_tahvil", "title": "مبنای تحویل بستهٔ دورچین" }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "zaman_abpaz_havij_dourchin",
+      "title": "زمان آب‌پز کردن هویج دورچین",
+      "statement": "هویج دورچین حدود پنج دقیقه در آب جوش می‌ماند تا رنگ آب نارنجی شود؛ سپس بقیهٔ سبزیجات افزوده می‌شوند و پس از چند ثانیه همه در آب یخ بلانچ می‌شوند تا دما پایین بیاید.",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "zaman_joshidan_havij",
+            "title": "زمان جوشیدن هویج",
+            "unit": "min",
+            "value": 5,
+            "nature": "standard"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "yakhgoshayi_shab_ghabl",
+      "title": "یخ‌گشایی مواد از شب قبل",
+      "statement": "مرغ‌ها و ظرف‌های چیزا از شب قبل توسط انبار از فریزر خارج می‌شوند تا صبح روز بعد یخ‌گشایی شده باشند؛ در فصل گرم داخل یخچال آماده‌سازی و در فصل سرد از غروب روی میز کار چیده می‌شوند و کار دیگری روی آن‌ها انجام نمی‌شود.",
+      "processes": [
+        {
+          "process": "preparation-031",
+          "node": "preparation-031-n008",
+          "quote": "از شب قبل باز شده همه اینا رو"
+        }
+      ],
+      "data": {
+        "lang": "text",
+        "expr": null,
+        "original": "انبار از شب قبل مرغ و ظرف چیزا را از فریزر خارج می‌کند؛ فصل گرم در یخچال آماده‌سازی و فصل سرد روی میز.",
+        "inputs": [
+          { "key": "fasl", "title": "فصل سال" }
+        ],
+        "outputs": [
+          { "key": "mahal_yakhgoshayi", "title": "محل یخ‌گشایی" }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "noqte_sefaresh_mavad_sos",
+      "title": "نقطهٔ سفارش مواد اولیهٔ سس",
+      "statement": "وقتی آخرین دبهٔ یک سس باز شود، مسئول سس اطلاع می‌دهد و مواد اولیهٔ همان سس در چک‌لیست انبار تیک می‌خورد تا روز بعد تهیه و سس تولید شود.",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "noqte_sefaresh",
+            "title": "موجودی نقطهٔ سفارش سس",
+            "unit": "pcs",
+            "value": 1,
+            "nature": "limit"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "khoruj_mavad_sos_hengam_tolid",
+      "title": "زمان ثبت خروج مواد اولیهٔ سس",
+      "statement": "خروج مواد اولیهٔ هر سس در همان لحظهٔ تولید سس در انبار ثبت می‌شود، حتی اگر سس تولیدشده در انبار نگهداری شود. سس‌ها به جز آلفردو پیتزا در انبار می‌مانند، زیرا دمای انبار ثابت‌تر از یخچال آماده‌سازی است.",
+      "data": {
+        "lang": "text",
+        "expr": null,
+        "original": "خروج مواد اولیهٔ سس هنگام تولید سس در انبار ثبت می‌شود و سس تولیدشده در انبار نگهداری می‌شود.",
+        "inputs": [
+          { "key": "zaman_tolid_sos", "title": "زمان تولید سس" }
+        ],
+        "outputs": [
+          { "key": "zaman_sabt_khoruj", "title": "زمان ثبت خروج مواد اولیه" }
+        ]
+      }
+    },
+    {
+      "kind": "measurement",
+      "key": "vazn_morgh_tafkik_shode",
+      "title": "وزن مرغ تفکیک‌شده پیش از مرینت",
+      "statement": "هر نوع مرغ پس از تفکیک و شستشو جداگانه روی ترازوی تاپینگ وزن می‌شود تا مقدار مواد مرینت آن نوع بر مبنای کیلوگرم محاسبه شود. این توزین را مسئول لاین مرینت پیش از ریختن مرغ در دستگاه انجام می‌دهد.",
+      "processes": [
+        {
+          "process": "preparation-012",
+          "node": "preparation-012-n003",
+          "quote": "هر کدومو جدا جدا وزن میگیرم"
+        }
+      ],
+      "data": {
+        "quantity": "mass",
+        "unit": "kg",
+        "method": "توزین جداگانهٔ هر نوع مرغ روی ترازوی تاپینگ",
+        "when": "پس از شستشو و پیش از مرینت",
+        "by": "مسئول لاین مرینت",
+        "exceptions": "فیله و سینهٔ چیزا نیز وزن می‌شوند اما در دستگاه مرینت نمی‌شوند."
+      }
+    },
+    {
+      "kind": "measurement",
+      "key": "vazn_kenar_chizza",
+      "title": "وزن کنار چیزا",
+      "statement": "سر و گوشه‌های بریده‌شدهٔ رول‌های چیزا جمع، در پلاستیک بسته و روی ترازو وزن می‌شوند و با نام و وزن برچسب می‌خورند تا انبار آن‌ها را از فریزر ببرد. مقدار روزانه در حدود پانصد تا ششصد گرم است و فرم جداگانه‌ای ندارد.",
+      "processes": [
+        {
+          "process": "preparation-014",
+          "node": "preparation-014-n019",
+          "quote": "اونم توی پلاستیک میذارم مجددا لیبل میزنم وزنش مشخص میشه"
+        }
+      ],
+      "data": {
+        "quantity": "mass",
+        "unit": "g",
+        "method": "توزین بستهٔ کنار چیزا روی ترازوی برچسب‌گذاری",
+        "when": "پایان کار تولید چیزا",
+        "by": "مسئول لاین مرینت",
+        "exceptions": "فرم مشخصی پر نمی‌شود و اطلاع‌رسانی شفاهی به انبار انجام می‌شود."
+      }
+    },
+    {
+      "kind": "item",
+      "key": "kenar_chizza",
+      "title": "کنار چیزا",
+      "statement": "سر و گوشه‌های بریده‌شدهٔ رول‌های مرغ چیزا که با وزن و نام برچسب می‌خورد و به انبار برمی‌گردد. این مقدار ضایعات شمرده نمی‌شود و روز بعد به مرغ پیتزا تبدیل می‌شود؛ شمارش آن بر مبنای وزن است.",
+      "aliases": ["سر و گوشهٔ چیزا"],
+      "data": {
+        "category": "ingredient",
+        "code_absent": true,
+        "unit": "kg",
+        "unit_raw": "کیلوگرم",
+        "state": "raw",
+        "group": "مرغ",
+        "tracked": [
+          {
+            "record": { "ref": "S-rec-2c141582db58" },
+            "value": true,
+            "reason": "برچسب وزن‌دار آن هنگام تحویل به انبار ثبت می‌شود."
+          }
+        ]
+      }
+    }
+  ]
+}

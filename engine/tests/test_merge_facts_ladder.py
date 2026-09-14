@@ -200,3 +200,35 @@ def test_a_derived_leaf_is_skipped_but_its_siblings_still_merge():
     changes = merge_entry(e, inc, SRC_B)
     assert e["data"]["location"] == {}                       # still derived-only
     assert ("data/instances/pz__s12", "append") in changes
+
+
+def test_the_preserved_bag_unions_and_a_null_reread_is_no_change():
+    """Spec 2026-09-13 C5/C10, owner ruling 2026-09-13 (option b): `extra`
+    gains what it does not hold, a newer reading of a held path replaces it
+    (and an older run's `path~n` goes), and it is never disputed; a null the
+    gate wrote, read again as null, is a noop — not a fill that would restamp
+    the entry on every run."""
+    existing = {"extra": {"data/x": 1, "data/x~2": 5}, "data": {"category": None},
+                "statement": ""}
+    incoming = {"extra": {"data/x": 2, "data/y": 3}, "data": {"category": None},
+                "statement": ""}
+    changes = merge_entry(existing, incoming, {"type": "chat", "ref": None})
+    assert existing["extra"] == {"data/x": 2, "data/y": 3}
+    assert [c for c in changes if c[1] != "noop"] == [
+        ("extra/data/x", "union"), ("extra/data/y", "union")]
+    assert merge_entry(existing, incoming, {"type": "chat", "ref": None}) == [
+        ("data/category", "noop")]
+    assert "accounts" not in existing
+
+
+def test_an_incoming_null_never_challenges_a_known_value():
+    """Final review C-1: a null a gate REPAIR wrote (B19/C10/C19 — "unknown")
+    merged onto a stored value changes nothing and opens no dispute."""
+    e = _base()
+    inc = copy.deepcopy(e)
+    inc["data"]["outputs"][0]["value"] = None
+    inc["data"]["outputs"][0]["unit"] = None
+    before = copy.deepcopy(e)
+    changes = merge_entry(e, inc, SRC_B)
+    assert e == before
+    assert all(action == "noop" for _, action in changes)

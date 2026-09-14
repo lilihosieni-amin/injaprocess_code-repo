@@ -82,10 +82,13 @@ def find_match(store, entry):
 
     §3.2: an instance match whose natural key disagrees is **not** a match —
     `apply` never renames, and `digest` has already reported the pair to the
-    reviewer as `template_split`. `apply`'s own precondition then refuses the
-    delta rather than minting a second record on one tab. The one exception is
-    a stub (QF-20): it is identity and nothing else, and the owning run fills
-    it whatever key it carries.
+    reviewer as `template_split`. By the time `find_match` runs, the store
+    gate's `repair_tab_holder` (spec 2026-09-13 C22) has already given such an
+    entry the holder's key and scope, so the `_nk(e) == nk` test below matches
+    it — which is why the old "a tab held under another key" refusal (C23)
+    could no longer fire and was removed. The one exception is a stub (QF-20):
+    it is identity and nothing else, and the owning run fills it whatever key
+    it carries.
     """
     kind = entry["kind"]
     idents = set(_sheet_identities(entry))
@@ -314,9 +317,16 @@ def build_index(store):
                          "updated_at": e["updated_at"]})
     return {"schema_version": STORE_SCHEMA_VERSION, "entries": rows}
 
-def save_store(root, store):
+def save_store(root, store, only=None):
+    """Validate, then write the five files and the index. `only` (a set of
+    ids) validates just the entries a verb wrote (spec 2026-09-13 P2/C37): an
+    older off-contract entry elsewhere in a kind file is the audit's to report,
+    and must not block every later write of its kind."""
     for kind, name in KIND_FILES.items():
-        validate("facts.schema.json", store[kind])
+        doc = store[kind] if only is None else {
+            **store[kind], "entries": [e for e in store[kind]["entries"]
+                                       if e.get("id") in only]}
+        validate("facts.schema.json", doc)
     for kind, name in KIND_FILES.items():
         write_json_atomic(facts_dir(root) / name, store[kind])
     write_json_atomic(facts_dir(root) / ".index.json", build_index(store))

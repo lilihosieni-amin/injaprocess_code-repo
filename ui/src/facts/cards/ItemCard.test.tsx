@@ -116,6 +116,11 @@ describe('the item card', () => {
     expect(pack).toHaveAttribute('dir', 'ltr')
   })
 
+  it('draws «—» for a `pack: null` the contract allows, instead of crashing (P4c)', () => {
+    render(<ItemCard bundle={bundleOf('item', { category: 'ingredient', unit: 'g', pack: null })} />)
+    expect(screen.getByText('بسته').parentElement).toHaveTextContent('—')
+  })
+
   it('draws nothing for a kind that is not an item', () => {
     const { container } = render(<ItemCard bundle={bundleOf('note', {})} />)
     expect(container).toBeEmptyDOMElement()

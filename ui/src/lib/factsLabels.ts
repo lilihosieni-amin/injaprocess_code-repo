@@ -243,6 +243,7 @@ export const ISSUE_KIND_LABELS: Record<string, string> = {
   leading_offset: 'جابه‌جایی ستون‌های ابتدایی',
   unused_mirror: 'نسخهٔ پیوندی بی‌استفاده',
   unknown_source: 'منبع ناشناخته',
+  shape: 'شکل نامنتظره',
   column_offset: 'اختلاف ستون بین نسخه‌ها',
   per_cell_mirror: 'پیوند خانه‌به‌خانه',
   ambiguous_row_header: 'سرستون تکراری در یک برگه',
@@ -815,17 +816,16 @@ export function cellLabel(value: string): string {
 }
 
 /**
- * The Persian for one stored value — **and a build failure when there is none.**
+ * The Persian for one stored value — or the stored value itself when there is none.
  *
- * `roleLabel`'s sibling, with the opposite answer to a missing key, and the
- * difference is deliberate. A role is *seeded* and a role this build has no
- * wording for is a real server-side state, so `roleLabel` quotes the
- * identifier. An enumeration member is *frozen in a schema* this repo owns, so a
- * value with no label is a schema edit that forgot this file — a defect, and one
- * that would otherwise ship an English word onto a Persian screen. In
- * development it throws where it happened; in production it degrades to the raw
- * value rather than blanking a screen, because a reader seeing `sheets` is
- * better served than a reader seeing nothing.
+ * It never throws, in development or production. It used to throw in
+ * development, on the reasoning that a closed schema enum with no label was a
+ * forgotten edit; since the gate tiers (C13) the enums are open strings and the
+ * store may hold a value no map knows, which is a real state, not a defect —
+ * and a throw there replaced the whole page with the router's error screen. A
+ * reader seeing `sheets` is better served than a reader seeing nothing. The
+ * schema-coverage test in `factsLabels.test.ts` still catches a listed member
+ * with no label.
  *
  * `null` / `undefined` answer `''`: a field the server did not send is not a
  * missing label, and «—» would be a claim this function is not entitled to make
@@ -833,10 +833,5 @@ export function cellLabel(value: string): string {
  */
 export function label(map: Record<string, string>, value: string | null | undefined): string {
   if (value === null || value === undefined || value === '') return ''
-  const found = map[value]
-  if (found !== undefined) return found
-  if (import.meta.env.DEV) {
-    throw new Error(`factsLabels: no Persian label for «${value}» — add it to the map in src/lib/factsLabels.ts (spec Appendix D)`)
-  }
-  return value
+  return Object.prototype.hasOwnProperty.call(map, value) ? map[value] : value
 }

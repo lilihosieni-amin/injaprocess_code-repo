@@ -14,7 +14,7 @@ import sys
 import time
 
 from engine_common import data_root, read_json, write_json_atomic
-from merge_facts import sha256_file
+from merge_facts import sha256_file, tiers
 
 VERBS = {"build": ("facts_plan.build", "build"),
          "digest": ("facts_plan.assemble", "digest"),
@@ -84,7 +84,9 @@ def main(argv=None):
         # then the run's own line. `status()` still returns the dict.
         for unit in result["units"]:
             print(f'{unit["id"]} · {unit["type"]} · {unit["state"]} · '
-                  f'{unit["attempts"]}')
+                  f'{unit["attempts"]}'
+                  + (f' · retry {", ".join(unit["retry"])}' if unit.get("retry")
+                     else ""))
         print(f'stage {result["stage"]} · '
               f'plan_stale {str(result["plan_stale"]).lower()} · '
               f'elapsed_s {result["elapsed_s"]} · '
@@ -101,6 +103,10 @@ def main(argv=None):
 # state of its own beyond `turn.json`'s one timestamp.
 
 YIELD_AFTER_S = 2400
+
+#: §2.3's two attempts per unit — `assemble.ATTEMPTS`, which cannot be imported
+#: at module load without importing the whole assembly for `status`.
+ATTEMPTS = 2
 
 
 def _epoch():
@@ -119,9 +125,15 @@ def unit_states(root, run_dir, units, check=None):
 
     A truncated or unparseable attempt is **deleted** here and costs no
     attempt: a crashed dispatch must not spend one of the two a unit gets.
-    `check(path) -> list[str]` is the validator; with none, it is
-    `validate facts-unit`'s own pass, which is what makes `done` mean the
-    output `assemble` will fold.
+    `check(path) -> findings` is the validator; with none, it is `validate
+    facts-unit`'s own pass, which is what makes `done` mean the output
+    `assemble` will fold.
+
+    Only a REFUSE counts (A42). A latest attempt no refusal costs as a whole is
+    `done`; when some of its items were refused and an attempt is left, `retry`
+    names them — and, since the unit is retried anyway, the candidates it left
+    undecided (A17) — so the retry answers those and nothing else. A unit whose
+    every attempt was refused whole is `failed` once both are spent.
     """
     if check is None:
         from facts_plan.assemble import validate_unit
@@ -138,13 +150,27 @@ def unit_states(root, run_dir, units, check=None):
                 path.unlink(missing_ok=True)
                 continue
             attempts.append(path)
-        state = "pending"
+        state, retry = "pending", []
         if attempts:
-            problems = check(attempts[-1]) if check else []
-            state = "done" if not problems else ("failed" if len(attempts) >= 2
-                                                 else "pending")
-        out.append({"id": unit["id"], "type": unit["type"], "state": state,
-                    "attempts": len(attempts)})
+            found = tiers.coerce(check(attempts[-1]))
+            refused = tiers.refusals(found)
+            if not any(tiers.item_of(f) is None for f in refused):
+                state = "done"
+                if refused and len(attempts) < ATTEMPTS:
+                    labels = {f.label: tiers.item_of(f) for f in refused}
+                    retry = sorted(labels, key=labels.get) + [
+                        f.label for f in tiers.notes(found)
+                        if f.message == "has no decision"]
+            elif len(attempts) >= ATTEMPTS:
+                whole = lambda p: any(tiers.item_of(f) is None
+                                      for f in tiers.refusals(tiers.coerce(check(p))))
+                state = "done" if any(not whole(p) for p in attempts[:-1]) \
+                    else "failed"
+        row = {"id": unit["id"], "type": unit["type"], "state": state,
+               "attempts": len(attempts)}
+        if retry:
+            row["retry"] = retry
+        out.append(row)
     return out
 
 
@@ -161,7 +187,7 @@ def _stage(run_dir, plan, states):
     """The resume ladder of §6, by artefact presence — nothing is recorded."""
     if plan is None:
         return "P"
-    if any(s["state"] == "pending" for s in states):
+    if any(s["state"] == "pending" or s.get("retry") for s in states):
         return "U"
     if not (run_dir / "facts-delta.json").is_file():
         return "R"

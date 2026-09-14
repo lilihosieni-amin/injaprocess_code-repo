@@ -270,3 +270,31 @@ engine's estimator and above it `digest` exits 2 — a defect that stops the run
 review; grouped validator lines carry the first message's specifics. `review_status` is `applied`,
 `partial` or `absent`; `discarded` is gone. Spec:
 `docs/superpowers/specs/2026-09-09-quantitative-facts-v3-review-never-dropped-design.md`.
+
+**Owner ruling, 2026-09-13 — the gate tiers: fewer stops, nothing lost silently.** The
+preparation run of 2026-09-12 was refused eight times, all on shape or style and none a real
+error; its Excel file was lost whole (the second attempt refused only by a check that misread the
+«inferred» marker), its 13 form photos were never read by any unit (they rode on a transcript unit
+whose split dropped them), and the report did not say so. Asked *"Why can't we make the engine less
+strict so it doesn't throw an error on every little change?"*, the owner approved the proposal in
+full — every row's tier and every §9 default: *"i ok with all."* Every rule now sits in one tier and
+holds it at every gate (unit gate, assembly, `validate facts-delta --store`, `apply`, `edit`).
+**REFUSE** only what would break the store — unreadable or unwritable (missing
+`kind`/`key`/`title`/`scope`, a non-minted or duplicate id, a wrong schema version), a container of
+the wrong type the panel or a CLI iterates, a reference that cannot be cut, INV-1/INV-3, an
+unregistered department scope, a path out of the repo — and a refusal costs that one decision or
+entry, never a unit or a file. **REPAIR** silently what can be put right deterministically without
+changing meaning (synonyms, wrapping, engine-owned members dropped, unknown members into the
+envelope's `extra`). **NOTE** everything else: stored as written, marked `inferred` or given a
+`shape` issue the panel shows, never retried, never a failure, never in the owner's report — the
+confirm tick is the quality gate, not the engine. With it: a unit's refused decisions go to
+`undecided[]` with `reason: "refused"` and one retry answers only those, folded over the first by
+candidate (F3); a column's `group: {key, title}` is admitted at the unit gate (F2); attachments form
+their own `u-att-N` units and `build` exits 2 naming any input placed in no unit (F4); `report.md`
+names lost sources first, in plain Persian with the owner's file names (F5); speech-only records
+have their columns marked inferred (F6); `apply` holds back per entry into `held.json` and exits 2
+only when nothing could be written; `edit` schema-checks only the entry it touched; style no longer
+blocks readiness and «بچ»/«پاس» leave the banned words. The v3.8 ruling stands: a stale review is
+redone, never skipped. Spec: `docs/superpowers/specs/2026-09-13-facts-gate-tiers-design.md`. Later the same day, after the local preparation run, the owner chose option (b) for the `extra` bag
+(*"for 3 i choce b"*): a newer run's value at a path replaces the stored one and any older `path~n`
+goes, so the bag never grows run over run — this overrides C5's "never overwritten".

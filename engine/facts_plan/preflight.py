@@ -26,6 +26,7 @@ import tempfile
 
 from facts_plan.assemble import validate_unit
 from facts_plan.build import build, label_of
+from merge_facts import tiers
 
 #: What a unit owes and the engine never fills — a refusal matching one of
 #: these is reported, not counted against the engine.
@@ -100,7 +101,7 @@ def preflight(root, department, recordings=()):
             path = run_dir / "units" / unit_id / "out.1.json"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-            for line in validate_unit(root, run_dir, path):
+            for line in tiers.lines(tiers.refusals(validate_unit(root, run_dir, path))):
                 if any(p.search(line) for p in UNIT_OWED):
                     owed += 1
                     continue

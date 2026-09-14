@@ -298,8 +298,13 @@ the mirror), a **function library** (`functions.md`, one section per distinct fu
 **Units.** The candidates are packed into **units** — parcels of work small enough for one model
 call: at most 20 000 estimated input tokens and 20 000 output tokens, 1 800 lines of at most 1 900
 characters. Grouping is fixed, not clever: one unit per workbook group (`u-wb-<short>`), one per
-transcript chunk (`u-tr-<recording>-l<first line>`), one for the items (`u-items-…`), and the
-attachments appended to the last transcript unit (or their own `u-attachments`). A unit that does
+transcript chunk (`u-tr-<recording>-l<first line>`), one for the items (`u-items-…`), and
+**attachment units** (`u-att-1`, `u-att-2`, … in input order) holding the attached files' text,
+packed to the same budget — one file too big for any unit goes alone with an `oversized` issue.
+Until 2026-09-13 the attachments rode on the last transcript unit, and when that unit split on its
+line range every one of them was dropped: 13 form photos of the preparation run reached no unit
+and nothing said so. Now every chosen transcript line and every attachment must be read by exactly
+one unit, or `build` exits 2 naming the file. A unit that does
 not fit is split along its natural axis (a workbook by tab, items by code range, a transcript by
 line range). A unit that still cannot fit has its largest candidates **set aside** as `oversized`
 issues rather than stopping the run — the owner is told which table was too big.
@@ -383,14 +388,24 @@ assembly uses — and puts them through the *entire* store contract: the delta s
 still has an attempt to fix it. It also checks the mechanics: the file sits in the directory of the
 unit it names; every candidate has exactly one decision; a `field` that starts with `c_` is a
 real provisional column; a rule input whose key is another column of the record it reads (the
-"swapped input" that once bound «موجودی آغاز شب» to «مقدار دریافت از انبار») is refused; a `unit`
-on a non-numeric field is refused; every cited process node is one the unit could see.
+"swapped input" that once bound «موجودی آغاز شب» to «مقدار دریافت از انبار») is stored marked
+inferred with a note naming the column it really reads; a `unit` on a non-numeric field keeps its
+unit with a note; every cited process node is one the unit could see, and a citation to one it
+could not is dropped with a note.
 
-A unit whose output fails is re-dispatched **once** with `attempt: 2`, its previous output and the
-grouped errors. There is no third attempt: the validator refuses `out.3.json` outright, and
-`status` reports the unit `failed`. The run continues without it; its candidates are reported to
-the owner as *unexamined*, never silently dropped. A truncated or unparseable file costs no attempt
-— `status` deletes it.
+Since 2026-09-13 every line the gate prints is in one of three **tiers** (section 10.6): a
+**refusal** only for what would break the store, a silent **repair**, or a **note** printed as
+`note: …` and stored on the entry. A refusal costs **one decision, not the unit**: the document is
+folded with the refused decisions taken out, each refused candidate waits in `undecided[]` with
+reason `refused` and its lines, and `status` prints the unit's line as `u-wb-… · workbook · done · 1 · retry decisions[3], …`. The
+retry is dispatched **once** with `attempt: 2`, the previous output, those labels and their lines;
+it answers only them, and its answer is folded over the first attempt by candidate id (a `new[]`
+entry by kind and key). A candidate the unit forgot to decide is a note — it waits, and joins the
+retry only when the unit retries anyway. There is no third attempt: the validator refuses
+`out.3.json` outright. A unit is `failed` only when no attempt of it is usable; the run continues
+without it, its candidates are reported to the owner as *unexamined*, and its workbook, meeting or
+attachments are named at the top of the report as lost. A truncated or unparseable file costs no
+attempt — `status` deletes it.
 
 **The yield rule.** Between batches the coordinator runs `status`. If it prints `yield: true`
 (forty minutes of turn time), the coordinator sends one progress line («۸ از ۲۶ بخش از داده‌ها
@@ -453,7 +468,9 @@ ids minted in kind order (item → record → measurement → rule → note).
    judgement, the unit's field renames applied (and applied to the reference rows and primary key
    too), `source[]` written from the instances (one `sheet` citation per tab) or from the
    transcript lines or the attachment sidecar (a photographed form is cited as a `photo`, a
-   Word file as `docx`), scope from the run's department and the tabs' branches, and every
+   Word file as `docx`; a record cited only by meetings, process files or chat has its columns'
+   titles, types and units marked `inferred`, so the panel shows «استنباطی» on them), scope from
+   the run's department and the tabs' branches, and every
    non-run-only engine issue attached to the entry it concerns.
 4. `merge_into` moves bindings and instances onto the target (a cycle of merges makes every
    member of the cycle *undecided*).
@@ -477,12 +494,14 @@ ids minted in kind order (item → record → measurement → rule → note).
    stops the run here is nothing at all being assembled.
 9. It writes `facts-delta.json` (the proposed changes, `schema_version 2`, temp ids),
    `assembly.json` (`dropped[]`, `undecided[]` with reasons, which unit each temp id came from,
-   the review's status — `applied`, `partial` or `absent` — and `review_held[]`, one row per
-   held-back decision with its reason and the title of the entry it addressed), and `gate-b.md`
+   the review's status — `applied`, `partial` or `absent` — `review_held[]`, one row per
+   held-back decision with its reason and the title of the entry it addressed, and `lost_sources[]`,
+   every workbook, meeting or attachment no unit carried into the assembly), and `gate-b.md`
    (the run's record of what it proposed).
 
 The **eight kept stops** — the only places the planner, the digest or the assembly may refuse a
-whole run — are pinned by a test: a candidate planned into two units or none; `build` without
+whole run — are pinned by a test: a candidate, a transcript line or an attachment planned into
+two units or none; `build` without
 `--rebuild` once a unit is done; a unit's latest output invalid with an attempt left; a digest
 over the 400 000-token ceiling; a review written against an older digest (Stage R is re-entered);
 a `review: <key>` lint line no decision owns (a defect — with nothing to hold back the fold loop
@@ -494,10 +513,12 @@ review's side, a decision the fold could not apply, named in the report with its
 
 Then `validate facts-delta … --store --run` performs **the entire apply in memory** on a copy of
 the store, with a memory-only id minter, and validates the resulting store against the store
-schema. It writes nothing — not even the id counter changes. A delta that passes here is one
-`apply` cannot refuse. Because every per-entry rule was already enforced at the unit gate, what
-is left here is cross-entry only (twin titles, instance ownership, references between units); if
-it names a single entry's field anyway, that is a defect to report, never something to hand-repair.
+schema. It writes nothing — not even the id counter changes. It runs `apply`'s own gate, so what
+it refuses is exactly what `apply` will hold back. Because every per-entry rule was already
+enforced at the unit gate, what is left here is cross-entry only (twin titles, instance ownership,
+references between units); if it names a single entry anyway, that is a defect to report, never
+something to hand-repair — and since 2026-09-13 it no longer stops the run: `apply` holds that one
+entry back and writes the rest.
 
 ### No Gate B — the apply follows straight away
 
@@ -520,13 +541,18 @@ merge facts apply --delta <run_dir>/facts-delta.json --run <run_dir>
 1. **Refuse a reused run directory.** If `id-map.json` or `facts-before/` already exists, the
    directory has applied a delta; exit 2. (A retry after a *precondition* failure is fine —
    nothing was written.)
-2. Validate the delta against `facts-delta.schema.json`; deep-copy every entry (the file the run
-   keeps must stay what its author wrote); canonicalise scope (sorted, unique).
+2. Deep-copy every entry (the file the run keeps must stay what its author wrote); run the
+   deterministic **repairs** (a synonym to its symbol, a scalar wrapped in its list, an
+   engine-owned member dropped, an unknown member moved to the entry's `extra`); validate each
+   entry against `facts-delta.schema.json` **on its own**; canonicalise scope (sorted, unique).
 3. **Derive keys.** A `refItems` cell that holds a temp id is replaced by the target's key; a
    reference record's row keys are re-derived from its primary key; a measurement's key becomes
    `<item>__<record>__<column>`.
-4. **Preconditions** — every one is checked before the first byte is written, and any failure
-   prints `precondition failed: …` and exits 2 with the store untouched: no two entries in the
+4. **Preconditions** — every one is checked before the first byte is written, **per entry**. An
+   entry that fails a refusal-tier rule is **held back**: `precondition failed: held back: <label>:
+   <message>` on stderr and a `{label, lines}` row in `held.json`; every other entry goes on, and
+   `apply` exits 2 with the store untouched only when not one entry could be written. Everything
+   short of breaking the store is a note stored on the entry instead. The checks: no two entries in the
    delta share a natural key or a tab; every key matches the grammar; every department is in the
    registry and every branch in the manifest (QF-33); every unit symbol is declared by the units
    record (QF-40); a new entry is created only in the run's own department or at universal scope
@@ -551,7 +577,8 @@ merge facts apply --delta <run_dir>/facts-delta.json --run <run_dir>
 9. **Save.** All five files are validated against `facts.schema.json` *before* any is written;
    then they are written atomically (temp file + rename) and `.index.json` is rebuilt.
 10. The run directory gets `id-map.json` (temp id → minted id, *minted ids only*), `touched.json`
-    (every open entry the run changed), `adopted.json` (stub adoptions), and a copy of the delta.
+    (every open entry the run changed), `adopted.json` (stub adoptions), `held.json` (what the gate
+    held back, `[]` when nothing), and a copy of the delta.
 
 `apply` prints `created F-…` / `updated F-…` per entry. Re-applying the same material yields only
 no-ops and leaves the five files byte-identical — this is what makes re-reading a workbook safe.
@@ -569,7 +596,9 @@ git add departments runs facts attachments && git commit -m "quantify(cooking): 
 
 ### Stage 7 — Report
 
-The coordinator reads `report.md` and sends it verbatim: the open disputes numbered with lettered
+The coordinator reads `report.md` and sends it verbatim: first, since 2026-09-13, every **lost
+source** in plain Persian with the owner's file names («فایل اکسل «آماده‌سازی» ثبت نشد: ۷ جدول و ۳
+فرمول آن بررسی نشد.», «۱۳ عکس فرم بررسی نشد.»); then the open disputes numbered with lettered
 options, the unanswered cells per entry, the dropped candidates counted by reason, the
 unread/unplaced list, what was held back and why, and
 the review's closing block. What the message deliberately leaves out, since the owner's ruling of 2026-09-09, is the engine's own findings inside the files — a broken formula's cell range, a column that moved between two copies of a tab, a cell that only mirrors another. Nobody can act on those from a chat message, and forty such lines buried the three things the owner can act on. Each finding stays attached to the entry it concerns, where the panel draws it, and `gate-b.md` still counts them as the run's record. That block is one line — «بازبینی انجام شد.» — when every decision was
@@ -695,7 +724,8 @@ What the verb does, in order:
    chat source `{type: "chat", ref: "<run>/meta.json", run: "<run>"}` is added to `source[]`,
    `status` is re-derived, `updated_at` stamped.
 5. **The gate** — exactly the store gate every run passes and nothing less: the store schema
-   over the whole file, the full content pass with the store, declared unit symbols, registered
+   over the entry it touched (since 2026-09-13 — before, one old off-contract entry of the same
+   kind blocked every chat edit of it), the full content pass with the store, declared unit symbols, registered
    departments and branches, every `F-` reference resolving. Any refusal: `precondition failed:
    …`, exit 2, nothing written — no snapshot, no delta record.
 6. On success: snapshot to `facts-before/`, save the store, and append `{"verb": "edit", "args":
@@ -1002,12 +1032,13 @@ the store must name one of its open rows (QF-40); the panel's Persian unit words
 | `review/input.md`, `review/input.sha256` | `facts-plan digest` | the reviewer's view and its hash |
 | `review/out.json` | the quantify agent | the review's decisions |
 | `facts-delta.json` | `facts-plan assemble` (pipeline) **or** the verbs (a growing list of `{verb, args}`) | the proposed changes, or the record of what the verbs did |
-| `assembly.json` | `facts-plan assemble` | dropped, undecided (with reasons), provenance, review status, the review's held-back decisions |
+| `assembly.json` | `facts-plan assemble` | dropped, undecided (with reasons, a refused decision's lines), provenance, review status, the review's held-back decisions, the lost sources |
 | `gate-b.md` | `facts-plan assemble` | the run's record of what it proposed (no longer sent) |
 | `facts-before/` | `apply` and every writing verb | the five store files before the write — what `revert` restores |
 | `id-map.json` | `apply` | temp id → minted id |
 | `touched.json` | `apply` | every open entry the run changed |
 | `adopted.json` | `apply` | stub adoptions (always written, `[]` when none) |
+| `held.json` | `apply` | the entries the store gate held back, `{label, lines}` each |
 | `facts-patch.json` | the edit-fact playbook (or the agent) | the patch an edit applied |
 | `manifest-proposal.json` | the quantify agent, manifest mode | Gate M's proposals |
 | `report.md` | `facts-plan report` | the owner's closing report |
@@ -1094,10 +1125,13 @@ declared, a typed reference table's rows complete); shares in (0, 1] summing to 
 decision-table shape (I8); field-status paths exist; reconciled cells declared; Jalali issue
 dates; no citation of `.structure.md`; every process link backed by a process source; and the
 **style lint** on every prose leaf — no A1 address, no artefact name (`Table_`, `.xlsx`, `.gs`,
-`IMPORT_FROM_SHEET`, `LET(`), no pipeline word («پاس», «اسکلت», «بچ», `expr`, …), no colloquial
+`IMPORT_FROM_SHEET`, `LET(`), no pipeline word («اسکلت», «واحد کاری», `expr`, …), no colloquial
 ending, «ستون/تب/سلول» only in a record's own statement or a field's description, no Latin word of
 four letters or more except csv/Excel/sheet and declared unit symbols, no quotation over eight
-words. Messages are grouped one line per rule («… — 16 entries: F-…, …»), because a run that
+words. Since 2026-09-13 only a key still off the grammar after the safe key repair is refused;
+every other check stores the entry with a note (section 10.6), and the style lint no longer blocks
+readiness — `audit` lists it as a `style` finding. «پاس» and «بچ» left the banned words: they are
+kitchen words here. Messages are grouped one line per rule («… — 16 entries: F-…, …»), because a run that
 relayed 2 068 one-per-cell errors taught everyone that nobody reads them.
 
 ### 10.4 The audit (`merge facts audit`)
@@ -1116,13 +1150,36 @@ and the readiness line.
 
 Every writing command has the same contract: check everything first; on any refusal print
 `precondition failed: …` to stderr, exit 2, and leave every file exactly as it was — no snapshot,
-no run record. Files are written atomically (temp file in the same directory, then
+no run record. The one refinement (2026-09-13) is `apply`'s: it judges each entry, holds back only
+the refused ones, and writes the rest — the all-or-nothing exit 2 is for a delta of which nothing
+could be written. Files are written atomically (temp file in the same directory, then
 rename). Every write takes a snapshot first, and `merge facts revert --run <dir>` undoes one run at
 entry level: created ids are removed (never reused), matched entries restored wholesale from the
 snapshot. It refuses if a *later* run touched any of the same
 entries, and it refuses a run that adopted a workbook stub (revert the git commit instead). And
 behind all of that is git: every run and every edit is a commit on the data-repo, made with an
 allow-list of paths.
+
+### 10.6 The three tiers — refuse, repair, note (2026-09-13)
+
+The preparation run of 2026-09-12 was refused eight times on shape and style, none of it a real
+error, and lost its Excel file whole. The owner asked why the engine could not be less strict, and
+approved the answer in full (spec `docs/superpowers/specs/2026-09-13-facts-gate-tiers-design.md`,
+ADR 0017's ruling of that date). Every rule the engine applies to what the AI writes now sits in
+exactly one tier, and holds it at every gate — the unit gate, the assembly, `validate facts-delta
+--store`, `apply` and `edit`:
+
+| tier | when | what happens |
+|---|---|---|
+| **REFUSE** | accepting it would make the store unreadable or unwritable (a missing `kind`/`key`/`title`/`scope`, an id the engine did not mint, a duplicate id, a wrong schema version); hand the panel or a CLI a container of the wrong type; leave a reference that cannot be cut; breach INV-1 or INV-3; scope an entry to an unregistered department; or name a path outside the repo | only that decision or entry waits; the rest lands |
+| **REPAIR** | the engine can put it right deterministically without changing its meaning | fixed silently, no retry, no note |
+| **NOTE** | everything else — plausible content in an unexpected shape, a style call | stored as written, marked `inferred` in `field_status` or given an `issues[]` entry of kind `shape`; never retried, never a failure, never in the owner's Telegram report |
+
+The reasoning is the owner's own principle: **the confirm tick is the quality gate, not the
+engine.** Nothing counts until a person confirms it in the panel, and every uncertain field is
+drawn there as «استنباطی» or under a note. The engine stores what is plausible, marks what is
+uncertain, and refuses only what would genuinely break something — and nothing it does not store
+goes unnamed in the report.
 
 ---
 
@@ -1202,8 +1259,8 @@ own misunderstanding.
 - **engine** — the deterministic command-line programs; the only writer of the store.
 - **fingerprint** — a SHA-256 hash of an entry's content; the panel's confirmation is a
   fingerprint, so any change silently un-confirms.
-- **hold-back** — an entry the assembly could not land, kept in `undecided[]` with a reason
-  instead of stopping the run.
+- **hold-back** — a decision or entry the engine could not land, kept with a reason instead of
+  stopping the run: in `undecided[]` at the assembly, in `held.json` at the apply.
 - **instance** — one physical copy of a record template (one tab in one workbook).
 - **invariant** — a rule that must always hold; INV-n from the standing orders, I-n from the
   facts design.
@@ -1226,8 +1283,10 @@ own misunderstanding.
   with `valid_to`.
 - **temp id** — `T-<n>`, an id inside a delta before the engine mints a real `F-` id.
 - **turn** — one model response to one Telegram message; the playbook controls where it may end.
-- **unit** — one parcel of work small enough for a single model call; the unit of retry (two
-  attempts) and of blame.
+- **tier** — where a rule sits: REFUSE (only that decision or entry waits), REPAIR (fixed
+  silently) or NOTE (stored with a mark); section 10.6.
+- **unit** — one parcel of work small enough for a single model call; the unit of blame. It gets
+  two attempts, and the second answers only the decisions the first had refused.
 - **unit gate** — `validate facts-unit`: the check a unit's output must pass, which is the store's
   own check applied early.
 - **yield** — the engine's instruction (after forty minutes of a turn) to end the turn and let the
