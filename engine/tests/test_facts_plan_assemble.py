@@ -2061,13 +2061,140 @@ def test_a_units_account_reaches_the_delta_and_apply_takes_it(tmp_path):
                     "lines": "3-9"}}]
     plan = _plan()
     plan["hashes"] = {"meetings/transcripts/c.txt": "x"}
+    # what `build` printed to this unit: the citation has to sit inside it
+    plan["units"][0]["talk"] = [{"rel": "meetings/transcripts/c.txt",
+                                 "first": 1, "last": 20}]
     run_dir = _run(root, {"u-a": record, "u-b": _rule_out()}, plan=plan)
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     entry = next(e for e in delta["entries"] if e["key"] == "gozaresh_shabane_pitza")
     assert entry["data"]["cadence"] == "nightly"          # the form's value stays
     assert [(a["field"], a["value"], a["status"]) for a in entry["accounts"]] == \
-        [("data/cadence", "weekly", "open")]
-    assert "id" not in entry["accounts"][0]
+        [("data/cadence", "weekly", "open"),
+         ("data/cadence", "nightly", "open")]             # I1: the form's side
+    assert all("id" not in a for a in entry["accounts"])
     validate("facts-delta.schema.json", delta)
     assert tiers.refusals(simulate(root, run_dir / "facts-delta.json", run_dir)[1]) == []
+
+
+# --------------------------------------------------------------------------
+# What a unit may cite of the talk it was shown (spec §3, C1/C2/I1/I5).
+
+TR_REL = "meetings/transcripts/c.txt"
+
+
+def _plan_with_talk(passages=({"rel": TR_REL, "first": 213, "last": 252},)):
+    """The run's plan with `u-a` shown one passage — `build`'s own record of
+    what that unit could read, and the only thing the gate checks against."""
+    plan = _plan()
+    plan["hashes"] = {TR_REL: "x", "meetings/transcripts/other.txt": "y"}
+    plan["units"][0]["talk"] = [dict(p) for p in passages]
+    return plan
+
+
+def _voice(lines="220-230", ref=TR_REL):
+    return {"type": "voice", "ref": ref, "lines": lines}
+
+
+def _delta_entry(tmp_path, over, plan=None):
+    """One assembled record entry, its decision carrying `over`."""
+    root = _root(tmp_path)
+    _seed_units(root)
+    record = _record_out()
+    record["decisions"][0].update(over)
+    run_dir = _run(root, {"u-a": record, "u-b": _rule_out()},
+                   plan=plan or _plan_with_talk())
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    validate("facts-delta.schema.json", delta)
+    return root, run_dir, next(e for e in delta["entries"]
+                               if e["key"] == "gozaresh_shabane_pitza")
+
+
+def test_an_account_is_kept_when_it_cites_a_passage_the_unit_was_shown(tmp_path):
+    """C1 — the passage heading prints the transcript path, so the citation the
+    agent text asks for is one the unit can actually spell."""
+    _root_, _run_, entry = _delta_entry(tmp_path, {"accounts": [
+        {"path": "data/cadence", "value": "weekly", "source": _voice("220-230")}]})
+    assert ("data/cadence", "weekly") in [(a["field"], a["value"])
+                                          for a in entry["accounts"]]
+
+
+@pytest.mark.parametrize("account,plan", [
+    # a line range that leaves the passage — half of it was never shown
+    ({"path": "data/cadence", "value": "weekly", "source": _voice("200-230")},
+     None),
+    # a transcript of the run the unit was shown no line of
+    ({"path": "data/cadence", "value": "weekly",
+      "source": _voice("220-230", "meetings/transcripts/other.txt")}, None),
+    # a unit shown no passage at all (a phase-2 unit, or a silent meeting)
+    ({"path": "data/cadence", "value": "weekly", "source": _voice("220-230")},
+     _plan_with_talk(())),
+])
+def test_an_account_citing_talk_the_unit_never_read_is_dropped(tmp_path, account,
+                                                               plan):
+    """I5 — INV-3 at passage level: the engine selects, the unit never searches,
+    so a citation to a line it was not handed is dropped (REPAIR, no note)."""
+    _root_, _run_, entry = _delta_entry(tmp_path, {"accounts": [account]},
+                                        plan=plan)
+    assert "accounts" not in entry
+
+
+def test_a_voice_source_joins_the_form_on_the_entry(tmp_path):
+    """C2 — what the talk filled in is cited as the meeting, after the sheet:
+    the form stays the anchor and F6 still reads the record off a form."""
+    root, run_dir, entry = _delta_entry(tmp_path, {
+        "voice": [_voice("220-230")], "data": {"cadence": "nightly"}})
+    assert [s["type"] for s in entry["source"]] == ["sheet", "voice"]
+    assert entry["source"][1] == {"type": "voice", "ref": TR_REL,
+                                  "lines": "220-230"}
+    assert "منابع: sheet · voice" in digest(root, run_dir).read_text(
+        encoding="utf-8")
+    # F6 marks a table nothing but speech shows; this one has a tab.
+    assert "inferred" not in json.dumps(entry.get("field_status") or {})
+
+
+def test_a_voice_source_outside_the_shown_passages_is_dropped(tmp_path):
+    """Gated exactly like an account — and, like it, silently."""
+    _root_, _run_, entry = _delta_entry(tmp_path, {"voice": [
+        _voice("1-9"), {"type": "voice", "ref": TR_REL}]})
+    assert [s["type"] for s in entry["source"]] == ["sheet"]
+
+
+def test_a_units_account_is_two_sided_so_the_owner_may_keep_the_form(tmp_path):
+    """I1 — `resolve` writes the chosen account's value at the field, so the
+    form's own reading has to be one of the choices; otherwise the owner's only
+    answer is to adopt the speech."""
+    from merge_facts import load_store
+    from merge_facts.apply import apply
+    from merge_facts.verbs import resolve
+    from facts_helpers import _run_dir
+    root, run_dir, entry = _delta_entry(tmp_path, {"accounts": [
+        {"path": "data/cadence", "value": "weekly", "source": _voice("220-230")}]})
+    assert sorted(a["value"] for a in entry["accounts"]) == ["nightly", "weekly"]
+    assert [a["source"]["type"] for a in entry["accounts"]] == ["voice", "sheet"]
+    apply(root, run_dir / "facts-delta.json", run_dir)
+    stored = next(e for e in load_store(root)["record"]["entries"]
+                  if e["key"] == "gozaresh_shabane_pitza")
+    assert all(a.get("id") for a in stored["accounts"])      # INV-1: apply mints
+    form = next(a for a in stored["accounts"] if a["value"] == "nightly")
+    resolve(root, stored["id"], "data/cadence", form["id"], _run_dir(root, "9"))
+    kept = next(e for e in load_store(root)["record"]["entries"]
+                if e["id"] == stored["id"])
+    assert kept["data"]["cadence"] == "nightly"              # the form stands
+    assert {a["value"]: a["status"] for a in kept["accounts"]} == \
+        {"nightly": "chosen", "weekly": "rejected"}
+
+
+def test_the_phase_two_input_prints_a_phase_one_entry_by_handle_and_location(
+        tmp_path):
+    """The seam end to end: a phase-1 `new[]` form folds through `phase_entries`
+    and `recorded_slice` into the phase-2 unit's own `input.md`, under the
+    handle it may address and the location that tells it apart (I2)."""
+    from facts_plan.build import RECORDED_HEADING, render_phase2_inputs
+    root, run = _two_unit_run(tmp_path, att_new=[FORM], tr_new=[])
+    assert render_phase2_inputs(root, run) == ["u-tr-m-l1"]
+    text = (run / "units" / "u-tr-m-l1" / "input.md").read_text(encoding="utf-8")
+    assert RECORDED_HEADING in text
+    assert ("N-u-att-1-0 · record · form_tahvil · فرم تحویل · paper · "
+            "آشپزخانه · سرپرست · ستون‌ها: vazn (وزن)") in text

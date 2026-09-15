@@ -21,8 +21,8 @@ from dataclasses import replace
 from engine_common import (LINE_CAP, read_json, schema_dir, validate,
                            write_json_atomic, write_text_atomic)
 from merge_facts import (KIND_ORDER, _sheet_identities,
-                         canonical_scope, iter_ref_objects, load_store,
-                         null_paths, set_path, tiers)
+                         canonical_scope, get_path, iter_ref_objects,
+                         load_store, null_paths, path_exists, set_path, tiers)
 from merge_facts.apply import _derive_row_keys
 from merge_facts.audit import flags_over
 from merge_facts.content import _check_prose, check_document
@@ -69,7 +69,8 @@ def validate_unit(root, run_dir, path):
 
 #: A7 — what a decision or a `new[]` entry may not write, because the engine
 #: builds it (INV-1, INV-3): the unit's copy is dropped, never merged or kept.
-ENGINE_OWNED = ("id", "source", "scope", "field_status", "accounts", "retired")
+ENGINE_OWNED = ("id", "source", "scope", "field_status", "accounts", "retired",
+                "voice")
 #: …and, under a decision's `data`, the candidate's own payload members.
 ENGINE_OWNED_DATA = ("code", "instances", "applies_to", "location")
 
@@ -367,12 +368,13 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
     skeleton = read_json(pathlib.Path(run_dir) / "skeleton.json")
     candidates = {c["id"]: c for c in skeleton["candidates"]}
     nodes = process_index(root, skeleton["department"])
-    hashes = read_json(pathlib.Path(run_dir) / "plan.json").get("hashes") or {}
+    plan = read_json(pathlib.Path(run_dir) / "plan.json")
     ctx = {"candidates": candidates, "department": skeleton["department"],
-           # INV-3 — the only refs an account may cite are the transcripts this
-           # run chose, never a path the unit invented.
-           "chosen": {rel for rel in hashes
-                      if rel.startswith("meetings/transcripts/")},
+           # INV-3 — the meeting passages this unit was shown, as `build`
+           # recorded them: the only talk it may cite, never a path or a line
+           # range it invented. A unit the plan does not name was shown none.
+           "talk": next((u.get("talk") or [] for u in plan.get("units") or []
+                         if u.get("id") == doc["unit"]), []),
            "kinds": {cid: KIND_OF.get(c["kind"], c["kind"])
                      for cid, c in candidates.items()},
            "node_ids": {f'{n["process"]}::{n["node"]}' for n in nodes}
@@ -387,7 +389,8 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
             # Held over the A7 drop `_repair` does and over the schema probe,
             # which sees the contract's own closed vocabulary: what comes back
             # is the engine's account, not the unit's copy of one.
-            accounts = _unit_accounts(item, ctx["chosen"])
+            accounts = _unit_accounts(item, ctx["talk"])
+            voices = _unit_voices(item, ctx["talk"])
             notes = _repair(item, where, ctx)
             label = _item_label(where, n, item)
             found += [note(label, m, path=p, mark=k, fa=fa) for m, p, k, fa in notes]
@@ -401,6 +404,8 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
                 passed.append((where, n, label))
                 if accounts:
                     item["accounts"] = accounts
+                if voices:
+                    item["voice"] = voices
     if semantics:
         found += _item_checks(root, doc, passed, ctx, skeleton)
     return doc, found, unshaped
@@ -859,11 +864,35 @@ def _account(field, side):
             "source": side["source"]}
 
 
-def _unit_accounts(node, chosen):
+def _cited(src, passages):
+    """A citation to talk this unit was actually handed: a `voice` source whose
+    lines lie inside one passage `plan.json` records for it (spec §3, INV-3 at
+    passage level).
+
+    `ref in plan["hashes"]` was not enough. The engine selects and the unit
+    never searches, so a citation to a chosen transcript the unit was shown no
+    line of is a line range nobody read — and it reaches the owner looking
+    exactly as checkable as a real one. The passages are the planner's own
+    record of what it printed, so this asks the one question that matters.
+    """
+    if not (isinstance(src, dict) and src.get("type") == "voice"):
+        return False
+    # The store schema's own `sourceLoc.lines`: a single line is a range too.
+    span = re.fullmatch(r"([0-9]+)(?:-([0-9]+))?", str(src.get("lines")))
+    if not span:
+        return False
+    first, last = int(span.group(1)), int(span.group(2) or span.group(1))
+    return first <= last and any(
+        p.get("rel") == src.get("ref")
+        and p.get("first") <= first and last <= p.get("last")
+        for p in passages)
+
+
+def _unit_accounts(node, passages):
     """Spec 2026-09-15: a unit may write an account only for what it heard — a
-    scalar with a `voice` source naming one of the run's chosen transcripts and
-    its lines. Anything else is dropped as A7 drops every engine-owned member
-    (REPAIR, no note).
+    scalar with a `voice` source citing a passage it was shown (`_cited`).
+    Anything else is dropped as A7 drops every engine-owned member (REPAIR, no
+    note).
 
     The kept members come out in the shape the store contract speaks (`field`,
     `statement`), which is the one `_cross_unit` already writes: the unit
@@ -872,15 +901,23 @@ def _unit_accounts(node, chosen):
     """
     out = []
     for account in node.get("accounts") or []:
-        src = account.get("source") if isinstance(account, dict) else None
-        if (isinstance(src, dict) and src.get("type") == "voice"
-                and src.get("ref") in chosen
-                and re.fullmatch(r"[0-9]+-[0-9]+", str(src.get("lines")))
+        if (isinstance(account, dict)
+                and _cited(account.get("source"), passages)
                 and isinstance(account.get("path"), str)
                 and account.get("value") is not None
                 and not isinstance(account["value"], (dict, list))):
             out.append(_account(account["path"], account))
     return out
+
+
+def _unit_voices(node, passages):
+    """Spec §3 phase 1: what the talk filled in that the form does not state is
+    cited as the meeting. One `voice[]` member per passage used, gated by the
+    same predicate the accounts are — `_entry` appends them to `source[]`
+    beside the sheet, never instead of it."""
+    return [{"type": "voice", "ref": v["ref"], "lines": v["lines"]}
+            for v in node.get("voice") or []
+            if isinstance(v, dict) and _cited(dict(v, type="voice"), passages)]
 
 
 def _address(entry):
@@ -1601,6 +1638,11 @@ def _entry(candidate, decision, state, part=None):
     if not sources:
         sources = [s for s in _unit_sources(state["units"].get(decision["unit"]))
                    if s["type"] != "chat"]
+    # §3 phase 1: what the meeting filled in that the form does not state is
+    # cited as the meeting — after the sheet or the photo, so `READ_OFF_A_FORM`
+    # and the "form wins a merge" rule both keep reading the first source, and
+    # before the process citations, which are not where the value came from.
+    sources += written.get("voice") or []
     # The citations hang off the decision, never off a split part (§2.5's
     # `splitPart` has no `processes`), so both parts of a split inherit them.
     # Owner ruling 2026-09-15: they sit beside the real origin, never instead
@@ -1632,6 +1674,28 @@ def _entry(candidate, decision, state, part=None):
         # ponytail: a split's accounts hang off the decision, so they reach
         # neither part — no rule says which part the disputed leaf landed in.
         entry["accounts"] = copy.deepcopy(written["accounts"])
+        for account in entry["accounts"]:
+            # The unit spells the leaf by the column key its input printed
+            # (`c_b`); `_rename_fields` has since given that field the key the
+            # unit itself chose. An account addressing the provisional key
+            # names nothing on the stored entry, so `resolve` could not settle
+            # it and the form's side below could not be found at all.
+            segs = account["field"].split("/")
+            if len(segs) > 2 and segs[:2] == ["data", "fields"]:
+                segs[2] = renames.get(segs[2], segs[2])
+                account["field"] = "/".join(segs)
+        # …and the form's own reading is the other side, exactly as step 7
+        # writes two for a cross-unit disagreement. `resolve` sets the chosen
+        # account's value at the field, so without this side the owner's only
+        # answer is to adopt the speech and the entry can never be confirmed.
+        for account in list(entry["accounts"]):
+            if not path_exists(entry, account["field"]):
+                continue
+            mine = get_path(entry, account["field"])
+            if mine != account["value"]:
+                entry["accounts"].append(
+                    _account(account["field"],
+                             {"value": mine, "source": sources[0]}))
     extra = {**(decision.get("extra") or {}), **((part or {}).get("extra") or {})}
     if extra:
         entry["extra"] = extra                                      # A6

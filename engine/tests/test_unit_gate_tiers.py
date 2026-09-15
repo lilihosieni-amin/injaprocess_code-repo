@@ -664,19 +664,53 @@ def _with_account(doc, account):
     return doc
 
 
+def _shown(run_dir, unit, passages=({"rel": VOICE["ref"], "first": 213,
+                                     "last": 252},)):
+    """The passages `build` printed to `unit`, as `plan.json` records them —
+    the fixture is a run from before the two phases, and the gate admits a
+    citation only inside what the plan says the unit was shown."""
+    plan = read_json(run_dir / "plan.json")
+    for row in plan["units"]:
+        row["talk"] = [dict(p) for p in passages] if row["id"] == unit else []
+    write_json_atomic(run_dir / "plan.json", plan)
+
+
 def test_a_units_voice_account_is_kept_open_and_the_form_value_stays_primary(tmp_path):
     root, run_dir = _prep_root(tmp_path)
+    _shown(run_dir, "u-wb-amadesazi")
     path = run_dir / "units" / "u-wb-amadesazi" / "out.1.json"
     doc = _with_account(read_json(path), {"path": "data/fields/c_b/unit",
                                           "value": "g", "source": VOICE})
     write_json_atomic(path, doc)
     entry = _built(root, run_dir, path)[0]
-    assert entry["accounts"] == [
-        {"field": "data/fields/c_b/unit", "value": "g", "status": "open",
-         "speaker_role": None,
-         "statement": "مقدار ثبت‌شده برای این خانه: g", "source": VOICE}]
+    heard, form = entry["accounts"]
+    # the field the unit cited by its printed column key, under the key the
+    # unit gave it — an account on `c_b` addresses nothing once it is stored
+    assert heard == {"field": "data/fields/tedad_mini_burger/unit", "value": "g",
+                     "status": "open", "speaker_role": None,
+                     "statement": "مقدار ثبت‌شده برای این خانه: g",
+                     "source": VOICE}
+    assert entry["data"]["fields"][1]["key"] == "tedad_mini_burger"
+    # I1 — and the form's own reading beside it, so `resolve` can keep it.
+    assert form["field"] == heard["field"] and form["value"] != "g"
+    assert form["source"] == entry["source"][0]
     assert entry["data"]["fields"][1]["unit"] != "g"        # the form's value is the entry's
     assert _refused(validate_unit(root, run_dir, path)) == []
+
+
+def test_an_account_citing_a_passage_the_unit_was_not_shown_is_dropped(tmp_path):
+    """I5 — the run chose the transcript, but this unit was shown lines 213-252
+    of it and nothing else; 100-140 is talk it never read."""
+    root, run_dir = _prep_root(tmp_path)
+    _shown(run_dir, "u-wb-amadesazi")
+    path = run_dir / "units" / "u-wb-amadesazi" / "out.1.json"
+    clean = _built(root, run_dir, path)[0]
+    write_json_atomic(path, _with_account(read_json(path), {
+        "path": "data/fields/c_b/unit", "value": "g",
+        "source": dict(VOICE, lines="100-140")}))
+    findings = _judge(root, run_dir, path)[1]
+    assert not _refused(findings) and not _noted(findings)
+    assert _built(root, run_dir, path)[0] == clean
 
 
 def test_an_account_whose_source_is_not_a_chosen_transcript_is_dropped_silently(tmp_path):
