@@ -2721,6 +2721,83 @@ def _renderer(root, department, estate, skeleton, rendered,
     return render
 
 
+#: The one place a recording's stem and its transcript file meet — `transcripts`
+#: spells the same relative path forward, this reads it back.
+TRANSCRIPT_DIR, TRANSCRIPT_EXT = "meetings/transcripts/", ".txt"
+
+
+def _input_text(run_dir, unit_id):
+    """What a unit is holding now. An `input.md` that is not there reads as
+    empty: a run whose file was deleted is re-rendered, not crashed."""
+    path = pathlib.Path(run_dir) / "units" / unit_id / "input.md"
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
+
+
+def _plan_recordings(plan):
+    """The run's chosen recordings in the owner's own order — `build` was handed
+    it and `refresh_inputs` has only the plan to ask.
+
+    The transcript units, not `hashes`: `_chunks` walks the recordings in the
+    order the owner named them, so the units sit in the plan in that order and
+    a recording's first appearance among their inputs is where it belongs.
+    `hashes` is written sorted, and `related_talk` breaks a tie by transcript
+    order — so two meetings named out of alphabetical order would have come
+    back swapped and a refresh would have rewritten talk `build` had placed.
+    """
+    out = []
+    for unit in plan.get("units") or []:
+        for ref in unit.get("inputs") or []:
+            rel = ref.partition("#")[0]
+            if not (rel.startswith(TRANSCRIPT_DIR)
+                    and rel.endswith(TRANSCRIPT_EXT)):
+                continue
+            recording = rel[len(TRANSCRIPT_DIR):-len(TRANSCRIPT_EXT)]
+            if recording not in out:
+                out.append(recording)
+    return out
+
+
+def _recorded_slices(root, run_dir, plan, department, units):
+    """`{unit id: the phase-2 recorded section}` for `units` — spec §3's one
+    builder of it, so `render_phase2_inputs` and `refresh_inputs` cannot drift
+    apart. Empty `units` asks the store and the fold nothing."""
+    if not units:
+        return {}
+    from facts_plan.assemble import phase_entries  # assemble imports build
+    entries = phase_entries(root, run_dir,
+                            [u["id"] for u in plan["units"]
+                             if u.get("phase", 1) == 1])
+    index, item_units = _store_slice(root)
+    return {u["id"]: recorded_slice(
+                entries, reuse_slice([], index, item_units, department,
+                                     _tokens(_unit_text(root, u))))
+            for u in units}
+
+
+def render_phase2_inputs(root, run_dir):
+    """Spec §3 phase 2: once phase 1 is over, every transcript unit's input is
+    rendered again with what phase 1 recorded. Only inputs still without the
+    section are written, so a second call changes nothing — which is what lets
+    `status` call it on every poll. Returns the unit ids rendered."""
+    root, run_dir = pathlib.Path(root), pathlib.Path(run_dir)
+    plan = read_json(run_dir / "plan.json")
+    todo = [u for u in plan["units"] if u.get("phase") == 2
+            and RECORDED_HEADING not in _input_text(run_dir, u["id"])]
+    if not todo:
+        return []
+    skeleton = read_json(run_dir / "skeleton.json")
+    recorded = _recorded_slices(root, run_dir, plan, skeleton["department"],
+                                todo)
+    # No recordings: a phase-2 unit is shown no related talk — it is reading
+    # the meeting itself.
+    render = _renderer(root, skeleton["department"], load_estate(root),
+                       skeleton, {}, load_conventions(root), recordings=[])
+    for unit in todo:
+        write_text_atomic(run_dir / "units" / unit["id"] / "input.md",
+                          render(unit, recorded=recorded[unit["id"]]))
+    return [u["id"] for u in todo]
+
+
 def refresh_inputs(root, run_dir):
     """§4 — re-render every `units/<u>/input.md` of a run already planned.
 
@@ -2734,19 +2811,34 @@ def refresh_inputs(root, run_dir):
     """
     root, run_dir = pathlib.Path(root), pathlib.Path(run_dir)
     skeleton = read_json(run_dir / "skeleton.json")
-    units = read_json(run_dir / "plan.json")["units"]
-    # No recordings: this verb re-renders cores, and the talk a form unit was
-    # shown is part of the input it is already running against (§4).
+    plan = read_json(run_dir / "plan.json")
+    units = plan["units"]
+    # The run's own recordings, not none: the talk beside a form unit's tables
+    # is part of what it was handed (§3), and re-rendering without them would
+    # quietly strip the section out from under a unit already running.
     render = _renderer(root, skeleton["department"], load_estate(root),
-                       skeleton, {}, load_conventions(root), [])
+                       skeleton, {}, load_conventions(root),
+                       _plan_recordings(plan))
+    # A phase-2 unit keeps the section it has: once `status` has told it what
+    # phase 1 recorded, a refresh rebuilds that slice rather than reverting it
+    # to the store's reusable rows.
+    recorded = _recorded_slices(
+        root, run_dir, plan, skeleton["department"],
+        [u for u in units if u.get("phase") == 2
+         and RECORDED_HEADING in _input_text(run_dir, u["id"])])
     over = []
     for unit in units:
-        text = render(unit)
+        if unit.get("phase", PHASE_OF[unit["type"]]) == 1:
+            # `fits` is checked on the core, as `plan_units` checks it: the
+            # talk rides outside the budget and may never split a unit (§3).
+            check, text = render(unit), render.full(unit)
+        else:
+            check = text = render(unit, recorded=recorded.get(unit["id"]))
         write_text_atomic(run_dir / "units" / unit["id"] / "input.md", text)
-        if not fits(unit, text):
+        if not fits(unit, check):
             over.append(unit["id"])
             print(f'facts-plan: {unit["id"]} input over budget '
-                  f'({estimate_tokens(text)})', file=sys.stderr)
+                  f'({estimate_tokens(check)})', file=sys.stderr)
     return {"refreshed": len(units), "over_budget": over}
 
 
