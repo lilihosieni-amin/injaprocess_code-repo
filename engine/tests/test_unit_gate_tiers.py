@@ -6,6 +6,7 @@ The first block runs on the real preparation run of 2026-09-12 (copied
 read-only under `fixtures/prep-run-2026-09-12/`); the rest on the synthetic
 runs the gate's older tests already use.
 """
+import copy
 import json
 import pathlib
 import re
@@ -22,6 +23,8 @@ from test_facts_plan_assemble import _run as _a_run
 from test_facts_plan_assemble import _skeleton as _a_skeleton
 from test_facts_plan_assemble import _write_review
 from test_validate_facts_unit import _bound_doc, _bound_run, _doc, _paper, _run, _write
+
+from engine_common import read_json, write_json_atomic
 
 PREP = pathlib.Path(__file__).parent / "fixtures" / "prep-run-2026-09-12"
 RUN = "runs/facts/preparation/20260912-102718"
@@ -643,3 +646,45 @@ def test_f5_the_undecided_block_says_how_many_were_not_reviewed(tmp_path):
     assert "«موردی بی‌عنوان»" in text
     assert "۱ مورد در این اجرا بررسی نشد و در اجرای بعدی تکمیل می‌شود." in text
     assert "bad" not in text
+
+
+# --------------------------------------------------------------------------
+# A unit may account for what it heard (spec 2026-09-15 §3)
+
+VOICE = {"type": "voice", "ref": "meetings/transcripts/preparation-1405-06-01.txt",
+         "lines": "213-252"}
+#: The decision whose entry `_built` returns first — the run's lowest record
+#: skeleton, and so the table the account below argues with.
+ACCOUNTED = 5
+
+
+def _with_account(doc, account):
+    doc = copy.deepcopy(doc)
+    doc["decisions"][ACCOUNTED]["accounts"] = [account]
+    return doc
+
+
+def test_a_units_voice_account_is_kept_open_and_the_form_value_stays_primary(tmp_path):
+    root, run_dir = _prep_root(tmp_path)
+    path = run_dir / "units" / "u-wb-amadesazi" / "out.1.json"
+    doc = _with_account(read_json(path), {"path": "data/fields/c_b/unit",
+                                          "value": "g", "source": VOICE})
+    write_json_atomic(path, doc)
+    entry = _built(root, run_dir, path)[0]
+    assert entry["accounts"] == [
+        {"field": "data/fields/c_b/unit", "value": "g", "status": "open",
+         "speaker_role": None,
+         "statement": "مقدار ثبت‌شده برای این خانه: g", "source": VOICE}]
+    assert entry["data"]["fields"][1]["unit"] != "g"        # the form's value is the entry's
+    assert _refused(validate_unit(root, run_dir, path)) == []
+
+
+def test_an_account_whose_source_is_not_a_chosen_transcript_is_dropped_silently(tmp_path):
+    root, run_dir = _prep_root(tmp_path)
+    path = run_dir / "units" / "u-wb-amadesazi" / "out.1.json"
+    bad = {"path": "data/fields/c_b/unit", "value": "g",
+           "source": {"type": "voice", "ref": "meetings/transcripts/made-up.txt",
+                      "lines": "1-2"}}
+    write_json_atomic(path, _with_account(read_json(path), bad))
+    findings = _judge(root, run_dir, path)[1]
+    assert not _refused(findings) and "accounts" not in _built(root, run_dir, path)[0]

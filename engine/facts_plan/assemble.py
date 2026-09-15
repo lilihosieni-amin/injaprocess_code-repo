@@ -367,7 +367,12 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
     skeleton = read_json(pathlib.Path(run_dir) / "skeleton.json")
     candidates = {c["id"]: c for c in skeleton["candidates"]}
     nodes = process_index(root, skeleton["department"])
+    hashes = read_json(pathlib.Path(run_dir) / "plan.json").get("hashes") or {}
     ctx = {"candidates": candidates, "department": skeleton["department"],
+           # INV-3 — the only refs an account may cite are the transcripts this
+           # run chose, never a path the unit invented.
+           "chosen": {rel for rel in hashes
+                      if rel.startswith("meetings/transcripts/")},
            "kinds": {cid: KIND_OF.get(c["kind"], c["kind"])
                      for cid, c in candidates.items()},
            "node_ids": {f'{n["process"]}::{n["node"]}' for n in nodes}
@@ -379,6 +384,10 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
                 found.append(refuse(f"{where}[{n}]", "is not an object"))
                 unshaped.add((where, n))
                 continue
+            # Held over the A7 drop `_repair` does and over the schema probe,
+            # which sees the contract's own closed vocabulary: what comes back
+            # is the engine's account, not the unit's copy of one.
+            accounts = _unit_accounts(item, ctx["chosen"])
             notes = _repair(item, where, ctx)
             label = _item_label(where, n, item)
             found += [note(label, m, path=p, mark=k, fa=fa) for m, p, k, fa in notes]
@@ -390,6 +399,8 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
                 unshaped.add((where, n))
             else:
                 passed.append((where, n, label))
+                if accounts:
+                    item["accounts"] = accounts
     if semantics:
         found += _item_checks(root, doc, passed, ctx, skeleton)
     return doc, found, unshaped
@@ -848,6 +859,30 @@ def _account(field, side):
             "source": side["source"]}
 
 
+def _unit_accounts(node, chosen):
+    """Spec 2026-09-15: a unit may write an account only for what it heard — a
+    scalar with a `voice` source naming one of the run's chosen transcripts and
+    its lines. Anything else is dropped as A7 drops every engine-owned member
+    (REPAIR, no note).
+
+    The kept members come out in the shape the store contract speaks (`field`,
+    `statement`), which is the one `_cross_unit` already writes: the unit
+    spells the QF-7 leaf `path`, because that is what §2.5 calls it everywhere
+    else a unit writes one.
+    """
+    out = []
+    for account in node.get("accounts") or []:
+        src = account.get("source") if isinstance(account, dict) else None
+        if (isinstance(src, dict) and src.get("type") == "voice"
+                and src.get("ref") in chosen
+                and re.fullmatch(r"[0-9]+-[0-9]+", str(src.get("lines")))
+                and isinstance(account.get("path"), str)
+                and account.get("value") is not None
+                and not isinstance(account["value"], (dict, list))):
+            out.append(_account(account["path"], account))
+    return out
+
+
 def _address(entry):
     """`(kind, key, canonical scope)` — how the review addresses an assembled
     entry, and how two units are found to have minted the same one (§2.6)."""
@@ -987,7 +1022,7 @@ def _pseudo(entry, unit, n):
     decision = {"action": "keep", "unit": unit, "data": {},
                 **{k: v for k, v in entry.items()
                    if k in ("key", "title", "statement", "aliases", "branches",
-                            "processes", "extra", "_notes")}}
+                            "processes", "accounts", "extra", "_notes")}}
     return handle, candidate, decision
 
 
@@ -1591,6 +1626,12 @@ def _entry(candidate, decision, state, part=None):
              "_renames": renames}
     if written.get("aliases"):
         entry["aliases"] = written["aliases"]
+    if written.get("accounts"):
+        # The form's value stays the entry's; what the unit heard instead is an
+        # open account beside it, and `_cross_unit` appends to the same list.
+        # ponytail: a split's accounts hang off the decision, so they reach
+        # neither part — no rule says which part the disputed leaf landed in.
+        entry["accounts"] = copy.deepcopy(written["accounts"])
     extra = {**(decision.get("extra") or {}), **((part or {}).get("extra") or {})}
     if extra:
         entry["extra"] = extra                                      # A6
@@ -1879,6 +1920,10 @@ def _resolve_refs(entries, state):
     resolves exactly as an `S-` id does, so a unit can mint an entity and point
     at it in the same run: a record's `movement` ends are `place` items, and
     nothing in the sheets mints those.
+
+    The handle is run-wide, not unit-local: `by_skeleton` below is built from
+    every kept entry of every unit, so a phase-2 unit's note may address a
+    phase-1 unit's `new[]` form by its handle (spec 2026-09-15 §3).
     """
     dropped = {d["skeleton"]: d["unit"] for d in state["dropped"]}
     for entry in entries:
@@ -2101,9 +2146,11 @@ def _digest_text(state, entries):
                     for f in data.get("fields") or []),
                 "item": f'{data.get("code")} · {data.get("unit")} · '
                         f'{data.get("category")}'}.get(entry["kind"], "")
+        kinds = " · ".join(sorted({s["type"] for s in entry.get("source") or []}))
         lines.append(" · ".join([entry["kind"], entry["key"],
                                  _address(entry)[2], entry["title"],
-                                 entry["statement"], tail]))
+                                 entry["statement"], tail,
+                                 f"منابع: {kinds}"]))
     lines += ["", "## flags", ""]
     # A flag's `id` is a temp id minted for this assembly and nowhere else, so
     # it addresses nothing the reviewer can go and read. A flag that carries the
@@ -2124,12 +2171,17 @@ def _digest_text(state, entries):
     return "\n".join(lines) + "\n"
 
 
-def _prepare(root, run_dir, review, exclude=frozenset(), held=None):
+def _prepare(root, run_dir, review, exclude=frozenset(), held=None, only=None):
     """Everything both verbs share: the run's files, the store, and the units'
-    decisions with the review folded in when asked for."""
+    decisions with the review folded in when asked for.
+
+    `only` narrows the run to those units — every other one is read as absent,
+    which is what `phase_entries` needs to fold one phase on its own."""
     run_dir = pathlib.Path(run_dir)
     skeleton = read_json(run_dir / "skeleton.json")
     plan = read_json(run_dir / "plan.json")
+    if only is not None:
+        plan = dict(plan, units=[u for u in plan["units"] if u["id"] in only])
     manifest = read_json(pathlib.Path(root) / "attachments" / "sheets" /
                          "manifest.json")
     store = load_store(root)
@@ -2166,6 +2218,23 @@ def _prepare(root, run_dir, review, exclude=frozenset(), held=None):
         state["review_status"] = _fold_review(root, run_dir, state, draft, scratch,
                                               exclude, held)
     return run_dir, skeleton, state
+
+
+def phase_entries(root, run_dir, unit_ids):
+    """The gated, folded entries of the named units — what a phase-2 unit is
+    told is recorded (spec 2026-09-15 §3). Same fold `assemble` uses, over
+    those units only; nothing is minted and nothing is written.
+
+    A unit whose every attempt was refused whole folds nothing and contributes
+    nothing here, exactly as it contributes nothing to the assembly.
+    """
+    run_dir, skeleton, state = _prepare(pathlib.Path(root), pathlib.Path(run_dir),
+                                        False, only=set(unit_ids))
+    out = [{"handle": e["_skeleton"], "kind": e["kind"], "key": e.get("key"),
+            "title": e.get("title"), "statement": e.get("statement"),
+            "data": copy.deepcopy(e.get("data") or {})}
+           for e in _build_entries(root, skeleton, state)]
+    return sorted(out, key=lambda e: (KIND_ORDER.index(e["kind"]), e["handle"]))
 
 
 def digest(root, run_dir):
