@@ -1922,3 +1922,46 @@ def test_a_merged_candidates_bindings_are_copied_not_shared():
     _absorb(target, candidate)
     target["data"]["applies_to"][1]["record"]["ref"] = "T-67"
     assert member["record"]["ref"] == "S-rec-1"
+
+
+def _sources_of(candidate, decision, unit, by_id=()):
+    from facts_plan.assemble import _entry
+    state = {"paths": {"sid1": "attachments/sheets/Amadesazi__Amadesazi/Amadesazi.xlsx"},
+             "department": "preparation", "units": {unit["id"]: unit},
+             "candidates": {c["id"]: c for c in (candidate, *by_id)}, "issues": []}
+    return _entry(candidate, decision, state)["source"]
+
+
+CITATION = {"process": "preparation-026", "node": "preparation-026-n017", "quote": "بازدهی"}
+PROCESS_SOURCE = {"type": "process", "ref": "departments/preparation/processes/preparation-026.json",
+                  "node": "preparation-026-n017", "quote": "بازدهی"}
+
+
+def test_a_meeting_fact_citing_a_process_keeps_the_meeting_as_its_source():
+    """Owner ruling 2026-09-15: an entry keeps its real origin beside the
+    process step it cites — until then a process citation replaced it."""
+    unit = {"id": "u-tr-x-l10", "type": "transcript",
+            "inputs": ["meetings/transcripts/preparation-1405-06-01.txt#L10-L20"]}
+    candidate = {"id": "N-1", "kind": "measurement", "payload": {}}
+    decision = {"unit": unit["id"], "action": "keep", "key": "k", "title": "t",
+                "processes": [CITATION]}
+    assert _sources_of(candidate, decision, unit) == [
+        {"type": "voice", "ref": "meetings/transcripts/preparation-1405-06-01.txt",
+         "lines": "10-20"}, PROCESS_SOURCE]
+
+
+def test_a_workbook_formula_cites_the_tab_of_the_table_it_binds():
+    """The preparation run's yield formula cited only a process node: a rule
+    has no instances of its own, so its sheet is the tab its bindings name."""
+    unit = {"id": "u-wb-amadesazi", "type": "workbook",
+            "inputs": ["attachments/sheets/Amadesazi__Amadesazi/Amadesazi.xlsx"]}
+    table = {"id": "S-rec-1", "kind": "record", "payload": {"instances": [
+        {"key": "amadesazi__s7", "spreadsheetId": "sid1", "sheet": "بازدهی"}]}}
+    rule = {"id": "S-r-1", "kind": "rule", "payload": {"applies_to": [
+        {"key": "amadesazi__s7__j__r2", "record": {"ref": "S-rec-1", "field": "c_j"}},
+        {"key": "amadesazi__s7__k__r2", "record": {"ref": "S-rec-1", "field": "c_k"}}]}}
+    decision = {"unit": unit["id"], "action": "keep", "key": "k", "title": "t",
+                "processes": [CITATION]}
+    assert _sources_of(rule, decision, unit, by_id=[table]) == [
+        {"type": "sheet", "ref": "attachments/sheets/Amadesazi__Amadesazi/Amadesazi.xlsx",
+         "sheet": "بازدهی"}, PROCESS_SOURCE]

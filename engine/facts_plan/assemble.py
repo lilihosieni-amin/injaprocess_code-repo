@@ -1554,10 +1554,24 @@ def _entry(candidate, decision, state, part=None):
         sources.append({"type": "sheet",
                         "ref": state["paths"].get(location["spreadsheetId"], ""),
                         "sheet": location.get("sheet", "")})
+    if not sources:
+        # A rule has no tab of its own: it was read off the tabs of the tables
+        # its bindings name.
+        for member in data.get("applies_to") or []:
+            ref = (member.get("record") or {}).get("ref") if isinstance(member, dict) else None
+            table = (state.get("candidates") or {}).get(ref) or {}
+            for i in (table.get("payload") or {}).get("instances") or []:
+                if _source_of(i, state["paths"]) not in sources:
+                    sources.append(_source_of(i, state["paths"]))
+    if not sources:
+        sources = [s for s in _unit_sources(state["units"].get(decision["unit"]))
+                   if s["type"] != "chat"]
     # The citations hang off the decision, never off a split part (§2.5's
     # `splitPart` has no `processes`), so both parts of a split inherit them.
+    # Owner ruling 2026-09-15: they sit beside the real origin, never instead
+    # of it — until then a process citation replaced the meeting or sheet.
     sources += _process_sources(decision, state["department"])
-    sources = sources or _unit_sources(state["units"].get(decision["unit"]))
+    sources = sources or [{"type": "chat", "ref": None}]
     kind = KIND_OF.get(candidate["kind"], candidate["kind"])
     if kind == "record" and not any(s.get("type") in READ_OFF_A_FORM for s in sources):
         # F6 — a table no sheet, photo or document shows was described from
