@@ -685,6 +685,14 @@ def test_an_account_whose_source_is_not_a_chosen_transcript_is_dropped_silently(
     bad = {"path": "data/fields/c_b/unit", "value": "g",
            "source": {"type": "voice", "ref": "meetings/transcripts/made-up.txt",
                       "lines": "1-2"}}
+    clean = _built(root, run_dir, path)[0]
     write_json_atomic(path, _with_account(read_json(path), bad))
     findings = _judge(root, run_dir, path)[1]
-    assert not _refused(findings) and "accounts" not in _built(root, run_dir, path)[0]
+    entry = _built(root, run_dir, path)[0]
+    # Silently: A7 drops an engine-owned member as a REPAIR, so neither the
+    # findings nor the entry may carry a trace of the one the unit invented.
+    assert not _refused(findings) and not _noted(findings)
+    assert "accounts" not in entry
+    assert [i for i in entry.get("issues") or [] if i["kind"] == "shape"] == []
+    assert bad["path"] not in (entry.get("field_status") or {})
+    assert entry == clean
