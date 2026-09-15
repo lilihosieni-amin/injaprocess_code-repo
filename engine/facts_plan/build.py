@@ -2734,12 +2734,27 @@ def _input_text(run_dir, unit_id):
 
 
 def _plan_recordings(plan):
-    """The run's chosen recordings, read back off the transcript rels
-    `plan.json` hashed, in the order the plan lists them — `build` was handed
-    them by the owner, and `refresh_inputs` has only the plan to ask."""
-    return [rel[len(TRANSCRIPT_DIR):-len(TRANSCRIPT_EXT)]
-            for rel in plan.get("hashes") or {}
-            if rel.startswith(TRANSCRIPT_DIR) and rel.endswith(TRANSCRIPT_EXT)]
+    """The run's chosen recordings in the owner's own order — `build` was handed
+    it and `refresh_inputs` has only the plan to ask.
+
+    The transcript units, not `hashes`: `_chunks` walks the recordings in the
+    order the owner named them, so the units sit in the plan in that order and
+    a recording's first appearance among their inputs is where it belongs.
+    `hashes` is written sorted, and `related_talk` breaks a tie by transcript
+    order — so two meetings named out of alphabetical order would have come
+    back swapped and a refresh would have rewritten talk `build` had placed.
+    """
+    out = []
+    for unit in plan.get("units") or []:
+        for ref in unit.get("inputs") or []:
+            rel = ref.partition("#")[0]
+            if not (rel.startswith(TRANSCRIPT_DIR)
+                    and rel.endswith(TRANSCRIPT_EXT)):
+                continue
+            recording = rel[len(TRANSCRIPT_DIR):-len(TRANSCRIPT_EXT)]
+            if recording not in out:
+                out.append(recording)
+    return out
 
 
 def _recorded_slices(root, run_dir, plan, department, units):

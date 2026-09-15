@@ -246,3 +246,41 @@ def test_a_refresh_keeps_the_talk_and_what_phase_one_recorded(tmp_path):
     refresh_inputs(root, run)
     assert (run / "units" / chunk / "input.md").read_text(encoding="utf-8") \
         == recorded
+
+
+def test_a_refresh_keeps_the_owners_order_of_two_tied_meetings(tmp_path):
+    """`related_talk` breaks a tie by transcript order, so a refresh has to
+    recover the order the owner named the meetings in — which is the order the
+    transcript units sit in the plan, not `plan.json`'s sorted hashes."""
+    from fixtures.facts_plan.make_dump import make_estate
+    root = tmp_path / "e"
+    make_estate(root)
+    (root / "meetings" / "transcripts").mkdir(parents=True)
+    line = "شمارش موجودی پیتزا و پنیر را هر روز در جدول می‌نویسیم"
+    for stem in ("zeta-1405-06-02", "alpha-1405-06-01"):
+        (root / "meetings" / "transcripts" / f"{stem}.txt").write_text(
+            "\n".join([line] * 20), encoding="utf-8")
+    run = tmp_path / "run"
+    # named out of alphabetical order, and saying the same thing, so every
+    # window ties and only the order decides which passage prints first
+    build(root, "cooking", run, ["zeta-1405-06-02", "alpha-1405-06-01"])
+    plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
+    assert [rel for rel in plan["hashes"] if "transcripts" in rel] == \
+        ["meetings/transcripts/alpha-1405-06-01.txt",
+         "meetings/transcripts/zeta-1405-06-02.txt"]        # hashes are sorted
+
+    form = next(u["id"] for u in plan["units"] if u["type"] == "workbook")
+    before = (run / "units" / form / "input.md").read_text(encoding="utf-8")
+    assert before.index("۱۴۰۵/۰۶/۰۲") < before.index("۱۴۰۵/۰۶/۰۱")
+    refresh_inputs(root, run)
+    assert (run / "units" / form / "input.md").read_text(encoding="utf-8") \
+        == before
+
+
+def test_the_phase_is_none_once_every_unit_is_done(planned_run):
+    root, run = planned_run
+    for unit in ("u-wb-x", "u-tr-m-l1"):
+        _finish(run, unit)
+    out = status(root, run)
+    assert all(u["state"] == "done" for u in out["units"])
+    assert out["phase"] is None and out["stage"] == "R"
