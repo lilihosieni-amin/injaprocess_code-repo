@@ -10,10 +10,12 @@ import copy
 import hashlib
 import json
 import pathlib
+import re
 
 import pytest
 from facts_helpers import _seed_units
-from facts_plan.assemble import assemble, digest, validate_unit
+from facts_plan.assemble import (assemble, digest, phase_entries,
+                                 validate_unit)
 from merge_facts import tiers
 from merge_facts.apply import simulate
 
@@ -1965,3 +1967,107 @@ def test_a_workbook_formula_cites_the_tab_of_the_table_it_binds():
     assert _sources_of(rule, decision, unit, by_id=[table]) == [
         {"type": "sheet", "ref": "attachments/sheets/Amadesazi__Amadesazi/Amadesazi.xlsx",
          "sheet": "بازدهی"}, PROCESS_SOURCE]
+
+
+# --------------------------------------------------------------------------
+# Form-anchored units (spec 2026-09-15 §3): phase 1 decides the forms, phase 2
+# reads the transcripts knowing what phase 1 recorded.
+
+FORM = {"kind": "record", "key": "form_tahvil", "title": "فرم تحویل", "statement": "",
+        "data": {"medium": "paper", "role": "log",
+                 "location": {"kept_at": "آشپزخانه", "holder": "سرپرست"},
+                 "fields": [{"key": "vazn", "title": "وزن", "type": "number"}]}}
+NOTE = {"kind": "note", "key": "n", "title": "یادداشت", "statement": "هر روز وزن می‌شود",
+        "data": {"about": [{"ref": "N-u-att-1-0"}]}}
+
+#: The photographed form phase 1 reads, and the meeting phase 2 reads.
+PHOTO = "departments/cooking/attachments/.text/photo-1.image.md"
+TALK = "meetings/transcripts/m.txt"
+
+
+def _two_unit_run(tmp_path, att_new, tr_new):
+    """A run of the two phases: `u-att-1` (a photographed form, phase 1) and
+    `u-tr-m-l1` (a three-line transcript, phase 2), neither holding a candidate
+    of the sheets — everything either writes is a `new[]` entry."""
+    root = _root(tmp_path)
+    (root / PHOTO).parent.mkdir(parents=True)
+    (root / PHOTO).write_text("فرم تحویل\n", encoding="utf-8")
+    (root / TALK).write_text("یک\nدو\nسه\n", encoding="utf-8")
+    skeleton = dict(_skeleton(), candidates=[], issues=[], unit_symbols=[])
+    plan = {"schema_version": 1, "department": "cooking",
+            "hashes": {PHOTO: "a", TALK: "b"},
+            "units": [{"id": "u-att-1", "type": "attachment", "phase": 1,
+                       "inputs": [PHOTO], "nodes": [], "candidates": [],
+                       "est_tokens_in": 1, "est_tokens_out": 1},
+                      {"id": "u-tr-m-l1", "type": "transcript", "phase": 2,
+                       "inputs": [f"{TALK}#L1-L3"], "nodes": [], "candidates": [],
+                       "est_tokens_in": 1, "est_tokens_out": 1}]}
+    outputs = {unit: {"schema_version": 1, "unit": unit, "attempt": 1,
+                      "skeleton_sha256": hashlib.sha256(
+                          json.dumps(skeleton, ensure_ascii=False)
+                          .encode("utf-8")).hexdigest(),
+                      "decisions": [], "new": new}
+               for unit, new in (("u-att-1", att_new), ("u-tr-m-l1", tr_new))}
+    return root, _run(root, outputs, skeleton=skeleton, plan=plan)
+
+
+def test_a_phase_two_note_addressed_to_a_phase_one_new_entry_lands_on_it(tmp_path):
+    """A photo unit's `new[]` form is `N-u-att-1-0`; a transcript unit's note
+    with `about: [{"ref": "N-u-att-1-0"}]` resolves to that form's temp id."""
+    root, run = _two_unit_run(tmp_path, att_new=[FORM], tr_new=[NOTE])
+    assemble(root, run)
+    delta = json.loads((run / "facts-delta.json").read_text(encoding="utf-8"))
+    form = next(e for e in delta["entries"] if e["key"] == "form_tahvil")
+    note = next(e for e in delta["entries"] if e["kind"] == "note")
+    assert note["data"]["about"] == [{"ref": form["id"]}]
+
+
+def test_phase_entries_lists_the_gated_entries_of_the_named_units_with_handles(tmp_path):
+    root, run = _two_unit_run(tmp_path, att_new=[FORM], tr_new=[])
+    entries = phase_entries(root, run, ["u-att-1"])
+    assert [(e["handle"], e["kind"], e["key"]) for e in entries] == \
+        [("N-u-att-1-0", "record", "form_tahvil")]
+    assert entries[0]["data"]["fields"][0]["key"] == "vazn"
+
+
+def test_phase_entries_contributes_nothing_for_a_unit_that_failed(tmp_path):
+    """Task C hands it every phase-1 unit, failed ones included: a unit whose
+    every attempt is refused whole folds nothing, and no exception is raised."""
+    root, run = _two_unit_run(tmp_path, att_new=[FORM], tr_new=[])
+    for attempt in (1, 2):
+        (run / "units" / "u-att-1" / f"out.{attempt}.json").write_text(
+            json.dumps({"schema_version": 7}), encoding="utf-8")
+    assert phase_entries(root, run, ["u-att-1"]) == []
+
+
+def test_the_digest_names_each_entrys_source_kinds(tmp_path):
+    """The reviewer is told what each entry was read off (spec §3)."""
+    root, run = _two_unit_run(tmp_path, att_new=[FORM], tr_new=[NOTE])
+    text = digest(root, run).read_text(encoding="utf-8")
+    assert re.search(r"منابع: (photo|sheet|voice|process)"
+                     r"( · (photo|sheet|voice|process))*", text)
+    assert "منابع: photo" in text and "منابع: voice" in text
+
+
+def test_a_units_account_reaches_the_delta_and_apply_takes_it(tmp_path):
+    """The other half of the contradiction rule: what the unit heard travels
+    to the store as an open account, whose id `apply` mints (INV-1)."""
+    root = _root(tmp_path)
+    _seed_units(root)
+    record = _record_out()
+    record["decisions"][0]["accounts"] = [
+        {"path": "data/cadence", "value": "weekly",
+         "source": {"type": "voice", "ref": "meetings/transcripts/c.txt",
+                    "lines": "3-9"}}]
+    plan = _plan()
+    plan["hashes"] = {"meetings/transcripts/c.txt": "x"}
+    run_dir = _run(root, {"u-a": record, "u-b": _rule_out()}, plan=plan)
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    entry = next(e for e in delta["entries"] if e["key"] == "gozaresh_shabane_pitza")
+    assert entry["data"]["cadence"] == "nightly"          # the form's value stays
+    assert [(a["field"], a["value"], a["status"]) for a in entry["accounts"]] == \
+        [("data/cadence", "weekly", "open")]
+    assert "id" not in entry["accounts"][0]
+    validate("facts-delta.schema.json", delta)
+    assert tiers.refusals(simulate(root, run_dir / "facts-delta.json", run_dir)[1]) == []
