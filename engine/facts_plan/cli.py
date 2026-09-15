@@ -236,7 +236,15 @@ def status(root, run_dir, *, new_turn=False):
         # Phase 1 is over: the transcript units are told what the forms
         # recorded. Idempotent, so this runs on every poll and writes once.
         from facts_plan.build import render_phase2_inputs
-        render_phase2_inputs(root, run_dir)
+        try:
+            render_phase2_inputs(root, run_dir)
+        except Exception as exc:                                    # noqa: BLE001
+            # I4 — `status` is the playbook's heartbeat and the one place a
+            # moved dump is *reported* (`plan_stale`), so it never dies on the
+            # estate. The units stay pending with their core input and the
+            # next poll tries again; the reason is on stderr, not swallowed.
+            print(f"facts-plan: phase-2 inputs not rendered: {exc}",
+                  file=sys.stderr)
     elapsed = _epoch() - started
     return {"stage": _stage(run_dir, plan, states), "units": states,
             "phase": phase, "plan_stale": _stale(root, plan),

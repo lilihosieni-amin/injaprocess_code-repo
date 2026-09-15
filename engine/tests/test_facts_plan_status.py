@@ -284,3 +284,20 @@ def test_the_phase_is_none_once_every_unit_is_done(planned_run):
     out = status(root, run)
     assert all(u["state"] == "done" for u in out["units"])
     assert out["phase"] is None and out["stage"] == "R"
+
+
+def test_status_reports_instead_of_raising_when_the_estate_moved(
+        planned_run, capsys):
+    """I4 — `status` is the playbook's heartbeat: an estate that moved between
+    Stage P and the end of phase 1 is `plan_stale`'s business, never a
+    traceback. The phase-2 units stay pending with the core input they have."""
+    root, run = planned_run
+    _finish(run, "u-wb-x")
+    (root / "attachments" / "sheets" / "manifest.json").unlink()
+    out = status(root, run)
+    assert out["phase"] == 2
+    assert next(u["state"] for u in out["units"] if u["id"] == "u-tr-m-l1") \
+        == "pending"
+    assert "facts-plan: phase-2 inputs not rendered: " in capsys.readouterr().err
+    assert RECORDED_HEADING not in (run / "units" / "u-tr-m-l1"
+                                    / "input.md").read_text(encoding="utf-8")
