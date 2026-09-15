@@ -174,6 +174,28 @@ def unit_states(root, run_dir, units, check=None):
     return out
 
 
+def _gate_phases(units, states):
+    """Spec 2026-09-15 §3 — the forms are decided first, then the transcripts.
+
+    A phase-2 unit is held `waiting` while any phase-1 unit is still `pending`
+    or owes a retry; `failed` is decided too, so one refused form never stalls
+    the run. Returns the lowest phase with open units — `2` once phase 1 is
+    over, `None` when nothing is left. A plan from before the phases (no
+    `phase` key) is all phase 1, and nothing waits.
+    """
+    phase_of = {u["id"]: u.get("phase", 1) for u in units}
+    open1 = any(phase_of[s["id"]] == 1
+                and (s["state"] == "pending" or s.get("retry"))
+                for s in states)
+    for s in states:
+        if open1 and phase_of[s["id"]] == 2 and s["state"] == "pending":
+            s["state"] = "waiting"
+    open2 = any(phase_of[s["id"]] == 2
+                and (s["state"] in ("pending", "waiting") or s.get("retry"))
+                for s in states)
+    return 1 if open1 else 2 if open2 else None
+
+
 def _stale(root, plan):
     """A dump or transcript that moved since `build` read it (§2.3)."""
     for rel, held in (plan or {}).get("hashes", {}).items():
@@ -187,7 +209,8 @@ def _stage(run_dir, plan, states):
     """The resume ladder of §6, by artefact presence — nothing is recorded."""
     if plan is None:
         return "P"
-    if any(s["state"] == "pending" or s.get("retry") for s in states):
+    if any(s["state"] in ("pending", "waiting") or s.get("retry")
+           for s in states):
         return "U"
     if not (run_dir / "facts-delta.json").is_file():
         return "R"
@@ -206,11 +229,18 @@ def status(root, run_dir, *, new_turn=False):
                                             "%Y-%m-%dT%H:%M:%SZ"))
     plan = read_json(run_dir / "plan.json") \
         if (run_dir / "plan.json").is_file() else None
-    states = unit_states(root, run_dir, (plan or {}).get("units") or [])
+    units = (plan or {}).get("units") or []
+    states = unit_states(root, run_dir, units)
+    phase = _gate_phases(units, states)
+    if phase == 2:
+        # Phase 1 is over: the transcript units are told what the forms
+        # recorded. Idempotent, so this runs on every poll and writes once.
+        from facts_plan.build import render_phase2_inputs
+        render_phase2_inputs(root, run_dir)
     elapsed = _epoch() - started
     return {"stage": _stage(run_dir, plan, states), "units": states,
-            "plan_stale": _stale(root, plan), "elapsed_s": elapsed,
-            "yield": elapsed > YIELD_AFTER_S}
+            "phase": phase, "plan_stale": _stale(root, plan),
+            "elapsed_s": elapsed, "yield": elapsed > YIELD_AFTER_S}
 
 
 def check_rebuild(root, run_dir, rebuild):
