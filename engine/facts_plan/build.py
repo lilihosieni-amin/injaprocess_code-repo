@@ -1463,9 +1463,18 @@ def write_skeleton(run_dir, department, run, symbols, candidates, instances,
 # --------------------------------------------------------------------------
 # T13: units of work (QF-51) — the grouping is fixed, not packed.
 
-IN_BUDGET, OUT_BUDGET = 20000, 20000
-MAX_LINES, MAX_LINE = 1800, 1900
+IN_BUDGET, OUT_BUDGET = 50000, 20000    # owner 2026-09-15: core 50K; output stays the binding cap
+MAX_LINES, MAX_LINE = 4500, 1900
 EST_OUT = {"item": 120, "rule": 250, "script": 250}
+
+#: §3's phase 1 reads the forms — the workbooks, the items and the photographed
+#: paper — with the meeting passages about each beside it; phase 2 reads the
+#: transcripts knowing what phase 1 recorded.
+TALK_BUDGET, RECORDED_BUDGET = 80000, 20000
+TALK_WINDOW, TALK_STEP = 40, 20
+TALK_HEADING = "## گفت‌وگوهای مرتبط"
+RECORDED_HEADING = "## آنچه تا کنون ثبت شده"
+PHASE_OF = {"workbook": 1, "items": 1, "attachment": 1, "transcript": 2}
 
 
 def group_key(row, conventions=DEFAULT_CONVENTIONS):
@@ -1511,7 +1520,7 @@ def workbook_groups(manifest, department, reference_only=(),
     return groups
 
 
-def transcript_chunks(text, budget=18000):
+def transcript_chunks(text, budget=42000):
     """Line-aligned chunks under `budget` (§2.3). The rendered input carries the
     cards and the slices too, so a chunk's own budget is below the unit's."""
     lines = text.splitlines()
@@ -1750,18 +1759,21 @@ def plan_units(skeleton, groups, chunks, items, attachments,
         mine = sorted(w["short"] for w in rows)
         if members.get(key):
             units.append({"id": f"u-wb-{mine[0]}", "type": "workbook",
+                          "phase": PHASE_OF["workbook"],
                           "inputs": [w["file"] for w in rows],
                           "candidates": sorted(members[key]), "nodes": [],
                           "est_tokens_in": 0, "est_tokens_out": 0})
     for recording, path, (first, last), text in chunks:
         units.append({"id": f"u-tr-{recording}-l{first}", "type": "transcript",
+                      "phase": PHASE_OF["transcript"],
                       "inputs": [f"{path}#L{first}-L{last}"], "candidates": [],
                       "nodes": [], "est_tokens_in": estimate_tokens(text),
                       "est_tokens_out": 0})
     if items:
         slug = _code_slug(by_id[items[0]]["payload"]["code"], conventions)
-        units.append({"id": f"u-items-{slug}",
-                      "type": "items", "inputs": [], "candidates": list(items),
+        units.append({"id": f"u-items-{slug}", "type": "items",
+                      "phase": PHASE_OF["items"], "inputs": [],
+                      "candidates": list(items),
                       "nodes": [], "est_tokens_in": 0, "est_tokens_out": 0})
     packed = None
     for path in attachments:
@@ -1773,7 +1785,8 @@ def plan_units(skeleton, groups, chunks, items, attachments,
                 packed["inputs"] = trial["inputs"]
                 continue
         n = sum(u["type"] == "attachment" for u in units) + 1
-        packed = {"id": f"u-att-{n}", "type": "attachment", "inputs": [path],
+        packed = {"id": f"u-att-{n}", "type": "attachment",
+                  "phase": PHASE_OF["attachment"], "inputs": [path],
                   "candidates": [], "nodes": [], "est_tokens_in": 0,
                   "est_tokens_out": 0}
         units.append(packed)

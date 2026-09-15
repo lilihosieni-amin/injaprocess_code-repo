@@ -6,6 +6,9 @@ import re
 import pytest
 from facts_plan.build import (
     IN_BUDGET,
+    MAX_LINES,
+    OUT_BUDGET,
+    PHASE_OF,
     build,
     code_key,
     estimate_tokens,
@@ -17,6 +20,7 @@ from facts_plan.build import (
     reference_rows,
     strip_branch,
     template_signature,
+    transcript_chunks,
 )
 from fixtures.facts_plan.make_dump import make_estate
 
@@ -310,3 +314,32 @@ def test_an_input_no_unit_reads_exits_2_naming_it(monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "meetings/transcripts/prep.txt" in err
     assert "departments/cooking/attachments/.text/form.txt" in err
+
+
+# --------------------------------------------------------------------------
+# form-anchored units (2026-09-15) — the budgets, the phases, the related talk
+# and the recorded-so-far slice.
+
+def test_the_budgets_are_the_owners_2026_09_15():
+    assert (IN_BUDGET, OUT_BUDGET, MAX_LINES) == (50000, 20000, 4500)
+    from facts_plan.build import RECORDED_BUDGET, TALK_BUDGET
+    assert (TALK_BUDGET, RECORDED_BUDGET) == (80000, 20000)
+
+
+def test_a_transcript_chunk_stays_under_the_core_budget_with_the_cards_room():
+    text = "\n".join("این یک خط گفت‌وگو دربارهٔ فرم تبدیل است." * 3
+                     for _ in range(6000))
+    for first, last in transcript_chunks(text):
+        assert estimate_tokens(
+            "\n".join(text.splitlines()[first - 1:last])) <= 42000
+
+
+def test_every_unit_carries_its_phase():
+    skeleton = {"candidates": [], "instances": []}
+    units = plan_units(
+        skeleton, {}, [("m", "meetings/transcripts/m.txt", (1, 3), "a\nb\nc")],
+        [], ["departments/x/attachments/.text/p.image.md"])
+    assert {u["type"]: u["phase"] for u in units} == {"transcript": 2,
+                                                      "attachment": 1}
+    assert PHASE_OF == {"workbook": 1, "items": 1, "attachment": 1,
+                        "transcript": 2}
