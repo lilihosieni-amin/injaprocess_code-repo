@@ -2295,6 +2295,11 @@ def render_input(unit, skeleton, extras, conventions=DEFAULT_CONVENTIONS,
     out += [_render_candidate(by_id[c], skeleton) for c in unit["candidates"]] or ["—"]
     if extras.get("text"):
         out += ["", "## متن", "", extras["text"]]
+    # §3: what the meetings said about these tables goes beside the tables —
+    # after the text, before the context sections, and well before the cards,
+    # which stay closest to the answer.
+    if extras.get("talk"):
+        out += ["", talk_section(extras["talk"])]
     if extras.get("functions"):
         # No section at all when the unit's candidates call nothing — an empty
         # heading is one more thing to read and nothing to decide.
@@ -2362,13 +2367,19 @@ def anchor_tokens(unit, skeleton, texts):
     words = []
     for cid in unit["candidates"]:
         c = by_id[cid]
-        payload = c.get("payload") or {}
+        # `_view`, not `payload`: a record's row labels — the month and weekday
+        # names a meeting calls its rows by — live in `render`, and a table
+        # spoken of only by its rows was found by nothing without them.
+        payload = _view(c)
         words += [label_of(c), payload.get("title") or "",
                   payload.get("output") or ""]
         words += list(payload.get("aliases") or [])
         words += [f.get("title") or "" for f in payload.get("fields") or []]
         words += [str(v) for row in payload.get("rows") or [] if isinstance(row, dict)
                   for v in row.values() if isinstance(v, str)]
+        words += [str(label)
+                  for mapping in (payload.get("row_labels") or {}).values()
+                  for label in mapping.values()]
     if unit["type"] == "attachment":
         for ref in unit["inputs"]:
             lines = texts.get(ref.partition("#")[0], "").splitlines()
@@ -2392,12 +2403,20 @@ def related_talk(tokens, transcripts, budget=TALK_BUDGET, window=TALK_WINDOW,
                 scored.append((-score, order, first, last, recording, rel))
             if last == len(lines):
                 break
-    taken, spent = [], 0
+    # A window is priced on the lines it ADDS, not on its own 40: at step 20
+    # every window but the first overlaps its neighbour by half, and charging
+    # the overlap twice spent the 80K on 40K of talk.
+    taken, spent, covered = [], 0, collections.defaultdict(set)
     for neg, order, first, last, recording, rel in sorted(scored):
-        cost = estimate_tokens("\n".join(transcripts[order][2][first - 1:last]))
+        fresh = [n for n in range(first, last + 1) if n not in covered[order]]
+        if not fresh:
+            continue                     # already printed: it costs nothing
+        cost = estimate_tokens("\n".join(transcripts[order][2][n - 1]
+                                        for n in fresh))
         if spent + cost > budget:
             continue
         spent += cost
+        covered[order].update(fresh)
         taken.append((order, first, last, recording, rel))
     passages = []
     for order, first, last, recording, rel in sorted(taken):
@@ -2658,7 +2677,7 @@ def _renderer(root, department, estate, skeleton, rendered,
 
     talk_input = transcripts(root, recordings)
 
-    def render(unit, *, recorded=None):
+    def render(unit, *, recorded=None, talk=None):
         mine = [by_id[c] for c in unit["candidates"] if c in by_id]
         sids = sorted({instance_by_key[k]["spreadsheetId"]
                        for c in mine for k in candidate_instances(c)
@@ -2671,6 +2690,7 @@ def _renderer(root, department, estate, skeleton, rendered,
         unit["nodes"] = [n["node"] for n in ranked]
         rendered[unit["id"]] = render_input(unit, skeleton, {
             "text": text,
+            "talk": talk,
             "functions": called_bodies(
                 sections, {name for c in mine
                            for name in (c.get("render") or {}).get("calls") or []}),
@@ -2685,16 +2705,17 @@ def _renderer(root, department, estate, skeleton, rendered,
         return rendered[unit["id"]]
 
     def render_full(unit):
-        """The core, and for a form unit the talk about its tables after it."""
-        core = render(unit)
+        """What the unit is handed: the core, and for a form unit the talk
+        about its tables in its own section beside them. `fits` is checked on
+        `render(unit)` without the talk — the talk is cut at a budget of its
+        own and may never split a unit."""
         if unit.get("phase", PHASE_OF[unit["type"]]) != 1:
-            return core
+            return render(unit)
         att = {ref.partition("#")[0]: _unit_text(root, {"inputs": [ref]})
                for ref in unit["inputs"]
                if ref.partition("#")[0].endswith((".txt", ".md"))}
-        section = talk_section(related_talk(
+        return render(unit, talk=related_talk(
             anchor_tokens(unit, skeleton, att), talk_input))
-        return core + "\n\n" + section if section else core
 
     render.full = render_full
     return render

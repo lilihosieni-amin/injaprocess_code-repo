@@ -285,9 +285,9 @@ def test_photos_get_their_own_units_and_every_input_is_read_once(
     for unit in attachment_units:
         text = (run / "units" / unit["id"] / "input.md").read_text(
             encoding="utf-8")
-        # the budget binds the core; the talk about the forms rides after it
-        # under a budget of its own (2026-09-15).
-        assert estimate_tokens(text.partition(TALK_HEADING)[0]) <= IN_BUDGET
+        # the budget binds the core; the talk about the forms rides in its own
+        # section under a budget of its own (2026-09-15).
+        assert estimate_tokens(_talk_and_core(text)[1]) <= IN_BUDGET
         assert all(f"عکس {photos.index(p) + 1}\n" in text
                    for p in unit["inputs"])
 
@@ -377,9 +377,22 @@ def test_a_zero_score_window_is_never_taken_even_under_budget():
 
 def test_related_talk_is_cut_at_the_budget_best_window_first():
     long = [("m", "meetings/transcripts/m.txt", ["فرم تبدیل برگر و بازدهی خروجی"] * 400)]
-    passages = related_talk(TOKENS, long, budget=2500)      # a window is 700 tokens: three fit
+    passages = related_talk(TOKENS, long, budget=2500)
     assert sum(estimate_tokens(p["text"]) for p in passages) <= 2500
-    assert passages == [dict(passages[0], first=1, last=80)]  # equal scores → first windows, merged
+    # equal scores → the first windows, merged; the first costs its 40 lines
+    # and every later one only the 20 it adds, so 2500 buys 140 lines.
+    assert passages == [dict(passages[0], first=1, last=140)]
+
+
+def test_the_talk_budget_is_not_halved_by_overlapping_windows():
+    """At step 20 a window overlaps its neighbour by half. Charging each its own
+    40 lines spent the budget twice on the same talk and delivered half of it;
+    a window is priced on the lines it adds, so the budget is nearly filled."""
+    long = [("m", "meetings/transcripts/m.txt",
+             ["فرم تبدیل برگر و بازدهی خروجی"] * 4000)]
+    passages = related_talk(TOKENS, long, budget=40000)
+    spent = sum(estimate_tokens(p["text"]) for p in passages)
+    assert 40000 - 700 <= spent <= 40000            # within one window of it
 
 
 def test_the_talk_section_heads_each_passage_with_the_date_and_lines():
@@ -394,9 +407,14 @@ def test_anchor_tokens_come_from_titles_columns_aliases_and_attachment_heads():
     skeleton = {"candidates": [{"id": "S-rec-1", "kind": "record", "payload": {
         "instances": [{"key": "b__s1", "sheet": "بازدهی", "spreadsheetId": "x"}],
         "aliases": ["بازده تولید"],
-        "fields": [{"key": "c_b", "title": "ورودی (کیلو)"}]}}], "instances": []}
+        "fields": [{"key": "c_b", "title": "ورودی (کیلو)"}]},
+        # the row labels a meeting calls the table's rows by live in `render`,
+        # never in `payload` — `_view` is the only place both are visible.
+        "render": {"row_labels": {"b__s1": {"4": "شنبه", "5": "یکشنبه"}}}}],
+        "instances": []}
     unit = {"id": "u-wb-b", "type": "workbook", "candidates": ["S-rec-1"], "inputs": []}
-    assert {"بازدهی", "بازده", "تولید", "ورودی", "کیلو"} <= anchor_tokens(unit, skeleton, {})
+    assert {"بازدهی", "بازده", "تولید", "ورودی", "کیلو",
+            "شنبه", "یکشنبه"} <= anchor_tokens(unit, skeleton, {})
     att = {"id": "u-att-1", "type": "attachment", "candidates": [],
            "inputs": ["d/attachments/.text/p.image.md"]}
     texts = {"d/attachments/.text/p.image.md": "# فرم تحویل مرغ\nستون: وزن\n"}
@@ -411,6 +429,18 @@ def _tiny_estate(tmp_path):
     return root
 
 
+def _talk_and_core(text):
+    """`input.md` split in two: the talk block, and everything else — the core
+    the budget is checked on. The talk sits mid-document (§3: beside the tables
+    it is about), so it ends at the next `## ` heading; its own passage
+    headings are `### `, which that never matches."""
+    head, sep, rest = text.partition(TALK_HEADING)
+    if not sep:
+        return "", text
+    body, found, tail = rest.partition("\n## ")
+    return body, head + ("## " + tail if found else "")
+
+
 def test_a_form_units_input_ends_with_the_talk_and_the_fit_check_ignores_it(tmp_path):
     # a workbook unit whose core is under budget and whose talk would be over it
     root = _tiny_estate(tmp_path)
@@ -423,10 +453,14 @@ def test_a_form_units_input_ends_with_the_talk_and_the_fit_check_ignores_it(tmp_
     plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
     wb = next(u for u in plan["units"] if u["type"] == "workbook")
     text = (run / "units" / wb["id"] / "input.md").read_text(encoding="utf-8")
-    core, _, talk = text.partition(TALK_HEADING)
+    talk, core = _talk_and_core(text)
     assert talk and estimate_tokens(core) <= IN_BUDGET
     assert estimate_tokens(talk) <= TALK_BUDGET + 500       # the heading lines
-    assert not [u for u in plan["units"] if u["id"].startswith(wb["id"] + "-s")]  # no split by talk
+    # §3: beside the tables, and the contract cards stay closest to the answer.
+    assert text.index(TALK_HEADING) < text.index("## زمینه")
+    assert text.index(TALK_HEADING) < text.index("Expression card")
+    # no split by talk
+    assert not [u for u in plan["units"] if u["id"].startswith(wb["id"] + "-s")]
 
 
 def test_two_builds_are_byte_identical(tmp_path):
@@ -444,10 +478,13 @@ def test_a_transcript_units_recorded_section_replaces_the_reuse_slice():
         {"handle": "S-rec-1", "kind": "record", "key": "bazdehi", "title": "بازدهی تولید",
          "data": {"fields": [{"key": "vorudi", "title": "ورودی", "unit": "kg"}]}},
         {"handle": "N-u-att-1-2", "kind": "rule", "key": "saqf", "title": "سقف ضایعات",
-         "statement": "ضایعات از ده درصد بیشتر نمی‌شود"}],
+         "statement": "ضایعات از ده درصد بیشتر نمی‌شود"},
+        {"handle": "S-item-3", "kind": "item", "key": "khamir", "title": "خمیر",
+         "data": {"code": "##7"}}],
         ["F-00001 · record · units · واحدها"])
     assert lines[0] == "S-rec-1 · record · bazdehi · بازدهی تولید · ستون‌ها: vorudi (ورودی، kg)"
     assert lines[1].startswith("N-u-att-1-2 · rule · saqf · سقف ضایعات · ضایعات از ده")
+    assert lines[2] == "S-item-3 · item · ##7 · khamir · خمیر"   # the code first
     assert lines[-1] == "F-00001 · record · units · واحدها"
     # §3: the same slot, under the heading that says what it now holds.
     from facts_plan.build import render_input
