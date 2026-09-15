@@ -298,3 +298,25 @@ blocks readiness and «بچ»/«پاس» leave the banned words. The v3.8 ruling
 redone, never skipped. Spec: `docs/superpowers/specs/2026-09-13-facts-gate-tiers-design.md`. Later the same day, after the local preparation run, the owner chose option (b) for the `extra` bag
 (*"for 3 i choce b"*): a newer run's value at a path replaces the stored one and any older `path~n`
 goes, so the bag never grows run over run — this overrides C5's "never overwritten".
+
+**Owner ruling, 2026-09-15 — the forms are read first, and the input budget rises to 50K.** The
+preparation run of 2026-09-14 described 19 of its 37 tables from speech alone and the reviewer then
+merged eight of them into forms it had never seen, on title similarity: the transcript units knew
+the run's tables by title only, with no column and no value in front of them. Shown the proposal to
+read the Excel files and the photographed forms **first**, each form unit given the meeting passages
+that talk about its own tables, and the transcripts **second**, knowing what phase 1 recorded, the
+owner agreed — *"i'm ok"* — and set the core input budget himself: *"Make it 50K"*. So `plan.json`
+carries a `phase` per unit (1: workbook, attachment, items; 2: transcript); a form unit's input
+gains «گفت‌وگوهای مرتبط», ranked transcript windows appended after the core fit check so they never
+cause a split; a transcript unit's reuse slice becomes «آنچه تا کنون ثبت شده», phase 1's gated
+entries with their columns and addressable handles; `facts-plan status` holds a phase-2 unit at
+`waiting` until every phase-1 unit is `done` or `failed` and rewrites its input then; and a unit may
+write an `account` with a `voice` source when the talk contradicts the form — the form's value is
+the entry, the spoken one an open dispute, and a malformed account is REPAIR-dropped as A7 drops any
+engine-owned member. The budgets: core input 20K → **50K**, `MAX_LINES` 1,800 → **4,500**, up to
+**80K** of related talk per form unit, up to **20K** of "recorded so far" per transcript unit,
+**≤130K** of input in all. **The estimated output stays 20K.** That cap is this ADR's own context —
+the 2026-09-02 cooking run crashed three agents on the model's *output* limit — so it remains the
+binding number and the only one the splitter reads: a unit may read far more, and still never
+answers more than the model can write. Spec:
+`docs/superpowers/specs/2026-09-15-facts-form-anchored-units-design.md`.

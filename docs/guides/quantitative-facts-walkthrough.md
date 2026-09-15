@@ -296,10 +296,13 @@ the mirror), a **function library** (`functions.md`, one section per distinct fu
 `unread_attachment`, and so on — the full list is in section 6.3).
 
 **Units.** The candidates are packed into **units** — parcels of work small enough for one model
-call: at most 20 000 estimated input tokens and 20 000 output tokens, 1 800 lines of at most 1 900
-characters. Grouping is fixed, not clever: one unit per workbook group (`u-wb-<short>`), one per
-transcript chunk (`u-tr-<recording>-l<first line>`), one for the items (`u-items-…`), and
-**attachment units** (`u-att-1`, `u-att-2`, … in input order) holding the attached files' text,
+call: since 2026-09-15 at most 50 000 estimated input tokens of candidates, text and cards, 4 500
+lines of at most 1 900 characters, and — the number that has *not* moved — 20 000 estimated output
+tokens, because the output limit is the one that crashed agents on the first run. A transcript is
+chunked at 42 000 tokens, which leaves the cards their room under the input budget and still
+estimates to 20 000 of output. Grouping is fixed, not clever: one unit per workbook group
+(`u-wb-<short>`), one per transcript chunk (`u-tr-<recording>-l<first line>`), one for the items
+(`u-items-…`), and **attachment units** (`u-att-1`, `u-att-2`, … in input order) holding the attached files' text,
 packed to the same budget — one file too big for any unit goes alone with an `oversized` issue.
 Until 2026-09-13 the attachments rode on the last transcript unit, and when that unit split on its
 line range every one of them was dropped: 13 form photos of the preparation run reached no unit
@@ -312,10 +315,13 @@ issues rather than stopping the run — the owner is told which table was too bi
 **The unit's input.** Each unit gets one Markdown file, `units/<u>/input.md`, and that file is
 *everything* the agent is allowed to know. In order: the candidates (a rule prints its output
 header, its variants, its bindings and what each parameter of the first binding reads); the
-transcript text; the library functions this unit's formulas call; the context (cell comments,
+transcript text; the passages of other meetings that talk about this unit's tables (a form unit
+only — see the phases below); the library functions this unit's formulas call; the context (cell
+comments,
 business-threshold formats, the «نیازمندیها و مشکلات» tab); one-line field tables of other
 templates this unit's bindings point at; a *reuse slice* (existing store entries that look
-related, so the unit reuses keys instead of inventing new ones); forty ranked process nodes it may
+related, so the unit reuses keys instead of inventing new ones — for a transcript unit this is the
+larger "what is recorded so far" section, below); forty ranked process nodes it may
 cite; and then three **cards**:
 
 - the **expression card** — the small formula language (`if then else and or not min max sum abs
@@ -332,6 +338,28 @@ cite; and then three **cards**:
 Because the shape section is generated from the schema, the contract the agent is *shown* and the
 contract it is *held to* cannot drift apart.
 
+**The two phases (2026-09-15).** Every unit also carries a `phase`, and the run reads the *forms*
+before it reads the *talk about them*. The meetings are mostly about the Excel files and the
+photographed forms, and the old order let a transcript unit invent a table the workbook already
+held: on the preparation run of 2026-09-14, 19 of 37 tables came from speech alone and the reviewer
+merged eight of them into forms by title similarity.
+
+- **Phase 1** is the workbook, attachment and items units. Their input gains one section,
+  «گفت‌وگوهای مرتبط» (*related talk*): the planner scans each chosen transcript in windows of 40
+  lines stepping 20, scores each window by the words it shares with this unit's own candidates,
+  takes the best windows up to 80 000 tokens, merges the ones that touch and prints them in
+  transcript order under the meeting's date and line range, so a citation can be checked. The
+  section is appended *after* the unit's fit check, so it never causes a split. The columns and the
+  values still come from the file or the photo; the talk supplies what the file does not say —
+  titles, units, cadence, who holds the form, thresholds, aliases — cited as a `voice` source.
+- **Phase 2** is the transcript units, and they now know what phase 1 recorded. Their *reuse slice*
+  is replaced by «آنچه تا کنون ثبت شده» (*what is recorded so far*): every record phase 1 kept with
+  its columns and location, every rule, every item, each with a handle the unit may address (the
+  candidate's `S-…`, or a run-wide `N-…` for something phase 1 minted), up to 20 000 tokens — and
+  then, as before, the department's open store entries. A spoken number about a listed table is
+  written *to* that table; a new table is described only when none of the listed ones fits. Every
+  chosen transcript line is still read by exactly one phase-2 unit: nothing spoken is skipped.
+
 `build` writes `plan.json` (unit ids, their inputs and candidates, and the SHA-256 hashes of every
 file it read — so `status` can report `plan_stale` if a dump changes), `skeleton.json` (the only
 place the mechanical payload lives), `functions.md`, and the `input.md` files. It refuses to
@@ -342,7 +370,10 @@ unit ids depend on the size estimate and renumbering would orphan finished work.
 
 The coordinator now dispatches the **quantify agent in `unit` mode**, at most four in one message,
 waits for all four, validates each, and dispatches the next four. Four is the proven-safe number
-for the Telegram bridge (ADR 0011).
+for the Telegram bridge (ADR 0011). Phase 1 goes first: `facts-plan status` lists a phase-2 unit as
+`waiting`, not `pending`, until every phase-1 unit is `done` or `failed`, and then writes that
+unit's input from the *gated* phase-1 result. So the batches run exactly as before, with one round
+of waiting between the last form unit and the first transcript unit.
 
 Each dispatch names the unit, the attempt number (1 or 2), the input path and the schema path,
 and carries the sentence "nothing runs in the background; results arrive as tool results in this
@@ -364,7 +395,12 @@ input it writes one decision:
 It may also add `new[]` entries the planner could not see: a paper form described in a transcript,
 a measurement ("the chef weighs the chicken at delivery"), a note (an open question addressed to
 some entry). A value the agent *inferred* rather than read is wrapped `{"value": …,
-"inferred": true}`; the engine turns that into a `field_status` mark later.
+`inferred": true}`; the engine turns that into a `field_status` mark later. And since 2026-09-15 it
+may write an **account**: when the talk contradicts the form, the form's value is the entry and the
+spoken one becomes an open dispute on it, with a `voice` source and the meeting's lines — one
+entry, never two. (Accounts used to be made only by the assembly. The id is still minted by the
+engine, and an account whose shape is wrong is dropped silently, the way any engine-owned member
+the agent writes is dropped.)
 
 The division of labour is strict (rule QF-46): the engine has already written every location,
 instance, column letter, enum constraint, reference row, item code, original formula text and
@@ -419,7 +455,8 @@ facts-plan digest --run <run_dir>
 ```
 
 `digest` folds every unit's output into entries in memory and writes `review/input.md`: one line
-per assembled entry (kind, key, scope, title, statement, and the formula or the columns), the
+per assembled entry (kind, key, scope, title, statement, the kinds of source behind it —
+`sheet · voice`, `voice` — and the formula or the columns), the
 engine's **flags** (things it noticed across units — a title used twice, two units disagreeing
 about a leaf, one tab claimed by two keys, variants that differ only by a wrapper function), the
 dropped candidates, and the same shape section. It also writes `review/input.sha256`, a hash of
@@ -436,8 +473,9 @@ the same `facts-unit` shape, addressing entries by `{kind, key, scope}` (ids do 
 may `keep` with corrections (a `data` it carries is merged member by member over the unit's own,
 never wholesale), `drop`, `merge_into`, and — only here — raise a `contradiction` on a field the
 engine flagged as *drift*, resolving it either as an `account` (open a dispute for the owner) or a
-`fix` (correct a demonstrable slip). There is no cap on how many decisions it may write or how
-many statements it may rewrite; where to spend its attention — duplicates, contradictions,
+`fix` (correct a demonstrable slip). When it merges two entries, the one read off a form is the
+keeper. There is no cap on how many decisions it may write or how many statements it may
+rewrite; where to spend its attention — duplicates, contradictions,
 cell-reference statements, not polish — is guidance, not a count. A `code` it writes is ignored
 rather than refused: the code is the engine's. The same validator gates it, folding the review over
 the assembly and linting the result exactly as the assembly will, and a failure is re-dispatched
@@ -1024,7 +1062,7 @@ the store must name one of its open rows (QF-40); the panel's Persian unit words
 |---|---|---|
 | `meta.json` | the playbook | the run's identity card (schema `facts-run-meta`) |
 | `turn.json` | `facts-plan status --new-turn` | when the current turn started |
-| `plan.json` | `facts-plan build` | unit ids, inputs, candidates, estimates, file hashes — immutable |
+| `plan.json` | `facts-plan build` | unit ids, their phase, inputs, candidates, estimates, file hashes — immutable |
 | `skeleton.json` | `facts-plan build` | every candidate with its mechanical payload; instances, imports, issues, unit symbols |
 | `functions.md` | `facts-plan build` | the estate's function library |
 | `units/<u>/input.md` | `facts-plan build` | everything one unit may know |
