@@ -9,6 +9,11 @@ from facts_plan.build import (
     MAX_LINES,
     OUT_BUDGET,
     PHASE_OF,
+    RECORDED_BUDGET,
+    RECORDED_HEADING,
+    TALK_BUDGET,
+    TALK_HEADING,
+    anchor_tokens,
     build,
     code_key,
     estimate_tokens,
@@ -18,7 +23,9 @@ from facts_plan.build import (
     plan_units,
     record_templates,
     reference_rows,
+    related_talk,
     strip_branch,
+    talk_section,
     template_signature,
     transcript_chunks,
 )
@@ -322,7 +329,6 @@ def test_an_input_no_unit_reads_exits_2_naming_it(monkeypatch, capsys):
 
 def test_the_budgets_are_the_owners_2026_09_15():
     assert (IN_BUDGET, OUT_BUDGET, MAX_LINES) == (50000, 20000, 4500)
-    from facts_plan.build import RECORDED_BUDGET, TALK_BUDGET
     assert (TALK_BUDGET, RECORDED_BUDGET) == (80000, 20000)
 
 
@@ -343,3 +349,51 @@ def test_every_unit_carries_its_phase():
                                                       "attachment": 1}
     assert PHASE_OF == {"workbook": 1, "items": 1, "attachment": 1,
                         "transcript": 2}
+
+
+LINES_A = ["سلام، امروز دربارهٔ فرم تبدیل برگر حرف می‌زنیم"] + ["حرف‌های دیگر"] * 30 + \
+          ["بازدهی خروجی هر روز توی جدول بازدهی نوشته می‌شه", "ورودی کیلو رو هم ثبت کنید"] + \
+          ["حرف‌های دیگر"] * 60
+LINES_B = ["دربارهٔ مرخصی پرسنل"] * 50
+TR = [("prep-1405-06-01", "meetings/transcripts/prep-1405-06-01.txt", LINES_A),
+      ("prep-1405-06-02", "meetings/transcripts/prep-1405-06-02.txt", LINES_B)]
+TOKENS = {"بازدهی", "خروجی", "ورودی", "کیلو", "فرم", "تبدیل", "برگر"}
+
+
+def test_related_talk_takes_the_windows_that_name_the_form_and_merges_touching_ones():
+    passages = related_talk(TOKENS, TR, budget=80000, window=40, step=20)
+    assert [p["rel"] for p in passages] == [TR[0][1]]          # transcript B scores 0 everywhere
+    assert passages[0]["first"] == 1 and passages[0]["last"] >= 33    # both hits, one merged passage
+    assert "جدول بازدهی" in passages[0]["text"]
+
+
+def test_a_zero_score_window_is_never_taken_even_under_budget():
+    assert related_talk({"واژه‌ای"}, TR) == []
+
+
+def test_related_talk_is_cut_at_the_budget_best_window_first():
+    long = [("m", "meetings/transcripts/m.txt", ["فرم تبدیل برگر و بازدهی خروجی"] * 400)]
+    passages = related_talk(TOKENS, long, budget=2500)      # a window is 700 tokens: three fit
+    assert sum(estimate_tokens(p["text"]) for p in passages) <= 2500
+    assert passages == [dict(passages[0], first=1, last=80)]  # equal scores → first windows, merged
+
+
+def test_the_talk_section_heads_each_passage_with_the_date_and_lines():
+    section = talk_section([{"recording": "prep-1405-06-01", "rel": TR[0][1],
+                             "first": 1, "last": 33, "text": "x"}])
+    assert section.startswith(TALK_HEADING)
+    assert "۱۴۰۵/۰۶/۰۱ · L1–L33" in section
+    assert talk_section([]) == ""
+
+
+def test_anchor_tokens_come_from_titles_columns_aliases_and_attachment_heads():
+    skeleton = {"candidates": [{"id": "S-rec-1", "kind": "record", "payload": {
+        "instances": [{"key": "b__s1", "sheet": "بازدهی", "spreadsheetId": "x"}],
+        "aliases": ["بازده تولید"],
+        "fields": [{"key": "c_b", "title": "ورودی (کیلو)"}]}}], "instances": []}
+    unit = {"id": "u-wb-b", "type": "workbook", "candidates": ["S-rec-1"], "inputs": []}
+    assert {"بازدهی", "بازده", "تولید", "ورودی", "کیلو"} <= anchor_tokens(unit, skeleton, {})
+    att = {"id": "u-att-1", "type": "attachment", "candidates": [],
+           "inputs": ["d/attachments/.text/p.image.md"]}
+    texts = {"d/attachments/.text/p.image.md": "# فرم تحویل مرغ\nستون: وزن\n"}
+    assert {"فرم", "تحویل", "مرغ"} <= anchor_tokens(att, skeleton, texts)

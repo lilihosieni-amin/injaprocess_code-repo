@@ -2320,9 +2320,23 @@ def render_input(unit, skeleton, extras, conventions=DEFAULT_CONVENTIONS):
 # place that reads the estate and writes the run directory.
 
 
-def _chunks(root, recordings):
-    """`[(recording, path, (first, last), text)]` — the chosen transcripts,
-    each cut into line-aligned chunks, in the order the owner named them."""
+def _fa(n):
+    return str(n).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
+
+
+def _recording_label(recording):
+    """`prep-1405-06-01-02` → `۱۴۰۵/۰۶/۰۱ (۲)`; a stem with no date is shown as
+    is — an owner name, never a path."""
+    m = re.search(r"([0-9]{4})-([0-9]{2})-([0-9]{2})(?:-0*([0-9]+))?$", recording)
+    if not m:
+        return recording
+    label = "/".join(_fa(m.group(i)) for i in (1, 2, 3))
+    return label + (f" ({_fa(m.group(4))})" if m.group(4) else "")
+
+
+def transcripts(root, recordings):
+    """`[(recording, rel, lines)]` — every chosen transcript that exists, in
+    the owner's order; `_chunks` and `related_talk` both read this."""
     out = []
     for recording in recordings:
         rel = f"meetings/transcripts/{recording}.txt"
@@ -2330,7 +2344,90 @@ def _chunks(root, recordings):
         if not path.is_file():
             print(f"facts-plan: no transcript for {recording}", file=sys.stderr)
             continue
-        lines = path.read_text(encoding="utf-8").splitlines()
+        out.append((recording, rel,
+                    path.read_text(encoding="utf-8").splitlines()))
+    return out
+
+
+def anchor_tokens(unit, skeleton, texts):
+    """The words a form unit is about — its candidates' labels, titles,
+    aliases, column titles and row labels; an attachment's headings and first
+    twelve lines. `_tokens` folds and drops the short words."""
+    by_id = {c["id"]: c for c in skeleton["candidates"]}
+    words = []
+    for cid in unit["candidates"]:
+        c = by_id[cid]
+        payload = c.get("payload") or {}
+        words += [label_of(c), payload.get("title") or "",
+                  payload.get("output") or ""]
+        words += list(payload.get("aliases") or [])
+        words += [f.get("title") or "" for f in payload.get("fields") or []]
+        words += [str(v) for row in payload.get("rows") or [] if isinstance(row, dict)
+                  for v in row.values() if isinstance(v, str)]
+    if unit["type"] == "attachment":
+        for ref in unit["inputs"]:
+            lines = texts.get(ref.partition("#")[0], "").splitlines()
+            words += lines[:12] + [l for l in lines if l.startswith("#")]
+    return _tokens(" ".join(words))
+
+
+def related_talk(tokens, transcripts, budget=TALK_BUDGET, window=TALK_WINDOW,
+                 step=TALK_STEP):
+    """Spec §3 phase 1: the transcript windows that share the most words with
+    the unit, best first until `budget`, touching windows merged, printed in
+    transcript order. A window sharing nothing is never taken. Deterministic:
+    ties fall to transcript order, then position."""
+    scored = []
+    for order, (recording, rel, lines) in enumerate(transcripts):
+        for first in range(1, max(len(lines), 1) + 1, step):
+            last = min(first + window - 1, len(lines))
+            text = "\n".join(lines[first - 1:last])
+            score = len(tokens & _tokens(text))
+            if score:
+                scored.append((-score, order, first, last, recording, rel))
+            if last == len(lines):
+                break
+    taken, spent = [], 0
+    for neg, order, first, last, recording, rel in sorted(scored):
+        cost = estimate_tokens("\n".join(transcripts[order][2][first - 1:last]))
+        if spent + cost > budget:
+            continue
+        spent += cost
+        taken.append((order, first, last, recording, rel))
+    passages = []
+    for order, first, last, recording, rel in sorted(taken):
+        if passages and passages[-1]["rel"] == rel and first <= passages[-1]["last"] + 1:
+            passages[-1]["last"] = max(passages[-1]["last"], last)
+        else:
+            passages.append({"recording": recording, "rel": rel,
+                             "first": first, "last": last, "text": ""})
+    by_rel = {rel: lines for _, rel, lines in transcripts}
+    for p in passages:
+        p["text"] = "\n".join(by_rel[p["rel"]][p["first"] - 1:p["last"]])
+    return passages
+
+
+def talk_section(passages):
+    """`TALK_HEADING` and every passage under its own date and line range —
+    what a form unit is shown of the meetings that named it (§3). Empty when
+    nothing was said about the form: an empty heading is one more thing to
+    read and nothing to decide."""
+    if not passages:
+        return ""
+    out = [TALK_HEADING, ""]
+    for p in passages:
+        out += [f'### {_recording_label(p["recording"])} · '
+                f'L{p["first"]}–L{p["last"]}', "",
+                "\n".join(w for line in p["text"].splitlines()
+                           for w in _wrap(line)), ""]
+    return "\n".join(out)
+
+
+def _chunks(root, recordings):
+    """`[(recording, path, (first, last), text)]` — the chosen transcripts,
+    each cut into line-aligned chunks, in the order the owner named them."""
+    out = []
+    for recording, rel, lines in transcripts(root, recordings):
         for first, last in transcript_chunks("\n".join(lines)):
             out.append((recording, rel, (first, last),
                         "\n".join(lines[first - 1:last])))
