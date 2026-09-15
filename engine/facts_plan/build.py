@@ -2432,16 +2432,23 @@ def related_talk(tokens, transcripts, budget=TALK_BUDGET, window=TALK_WINDOW,
 
 
 def talk_section(passages):
-    """`TALK_HEADING` and every passage under its own date and line range —
-    what a form unit is shown of the meetings that named it (§3). Empty when
-    nothing was said about the form: an empty heading is one more thing to
-    read and nothing to decide."""
+    """`TALK_HEADING` and every passage under its own date, line range and
+    transcript path — what a form unit is shown of the meetings that named it
+    (§3). Empty when nothing was said about the form: an empty heading is one
+    more thing to read and nothing to decide.
+
+    The path, not only the date: the gate admits an account or a `voice` source
+    only for the transcript it cites (INV-3), so the unit has to be told which
+    file it is reading. `input.md` is the model's, never the owner's — it
+    already prints unit ids and `S-` ids — and the date alone cannot tell two
+    meetings of one day apart.
+    """
     if not passages:
         return ""
     out = [TALK_HEADING, ""]
     for p in passages:
         out += [f'### {_recording_label(p["recording"])} · '
-                f'L{p["first"]}–L{p["last"]}', "",
+                f'L{p["first"]}–L{p["last"]} · {p["rel"]}', "",
                 "\n".join(w for line in p["text"].splitlines()
                            for w in _wrap(line)), ""]
     return "\n".join(out)
@@ -2455,6 +2462,15 @@ def recorded_slice(entries, store_rows, budget=RECORDED_BUDGET):
     for e in entries:
         parts = [e["handle"], e["kind"], e.get("key") or "", e.get("title") or ""]
         data = e.get("data") or {}
+        if e["kind"] == "record":
+            # §3's medium/location line: the tab for a sheet, the cupboard and
+            # its holder for paper, the system for an external one. Without it
+            # two records with like titles are one paper form and one tab and
+            # the transcript unit cannot tell which the meeting meant.
+            location = data.get("location") or {}
+            parts += [str(v) for v in [data.get("medium")]
+                      + [location.get(k) for k in
+                         ("sheet", "system", "kept_at", "holder")] if v]
         if e["kind"] == "record" and data.get("fields"):
             cols = " · ".join(f'{f.get("key")} ({f.get("title") or ""}'
                               + (f'، {f["unit"]}' if f.get("unit") else "") + ")"
@@ -2708,14 +2724,21 @@ def _renderer(root, department, estate, skeleton, rendered,
         """What the unit is handed: the core, and for a form unit the talk
         about its tables in its own section beside them. `fits` is checked on
         `render(unit)` without the talk — the talk is cut at a budget of its
-        own and may never split a unit."""
+        own and may never split a unit.
+
+        Side effect, like `render`'s `nodes[]`: the unit records the passages
+        it was shown, so `plan.json` is the auditable record of them and the
+        gate can refuse a citation to talk this unit never read (I5)."""
         if unit.get("phase", PHASE_OF[unit["type"]]) != 1:
+            unit["talk"] = []
             return render(unit)
         att = {ref.partition("#")[0]: _unit_text(root, {"inputs": [ref]})
                for ref in unit["inputs"]
                if ref.partition("#")[0].endswith((".txt", ".md"))}
-        return render(unit, talk=related_talk(
-            anchor_tokens(unit, skeleton, att), talk_input))
+        passages = related_talk(anchor_tokens(unit, skeleton, att), talk_input)
+        unit["talk"] = [{"rel": p["rel"], "first": p["first"], "last": p["last"]}
+                        for p in passages]
+        return render(unit, talk=passages)
 
     render.full = render_full
     return render
@@ -2826,7 +2849,7 @@ def refresh_inputs(root, run_dir):
         root, run_dir, plan, skeleton["department"],
         [u for u in units if u.get("phase") == 2
          and RECORDED_HEADING in _input_text(run_dir, u["id"])])
-    over = []
+    over, talk_before = [], [u.get("talk") for u in units]
     for unit in units:
         if unit.get("phase", PHASE_OF[unit["type"]]) == 1:
             # `fits` is checked on the core, as `plan_units` checks it: the
@@ -2839,6 +2862,11 @@ def refresh_inputs(root, run_dir):
             over.append(unit["id"])
             print(f'facts-plan: {unit["id"]} input over budget '
                   f'({estimate_tokens(check)})', file=sys.stderr)
+    # The plan's record of the passages has to say what the unit now holds —
+    # a card added mid-run changes the anchor words and so the talk. Written
+    # only when it moved, so a refresh that changes nothing changes no file.
+    if [u.get("talk") for u in units] != talk_before:
+        write_json_atomic(run_dir / "plan.json", plan)
     return {"refreshed": len(units), "over_budget": over}
 
 
@@ -2899,14 +2927,17 @@ def build(root, department, run_dir, recordings, *, rebuild=False):
     write_skeleton(run_dir, department, run_dir.name, skeleton["unit_symbols"],
                    candidates, instances, imports, issues)
     write_text_atomic(run_dir / "functions.md", function_library(estate))
-    write_plan(run_dir, department,
-               _hashes(root, estate, [rel for _, rel, _, _ in chunks] + attachments),
-               units)
     for unit in units:
         # `render.full`, not the cached core: what `plan_units` checked against
         # the budget is the core, and what the unit reads is the core plus the
         # talk about its tables (§3).
         write_text_atomic(run_dir / "units" / unit["id"] / "input.md",
                           render.full(unit))
+    # After the inputs, not before: `render.full` is what records each unit's
+    # passages, and `plan.json` has to carry them for the gate to check a
+    # citation against what the unit was actually shown (I5).
+    write_plan(run_dir, department,
+               _hashes(root, estate, [rel for _, rel, _, _ in chunks] + attachments),
+               units)
     counts = collections.Counter(c["kind"] for c in candidates)
     return {"units": len(units), "candidates": dict(sorted(counts.items()))}

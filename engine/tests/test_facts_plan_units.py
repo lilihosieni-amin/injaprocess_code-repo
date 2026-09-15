@@ -269,7 +269,7 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
     assert plan["schema_version"] == 1 and plan["department"] == "cooking"
     assert all(h.startswith("sha256:") for h in plan["hashes"].values())
     assert any(rel.endswith("cooking-1405-05-26.txt") for rel in plan["hashes"])
-    assert set(plan["units"][0]) == {"id", "type", "phase", "inputs",
+    assert set(plan["units"][0]) == {"id", "type", "phase", "inputs", "talk",
                                      "candidates", "nodes", "est_tokens_in",
                                      "est_tokens_out"}
 

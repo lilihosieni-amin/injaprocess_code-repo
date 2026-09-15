@@ -465,12 +465,21 @@ def test_a_form_units_input_ends_with_the_talk_and_the_fit_check_ignores_it(tmp_
 
 def test_two_builds_are_byte_identical(tmp_path):
     root = _tiny_estate(tmp_path)
-    a = build(root, "cooking", tmp_path / "r1", [])
-    b = build(root, "cooking", tmp_path / "r2", [])
+    (root / "meetings" / "transcripts").mkdir(parents=True)
+    for stem in ("zeta-1405-06-02", "alpha-1405-06-01"):
+        (root / "meetings" / "transcripts" / f"{stem}.txt").write_text(
+            "\n".join(["شمارش موجودی پیتزا و پنیر را هر روز می‌نویسیم"] * 20),
+            encoding="utf-8")
+    meetings = ["zeta-1405-06-02", "alpha-1405-06-01"]
+    a = build(root, "cooking", tmp_path / "r1", meetings)
+    b = build(root, "cooking", tmp_path / "r2", meetings)
     assert a == b
     for p in (tmp_path / "r1" / "units").rglob("input.md"):
         q = tmp_path / "r2" / "units" / p.relative_to(tmp_path / "r1" / "units")
         assert p.read_bytes() == q.read_bytes()
+    # `plan.json` carries the passages now, and it names no run directory.
+    assert (tmp_path / "r1" / "plan.json").read_bytes() == \
+        (tmp_path / "r2" / "plan.json").read_bytes()
 
 
 def test_a_transcript_units_recorded_section_replaces_the_reuse_slice():
@@ -495,3 +504,71 @@ def test_a_transcript_units_recorded_section_replaces_the_reuse_slice():
     assert "## ورودی‌های قابل استفادهٔ مجدد" not in text
     assert "## ورودی‌های قابل استفادهٔ مجدد" in render_input(
         unit, skeleton, {"reuse": lines})
+
+
+def test_a_passage_heading_names_the_transcript_an_account_must_cite():
+    """C1 — the gate admits an account only for the transcript the heading
+    prints, so the heading has to print one (§3)."""
+    section = talk_section([{"recording": "prep-1405-06-01", "rel": TR[0][1],
+                             "first": 213, "last": 252, "text": "x"}])
+    assert f'### ۱۴۰۵/۰۶/۰۱ · L213–L252 · {TR[0][1]}' in section
+
+
+def test_the_plan_records_the_passages_each_unit_was_shown(tmp_path):
+    """I5 — `plan.json` is the record of what a unit could see, so the gate can
+    check a citation against it; a phase-2 unit was shown none."""
+    root = _tiny_estate(tmp_path)
+    (root / "meetings" / "transcripts").mkdir(parents=True)
+    (root / "meetings" / "transcripts" / "prep-1405-06-01.txt").write_text(
+        "\n".join(["شمارش موجودی پیتزا و پنیر را هر روز در جدول می‌نویسیم"] * 20),
+        encoding="utf-8")
+    run = tmp_path / "run"
+    build(root, "cooking", run, ["prep-1405-06-01"])
+    plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
+    wb = next(u for u in plan["units"] if u["type"] == "workbook")
+    assert wb["talk"] == [{"rel": "meetings/transcripts/prep-1405-06-01.txt",
+                           "first": 1, "last": 20}]
+    text = (run / "units" / wb["id"] / "input.md").read_text(encoding="utf-8")
+    assert f'L1–L20 · {wb["talk"][0]["rel"]}' in text
+    assert all(u["talk"] == [] for u in plan["units"] if u["type"] == "transcript")
+
+
+def test_each_part_of_a_split_form_unit_gets_its_own_talk(tmp_path, monkeypatch):
+    """§7 — the talk rides outside the fit check, so both halves of a workbook
+    that splits by tab are still shown the meetings about them."""
+    import facts_plan.build as B
+    root = _tiny_estate(tmp_path)
+    (root / "meetings" / "transcripts").mkdir(parents=True)
+    (root / "meetings" / "transcripts" / "prep-1405-06-01.txt").write_text(
+        "\n".join(["شمارش موجودی پیتزا و پنیر را در جدول مغایرت می‌نویسیم"] * 20),
+        encoding="utf-8")
+    # just under the pizza book's own core, so that book — and only it — splits
+    monkeypatch.setattr(B, "IN_BUDGET", 5200)
+    run = tmp_path / "run"
+    build(root, "cooking", run, ["prep-1405-06-01"])
+    plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
+    parts = [u for u in plan["units"] if u["id"].startswith("u-wb-mini_pitza_ch-")]
+    assert len(parts) > 1
+    with_talk = [p for p in parts if p["talk"]]
+    assert len(with_talk) > 1                 # each part selects its own talk
+    for part in parts:
+        text = (run / "units" / part["id"] / "input.md").read_text(encoding="utf-8")
+        assert (TALK_HEADING in text) is bool(part["talk"])
+        assert estimate_tokens(_talk_and_core(text)[1]) <= B.IN_BUDGET
+
+
+def test_a_recorded_record_says_what_it_is_and_where_it_is_kept():
+    """I2 — spec §3 phase 2: a record's medium and location, so the transcript
+    unit can tell the paper form from the sheet tab."""
+    lines = recorded_slice([
+        {"handle": "S-rec-1", "kind": "record", "key": "bazdehi", "title": "بازدهی",
+         "data": {"medium": "sheet", "location": {"sheet": "بازدهی تولید"},
+                  "fields": [{"key": "vorudi", "title": "ورودی", "unit": "kg"}]}},
+        {"handle": "N-u-att-1-0", "kind": "record", "key": "tahvil",
+         "title": "فرم تحویل مرغ",
+         "data": {"medium": "paper",
+                  "location": {"kept_at": "آشپزخانه", "holder": "سرآشپز شب"}}}],
+        [])
+    assert lines[0].endswith("sheet · بازدهی تولید · ستون‌ها: vorudi (ورودی، kg)")
+    assert lines[1] == ("N-u-att-1-0 · record · tahvil · فرم تحویل مرغ · "
+                        "paper · آشپزخانه · سرآشپز شب")

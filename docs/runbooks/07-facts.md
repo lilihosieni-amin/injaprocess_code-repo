@@ -824,14 +824,17 @@ A run has **two phases** now, and `plan.json` carries a `phase` on every unit:
   candidates (titles, aliases, column titles, row labels, item codes), takes
   them best-first up to 80K tokens, merges windows that touch, never takes a
   window that scores 0, and prints what is left in transcript order under the
-  meeting's date and line range («## ۱۴۰۵/۰۶/۰۱ · L213–L252») so a citation to
-  it can be checked. The columns and the values stay the file's or the photo's;
+  meeting's date, line range and transcript path
+  («### ۱۴۰۵/۰۶/۰۱ · L213–L252 · meetings/transcripts/preparation-1405-06-01.txt»)
+  so a citation to it can be checked — and the engine does check it: an account
+  or a `voice` source citing a passage this unit was not shown is dropped. The columns and the values stay the file's or the photo's;
   the talk fills in what the file does not say — titles, units, cadence,
   holders, thresholds, aliases — and is cited as a `voice` source.
 - **Phase 2 — the transcripts** (`phase: 2`), which now know what phase 1
   recorded. Their «ورودی‌های قابل استفادهٔ مجدد» section is replaced by
   «آنچه تا کنون ثبت شده»: every record phase 1 kept with its columns and where
-  it lives, every rule by key, title and statement, every item by code and
+  it lives (its medium, and the tab or the cupboard and holder), every rule by
+  key, title and statement, every item by code and
   title — each with the handle a phase-2 unit may address (the candidate's
   `S-…`, or a run-wide `N-…` for an entry phase 1 minted) — up to 20K, and
   then, as before, the store's open entries of the department. A spoken number

@@ -348,7 +348,8 @@ merged eight of them into forms by title similarity.
   «گفت‌وگوهای مرتبط» (*related talk*): the planner scans each chosen transcript in windows of 40
   lines stepping 20, scores each window by the words it shares with this unit's own candidates,
   takes the best windows up to 80 000 tokens, merges the ones that touch and prints them in
-  transcript order under the meeting's date and line range, so a citation can be checked. The
+  transcript order under the meeting's date, line range and transcript path, so a citation can be
+  checked — the engine admits one only inside a passage the unit was shown. The
   section is appended *after* the unit's fit check, so it never causes a split. The columns and the
   values still come from the file or the photo; the talk supplies what the file does not say —
   titles, units, cadence, who holds the form, thresholds, aliases — cited as a `voice` source.
