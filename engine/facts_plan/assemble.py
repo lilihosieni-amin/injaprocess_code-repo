@@ -36,8 +36,8 @@ from merge_facts.preconditions import (REQUIRED_SLOTS, _ref_sites, _registered,
 from merge_facts.preconditions import _sever as _sever_member
 from merge_facts.tiers import note, refuse
 
-from facts_plan.build import (estimate_tokens, label_of, process_index,
-                              shape_section)
+from facts_plan.build import (TRANSCRIPT_DIR, TRANSCRIPT_EXT, estimate_tokens,
+                              label_of, process_index, shape_section)
 
 def _refs(value):
     """Every `{ref, field?}` object in a decision, in document order."""
@@ -373,8 +373,8 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
            # INV-3 — the meeting passages this unit was shown, as `build`
            # recorded them: the only talk it may cite, never a path or a line
            # range it invented. A unit the plan does not name was shown none.
-           "talk": next((u.get("talk") or [] for u in plan.get("units") or []
-                         if u.get("id") == doc["unit"]), []),
+           "talk": _shown(next((u for u in plan.get("units") or []
+                                if u.get("id") == doc["unit"]), None)),
            "kinds": {cid: KIND_OF.get(c["kind"], c["kind"])
                      for cid, c in candidates.items()},
            "node_ids": {f'{n["process"]}::{n["node"]}' for n in nodes}
@@ -864,10 +864,30 @@ def _account(field, side):
             "source": side["source"]}
 
 
+def _shown(unit):
+    """Every stretch of meeting this unit was handed, as `{rel, first, last}`:
+    the passages `build` recorded on it (`talk`, a phase-1 form unit) **and**
+    its own transcript inputs (a phase-2 unit reads one excerpt whole, and
+    `#L<first>-L<last>` is exactly that bound — spec §3 phase 2 lets it write
+    an account against a listed value, and the talk it heard is its own input).
+
+    Without the second half a transcript unit's every account was dropped in
+    silence, including one citing the very lines it was reading.
+    """
+    out = [dict(p) for p in (unit or {}).get("talk") or []]
+    for ref in (unit or {}).get("inputs") or []:
+        rel, _, span = ref.partition("#")
+        bounds = re.fullmatch(r"L([0-9]+)-L([0-9]+)", span)
+        if bounds and rel.startswith(TRANSCRIPT_DIR) and rel.endswith(TRANSCRIPT_EXT):
+            out.append({"rel": rel, "first": int(bounds.group(1)),
+                        "last": int(bounds.group(2))})
+    return out
+
+
 def _cited(src, passages):
     """A citation to talk this unit was actually handed: a `voice` source whose
-    lines lie inside one passage `plan.json` records for it (spec §3, INV-3 at
-    passage level).
+    lines lie inside one of the stretches `_shown` lists for it (spec §3,
+    INV-3 at passage level).
 
     `ref in plan["hashes"]` was not enough. The engine selects and the unit
     never searches, so a citation to a chosen transcript the unit was shown no
@@ -1642,7 +1662,12 @@ def _entry(candidate, decision, state, part=None):
     # cited as the meeting — after the sheet or the photo, so `READ_OFF_A_FORM`
     # and the "form wins a merge" rule both keep reading the first source, and
     # before the process citations, which are not where the value came from.
-    sources += written.get("voice") or []
+    # …and never twice: a transcript unit's `_unit_sources` already cites the
+    # excerpt it read, so its own `voice` member is the same meeting again.
+    for voice in written.get("voice") or []:
+        if not any(s.get("type") == "voice" and s.get("ref") == voice["ref"]
+                   for s in sources):
+            sources.append(voice)
     # The citations hang off the decision, never off a split part (§2.5's
     # `splitPart` has no `processes`), so both parts of a split inherit them.
     # Owner ruling 2026-09-15: they sit beside the real origin, never instead

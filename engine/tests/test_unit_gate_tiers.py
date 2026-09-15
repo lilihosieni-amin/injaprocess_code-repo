@@ -730,3 +730,71 @@ def test_an_account_whose_source_is_not_a_chosen_transcript_is_dropped_silently(
     assert [i for i in entry.get("issues") or [] if i["kind"] == "shape"] == []
     assert bad["path"] not in (entry.get("field_status") or {})
     assert entry == clean
+
+
+#: The reviewer's reproduction: a transcript unit of the real run, and the one
+#: meeting excerpt it was handed whole.
+TR_UNIT = "u-tr-preparation-1405-05-28-02-l1"
+TR_SPAN = ("meetings/transcripts/preparation-1405-05-28-02.txt", 1, 117)
+
+
+def _with_new_account(run_dir, account, voice=()):
+    """The unit's first `new[]` entry, arguing with a listed value."""
+    path = run_dir / "units" / TR_UNIT / "out.1.json"
+    doc = read_json(path)
+    doc["new"][0]["accounts"] = [account]
+    if voice:
+        doc["new"][0]["voice"] = list(voice)
+    write_json_atomic(path, doc)
+    return path
+
+
+def test_a_transcript_units_account_cites_the_excerpt_it_was_handed(tmp_path):
+    """Spec §3 phase 2: a spoken number that disagrees with a listed value is an
+    account. A phase-2 unit is shown no `talk` passages — its bound is its own
+    `#L…` input span, which is every line it read."""
+    root, run_dir = _prep_root(tmp_path)
+    rel, _first, _last = TR_SPAN
+    path = _with_new_account(run_dir, {"path": "data/quantity", "value": 215,
+                                       "source": {"type": "voice", "ref": rel,
+                                                  "lines": "10-20"}},
+                             voice=[{"ref": rel, "lines": "10-20"}])
+    entry = next(e for e in _built(root, run_dir, path)
+                 if e["_skeleton"].startswith("N-"))
+    heard = next(a for a in entry["accounts"] if a["value"] == 215)
+    assert heard["status"] == "open" and heard["source"]["lines"] == "10-20"
+    # the `voice` member is the excerpt `_unit_sources` already cites, so the
+    # entry carries that meeting once, not twice
+    assert [s for s in entry["source"] if s["type"] == "voice"] == \
+        [{"type": "voice", "ref": rel, "lines": "1-117"}]
+    assert _refused(validate_unit(root, run_dir, path)) == []
+
+
+@pytest.mark.parametrize("lines,rel", [
+    ("100-200", TR_SPAN[0]),                       # past the end of its excerpt
+    ("10-20", "meetings/transcripts/preparation-1405-06-01.txt"),   # another meeting
+])
+def test_a_transcript_units_account_outside_its_excerpt_is_dropped(tmp_path, lines,
+                                                                   rel):
+    root, run_dir = _prep_root(tmp_path)
+    clean = _built(root, run_dir,
+                   run_dir / "units" / TR_UNIT / "out.1.json")
+    path = _with_new_account(run_dir, {"path": "data/quantity", "value": 215,
+                                       "source": {"type": "voice", "ref": rel,
+                                                  "lines": lines}})
+    findings = _judge(root, run_dir, path)[1]
+    assert not _refused(findings) and not _noted(findings)
+    assert _built(root, run_dir, path) == clean
+
+
+def test_a_form_unit_is_bound_by_its_passages_and_not_by_its_files(tmp_path):
+    """The other half: a workbook unit's own inputs are `.xlsx` and a photo
+    unit's are `.text/` sidecars, so nothing of theirs is a meeting excerpt —
+    only the passages `build` recorded for them are."""
+    from facts_plan.assemble import _shown
+    assert _shown({"inputs": ["attachments/sheets/A/A.xlsx"],
+                   "talk": [{"rel": TR_SPAN[0], "first": 213, "last": 252}]}) \
+        == [{"rel": TR_SPAN[0], "first": 213, "last": 252}]
+    assert _shown({"inputs": ["departments/x/attachments/.text/p.image.md"]}) == []
+    assert _shown({"inputs": [f"{TR_SPAN[0]}#L1-L117"]}) == \
+        [{"rel": TR_SPAN[0], "first": 1, "last": 117}]
