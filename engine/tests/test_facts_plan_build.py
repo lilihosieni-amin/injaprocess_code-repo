@@ -22,6 +22,7 @@ from facts_plan.build import (
     load_estate,
     plan_units,
     record_templates,
+    recorded_slice,
     reference_rows,
     related_talk,
     strip_branch,
@@ -284,7 +285,9 @@ def test_photos_get_their_own_units_and_every_input_is_read_once(
     for unit in attachment_units:
         text = (run / "units" / unit["id"] / "input.md").read_text(
             encoding="utf-8")
-        assert estimate_tokens(text) <= IN_BUDGET
+        # the budget binds the core; the talk about the forms rides after it
+        # under a budget of its own (2026-09-15).
+        assert estimate_tokens(text.partition(TALK_HEADING)[0]) <= IN_BUDGET
         assert all(f"عکس {photos.index(p) + 1}\n" in text
                    for p in unit["inputs"])
 
@@ -363,7 +366,8 @@ TOKENS = {"بازدهی", "خروجی", "ورودی", "کیلو", "فرم", "ت�
 def test_related_talk_takes_the_windows_that_name_the_form_and_merges_touching_ones():
     passages = related_talk(TOKENS, TR, budget=80000, window=40, step=20)
     assert [p["rel"] for p in passages] == [TR[0][1]]          # transcript B scores 0 everywhere
-    assert passages[0]["first"] == 1 and passages[0]["last"] >= 33    # both hits, one merged passage
+    # both hits, one merged passage
+    assert passages[0]["first"] == 1 and passages[0]["last"] >= 33
     assert "جدول بازدهی" in passages[0]["text"]
 
 
@@ -397,3 +401,60 @@ def test_anchor_tokens_come_from_titles_columns_aliases_and_attachment_heads():
            "inputs": ["d/attachments/.text/p.image.md"]}
     texts = {"d/attachments/.text/p.image.md": "# فرم تحویل مرغ\nستون: وزن\n"}
     assert {"فرم", "تحویل", "مرغ"} <= anchor_tokens(att, skeleton, texts)
+
+
+def _tiny_estate(tmp_path):
+    """The module's own mini estate, under a root of its own so a run directory
+    beside it is not part of the estate."""
+    root = tmp_path / "e"
+    make_estate(root)
+    return root
+
+
+def test_a_form_units_input_ends_with_the_talk_and_the_fit_check_ignores_it(tmp_path):
+    # a workbook unit whose core is under budget and whose talk would be over it
+    root = _tiny_estate(tmp_path)
+    (root / "meetings" / "transcripts").mkdir(parents=True)
+    (root / "meetings" / "transcripts" / "prep-1405-06-01.txt").write_text(
+        "\n".join(["شمارش موجودی پیتزا و پنیر را هر روز در جدول می‌نویسیم"] * 9000),
+        encoding="utf-8")
+    run = tmp_path / "run"
+    build(root, "cooking", run, ["prep-1405-06-01"])
+    plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
+    wb = next(u for u in plan["units"] if u["type"] == "workbook")
+    text = (run / "units" / wb["id"] / "input.md").read_text(encoding="utf-8")
+    core, _, talk = text.partition(TALK_HEADING)
+    assert talk and estimate_tokens(core) <= IN_BUDGET
+    assert estimate_tokens(talk) <= TALK_BUDGET + 500       # the heading lines
+    assert not [u for u in plan["units"] if u["id"].startswith(wb["id"] + "-s")]  # no split by talk
+
+
+def test_two_builds_are_byte_identical(tmp_path):
+    root = _tiny_estate(tmp_path)
+    a = build(root, "cooking", tmp_path / "r1", [])
+    b = build(root, "cooking", tmp_path / "r2", [])
+    assert a == b
+    for p in (tmp_path / "r1" / "units").rglob("input.md"):
+        q = tmp_path / "r2" / "units" / p.relative_to(tmp_path / "r1" / "units")
+        assert p.read_bytes() == q.read_bytes()
+
+
+def test_a_transcript_units_recorded_section_replaces_the_reuse_slice():
+    lines = recorded_slice([
+        {"handle": "S-rec-1", "kind": "record", "key": "bazdehi", "title": "بازدهی تولید",
+         "data": {"fields": [{"key": "vorudi", "title": "ورودی", "unit": "kg"}]}},
+        {"handle": "N-u-att-1-2", "kind": "rule", "key": "saqf", "title": "سقف ضایعات",
+         "statement": "ضایعات از ده درصد بیشتر نمی‌شود"}],
+        ["F-00001 · record · units · واحدها"])
+    assert lines[0] == "S-rec-1 · record · bazdehi · بازدهی تولید · ستون‌ها: vorudi (ورودی، kg)"
+    assert lines[1].startswith("N-u-att-1-2 · rule · saqf · سقف ضایعات · ضایعات از ده")
+    assert lines[-1] == "F-00001 · record · units · واحدها"
+    # §3: the same slot, under the heading that says what it now holds.
+    from facts_plan.build import render_input
+    unit = {"id": "u-tr-x", "type": "transcript", "candidates": [], "inputs": []}
+    skeleton = {"candidates": [], "unit_symbols": []}
+    text = render_input(unit, skeleton, {"reuse": lines}, recorded=True)
+    assert RECORDED_HEADING in text
+    assert "## ورودی‌های قابل استفادهٔ مجدد" not in text
+    assert "## ورودی‌های قابل استفادهٔ مجدد" in render_input(
+        unit, skeleton, {"reuse": lines})
