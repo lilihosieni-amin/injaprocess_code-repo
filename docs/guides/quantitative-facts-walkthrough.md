@@ -470,12 +470,12 @@ stops the run, never a run recorded without a review.
 Then one dispatch: the **quantify agent in `review` mode**. It reads the whole assembled result
 at once — the only place anyone sees the department as a whole — and writes `review/out.json` in
 the same `facts-unit` shape, addressing entries by `{kind, key, scope}` (ids do not exist yet). It
-When it merges two entries, the one read off a form is the keeper. It
 may `keep` with corrections (a `data` it carries is merged member by member over the unit's own,
 never wholesale), `drop`, `merge_into`, and — only here — raise a `contradiction` on a field the
 engine flagged as *drift*, resolving it either as an `account` (open a dispute for the owner) or a
-`fix` (correct a demonstrable slip). There is no cap on how many decisions it may write or how
-many statements it may rewrite; where to spend its attention — duplicates, contradictions,
+`fix` (correct a demonstrable slip). When it merges two entries, the one read off a form is the
+keeper. There is no cap on how many decisions it may write or how many statements it may
+rewrite; where to spend its attention — duplicates, contradictions,
 cell-reference statements, not polish — is guidance, not a count. A `code` it writes is ignored
 rather than refused: the code is the engine's. The same validator gates it, folding the review over
 the assembly and linting the result exactly as the assembly will, and a failure is re-dispatched
