@@ -6,30 +6,31 @@ const B = bundleOf('record', { medium: 'sheet', role: 'reference', location: {} 
   resolved: {
     'F-00016': { kind: 'record', title: 'گزارش مرکزی',
       fields: { grams: 'گرم', c_j: 'c_j' } },
-    ing_1: { kind: 'item', title: 'پنیر پیتزا', code: '##1' },
+    'F-00011': { kind: 'record', title: 'مانده شب', retired: true },
     hidden: { restricted: true },
   },
-  row_titles: { a: 'ردیف الف', b: { restricted: true } },
-  path_labels: { 'data/expr': 'فرمول', 'data/x': { restricted: true } },
+  row_titles: { a: 'ردیف الف' },
+  path_labels: { 'data/expr': 'فرمول' },
   red_paths: { unknown: ['data/u'], disputed: ['data/d'] },
 })
 
 describe('reading the bundle’s name maps', () => {
-  it('puts an item’s estate code beside its title, and gives an id its own id back', () => {
-    // The code is a FIELD of its own, never joined into the title: joined, the
-    // browser draws «پنیر پیتزا ##1» as «پنیر پیتزا 1##» — note 6's defect in a
-    // second place.
-    expect(resolvedTitle(B, 'ing_1'))
-      .toEqual({ text: 'پنیر پیتزا', code: '##1', restricted: false })
+  it('gives an id its own id back, and carries a retired target’s flag', () => {
     expect(resolvedTitle(B, 'F-00016'))
-      .toEqual({ text: 'گزارش مرکزی', restricted: false, id: 'F-00016' })
+      .toEqual({ text: 'گزارش مرکزی', retired: undefined, restricted: false, id: 'F-00016' })
+    // A retired neighbour is still named; what the flag decides is whether the
+    // caller draws a press into it (`FactDetail`'s home line).
+    expect(resolvedTitle(B, 'F-00011')!.retired).toBe(true)
   })
 
-  it('answers «خارج از دسترسی شما» for a masked neighbour, in all three maps', () => {
-    const masked = { text: 'خارج از دسترسی شما', restricted: true }
-    expect(resolvedTitle(B, 'hidden')).toEqual(masked)
-    expect(rowTitle(B, 'b')).toEqual(masked)
-    expect(pathLabel(B, 'data/x')).toEqual(masked)
+  it('answers «خارج از دسترسی شما» for a masked neighbour in `resolved`', () => {
+    expect(resolvedTitle(B, 'hidden'))
+      .toEqual({ text: 'خارج از دسترسی شما', restricted: true })
+    // The other two maps carry no neighbour's Persian to withhold: with items
+    // gone nothing composes a row title out of another entry's name, so the
+    // server masks neither (`routers/facts._bundle`).
+    expect(rowTitle(B, 'a')).toEqual({ text: 'ردیف الف', restricted: false })
+    expect(pathLabel(B, 'data/expr')).toEqual({ text: 'فرمول', restricted: false })
   })
 
   it('gives a masked neighbour no id, so nothing can offer to open it', () => {

@@ -23,11 +23,11 @@ vi.mock('../api/hooks', () => ({
 }))
 
 const row = (over: Partial<FactListRow>): FactListRow => ({
-  id: 'F-00001', kind: 'item', key: 'ing_1', title: 'پنیر پیتزا', aliases: [],
+  id: 'F-00001', kind: 'measurement', key: 'par_cheese', title: 'پار پنیر پیتزا', aliases: [],
   scope: { departments: [], branches: [] },
   status: 'confirmed', retired: false, stub: false,
   red_counts: { unknown: 0, disputed: 0 },
-  fingerprint: 'a1', confirmed: true, updated_at: '2026-09-16T14:05:00Z',
+  fingerprint: 'a1', confirmed: true, updated_at: '2026-09-16T14:05:00Z', home: null,
   ...over,
 })
 
@@ -83,9 +83,9 @@ describe('the facts list', () => {
 
   it('draws one row per entry, with the five cells the design draws', () => {
     draw()
-    const r = rowFor('پنیر پیتزا')
+    const r = rowFor('پار پنیر پیتزا')
     expect(within(r).getByText('F-00001')).toBeInTheDocument()
-    expect(within(r).getByText('آیتم')).toBeInTheDocument()
+    expect(within(r).getByText('اندازه‌گیری')).toBeInTheDocument()
     // An entry that names no department and no branch is «کل سامانه» — the whole
     // installation, not a blank cell (`scopeLine`, :4634).
     expect(within(r).getByText('کل سامانه')).toBeInTheDocument()
@@ -111,7 +111,7 @@ describe('the facts list', () => {
 
   it('shows no count line at all for a row with nothing to say', () => {
     draw()
-    expect(within(rowFor('پنیر پیتزا')).queryByText(/بی‌پاسخ|متعارض/)).toBeNull()
+    expect(within(rowFor('پار پنیر پیتزا')).queryByText(/بی‌پاسخ|متعارض/)).toBeNull()
   })
 
   it('badges a pre-registered and a retired entry', () => {
@@ -159,11 +159,19 @@ describe('the filters', () => {
       .toEqual(['دپارتمان', 'آشپزخانه', 'مدیریت', 'سراسری'])
   })
 
+  it('offers the four kinds and no item — the store has none since 2026-09-16', async () => {
+    draw()
+    await userEvent.click(screen.getByRole('button', { name: /نوع/ }))
+    const menu = screen.getByRole('listbox', { name: 'نوع' })
+    expect(within(menu).getAllByRole('option').map((o) => o.textContent))
+      .toEqual(['نوع', 'جدول', 'اندازه‌گیری', 'قاعده', 'یادداشت'])
+  })
+
   it('narrows the list when one is picked', async () => {
     draw()
     await userEvent.click(screen.getByRole('button', { name: /نوع/ }))
     await userEvent.click(screen.getByRole('option', { name: 'جدول' }))
-    expect(screen.queryByText('پنیر پیتزا')).toBeNull()
+    expect(screen.queryByText('پار پنیر پیتزا')).toBeNull()
     expect(screen.getByText('مانده شب فرنگی و برگر')).toBeInTheDocument()
   })
 
@@ -172,7 +180,7 @@ describe('the filters', () => {
     draw()
     expect(screen.queryByRole('button', { name: 'پاک کردن همهٔ فیلترها' })).toBeNull()
 
-    await userEvent.type(screen.getByRole('searchbox'), 'پنیر')
+    await userEvent.type(screen.getByRole('searchbox'), 'پار')
     const clear = screen.getByRole('button', { name: 'پاک کردن همهٔ فیلترها' })
     expect(screen.queryByText('مانده شب فرنگی و برگر')).toBeNull()
 

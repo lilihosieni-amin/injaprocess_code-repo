@@ -33,6 +33,7 @@ export function bundleOf(
     binding_labels: {},
     consumers: [],
     processes: [],
+    subsets: [],
     // The route always sends the key; `null` is «no original», which is
     // every fixture here but the one that is about the original.
     original: null,

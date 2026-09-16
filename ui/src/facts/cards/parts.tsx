@@ -317,16 +317,12 @@ export function RefLink({ named, onOpen, className = 'text-fs-body', children }:
 }) {
   if (named === undefined) return null
   const id = named.restricted ? undefined : named.id
-  // §17 — the estate code rides beside an item's title, as its own island.
-  const code = named.code === undefined ? null
-    : <Mono className="text-fs-micro text-faint">{named.code}</Mono>
   if (id === undefined || onOpen === undefined) {
     return (
       <span className="inline-flex items-baseline gap-s3 min-w-0">
         <span className={`font-bold ${named.restricted ? 'text-muted' : 'text-ink'} ${className}`}>
           {named.text}
         </span>
-        {code}
         {children}
       </span>
     )
@@ -339,7 +335,6 @@ export function RefLink({ named, onOpen, className = 'text-fs-body', children }:
                     underline-offset-4 ${className}`}>
         {named.text}
       </button>
-      {code}
       {children}
     </span>
   )

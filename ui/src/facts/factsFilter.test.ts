@@ -12,11 +12,11 @@ import type { FactListRow } from '../api/types'
  * field the two rows happen to agree about.
  */
 const row = (over: Partial<FactListRow>): FactListRow => ({
-  id: 'F-00001', kind: 'item', key: 'ing_1', title: 'پنیر پیتزا', aliases: [],
+  id: 'F-00001', kind: 'measurement', key: 'par_cheese', title: 'پار پنیر پیتزا', aliases: [],
   scope: { departments: [], branches: [] },
   status: 'confirmed', retired: false, stub: false,
   red_counts: { unknown: 0, disputed: 0 },
-  fingerprint: 'a1', confirmed: true, updated_at: '2026-09-16T14:05:00Z',
+  fingerprint: 'a1', confirmed: true, updated_at: '2026-09-16T14:05:00Z', home: null,
   ...over,
 })
 
@@ -49,7 +49,7 @@ describe('anyActive', () => {
     expect(anyActive({ ...NO_FILTERS, dept: 'cooking' }, '')).toBe(true)
     expect(anyActive({ ...NO_FILTERS, branch: 'chalebagh' }, '')).toBe(true)
     expect(anyActive({ ...NO_FILTERS, confirmation: 'confirmed' }, '')).toBe(true)
-    expect(anyActive(NO_FILTERS, 'پنیر')).toBe(true)
+    expect(anyActive(NO_FILTERS, 'پار')).toBe(true)
   })
 
   it('reads a query of nothing but spaces as no query', () => {

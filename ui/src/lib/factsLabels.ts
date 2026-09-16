@@ -39,7 +39,16 @@
  * from Appendix D and §7 and are guarded by review, not by the test.
  */
 
-/** The five kinds (§7). */
+/**
+ * The kinds (§7) — **four since 2026-09-16**, plus the word `item` used to
+ * carry.
+ *
+ * «آیتم» is kept for one reader: the `fact_items` disclosure switch on the
+ * policy screen, which still exists in `store/policy.py` and must be called
+ * what it was called. Nothing else reads it — the list's kind filter offers
+ * `api/types.FACT_KINDS`, which is the four — and it goes the day that switch
+ * does.
+ */
 export const KIND_LABELS: Record<string, string> = {
   item: 'آیتم',
   record: 'جدول',
@@ -574,6 +583,25 @@ export const SCREEN_LABELS: Record<string, string> = {
   issue_prefix: 'نقص: {kind}',
   heading_sources: 'منابع',
   heading_processes: 'فرایندهای مرتبط',
+
+  // ── What a table holds, and which table an entry is in (2026-09-16,
+  // «tables as the spine»). The three section heads a record's page draws over
+  // its own rules, measurements and notes; the count that stands beside each
+  // one; and the button that ticks every unconfirmed row of all three at once.
+  heading_subset_rule: 'قواعد این جدول',
+  heading_subset_measurement: 'اندازه‌گیری‌های این جدول',
+  heading_subset_note: 'یادداشت‌های این جدول',
+  subset_confirmed_count: '{n} از {m} تأیید شده',
+  confirm_all_subsets: 'تأیید همهٔ موارد این جدول',
+  // One failure, named: the batch is per entry, so one refusal is one row's
+  // and the rest of the run stands.
+  subset_confirm_failed: 'تأیید «{n}» انجام نشد',
+  // The home line on a rule's, a measurement's or a note's own page. «بدون
+  // جدول» is an entry no table claims — a state, not a failure: the list
+  // screen still carries it (owner decision 2).
+  home_table: 'جدول: {n}',
+  home_none: 'بدون جدول',
+  home_retired: 'جدول بازنشسته',
 
   // ── The detail screen's own copy (Task 23).
   //

@@ -13,7 +13,7 @@ const WEIGHING = bundleOf('measurement', {
   exceptions: 'شب‌های تعطیل ثبت نمی‌شود',
 }, {
   resolved: {
-    'F-00001': { kind: 'item', title: 'پنیر پیتزا', code: '##1' },
+    'F-00001': { kind: 'record', title: 'انبار سرد' },
     'F-00011': { kind: 'record', title: 'مانده شب فرنگی و برگر' },
   },
 })

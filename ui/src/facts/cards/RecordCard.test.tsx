@@ -1,7 +1,9 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { RecordCard } from './RecordCard'
 import { bundleOf } from './fixture'
+import { createWrapper } from '../../test/utils'
 import type { FactBundle } from '../../api/types'
 
 /**
@@ -10,7 +12,7 @@ import type { FactBundle } from '../../api/types'
  * The payloads are trimmed out of `ui/design/mock/facts/api/entries.json`:
  * `F-00011`, the paper form whose four numeric columns carry `unit: null` and
  * whose `row_no` carries no `unit` key at all, and `F-00014`, the BOM whose
- * `refItems` cells hold item keys and whose `grams` column is red twice over.
+ * `grams` column is red twice over.
  */
 
 /** F-00011 — `medium: paper`, `role: log`; rows are printed items, not data.
@@ -59,12 +61,12 @@ const BOM = (over: Partial<FactBundle> = {}): FactBundle => bundleOf('record', {
   grain: 'هر ردیف یک (محصول، ماده)',
   primaryKey: ['product', 'ingredient'],
   fields: [
-    { key: 'ingredient', title: 'ماده اولیه', type: 'string', refItems: { namespace: '##' } },
+    { key: 'ingredient', title: 'ماده اولیه', type: 'string' },
     { key: 'grams', title: 'گرم', type: 'number', unit: 'g' },
   ],
   rows: [
-    { key: 'prod_61__ing_1', ingredient: 'ing_1', grams: 250 },
-    { key: 'prod_61__ing_41', ingredient: 'ing_41', grams: null },
+    { key: 'prod_61__ing_1', ingredient: 'پنیر پیتزا', grams: 250 },
+    { key: 'prod_61__ing_41', ingredient: 'قارچ', grams: null },
   ],
 }, {
   red_paths: {
@@ -74,10 +76,6 @@ const BOM = (over: Partial<FactBundle> = {}): FactBundle => bundleOf('record', {
   row_titles: {
     prod_61__ing_1: 'اینجا پیتزا — پنیر پیتزا',
     prod_61__ing_41: 'اینجا پیتزا — قارچ',
-  },
-  resolved: {
-    ing_1: { kind: 'item', title: 'پنیر پیتزا', code: '##1' },
-    ing_41: { kind: 'item', title: 'قارچ', code: '##41' },
   },
   ...over,
 })
@@ -152,14 +150,6 @@ describe('the record card', () => {
     // and the pill is gone, because the server decides and this screen asks.
     draw(PAPER({ red_paths: { unknown: [], disputed: [] } }))
     expect(screen.queryByText('واحد ثبت نشده')).toBeNull()
-  })
-
-  it('shows a refItems cell as its resolved title, with the key as the tooltip', () => {
-    draw(BOM())
-    const cell = screen.getByTitle('ing_1')
-    expect(cell).toHaveTextContent('پنیر پیتزا ##1')
-    // The stored key is a tooltip and never the cell's own text (note 2).
-    expect(cell.textContent).not.toContain('ing_1')
   })
 
   it('colours a disputed cell and an unknown cell differently', () => {
@@ -485,5 +475,100 @@ describe('the record card', () => {
     expect(screen.queryByText('Sepidz')).toBeNull()
     // «قالب» describes the scheme, not the row that is gone — it stays.
     expect(screen.getByText('receipt number')).toBeInTheDocument()
+  })
+})
+
+/**
+ * «قواعد این جدول» / «اندازه‌گیری‌های این جدول» / «یادداشت‌های این جدول» — the
+ * three subset sections a table's page gained on 2026-09-16 («tables as the
+ * spine»), and the one button that ticks every unconfirmed row of them.
+ *
+ * The rows are the served `bundle.subsets`, derived server-side out of the
+ * index's `home` column: the panel joins nothing and counts nothing the server
+ * has not already decided (the rule `consumers` follows).
+ */
+const HOMED = (over: Partial<FactBundle> = {}): FactBundle => bundleOf('record', {
+  medium: 'paper', role: 'log', location: { kept_at: 'زونکن دفتر', holder: 'سرآشپز' },
+  fields: [{ key: 'start_stock', title: 'مانده اول شب', type: 'number' }],
+}, {
+  subsets: [
+    { id: 'F-00020', kind: 'rule', title: 'سقف ضایعات', confirmed: true, fingerprint: 'sha256:20' },
+    { id: 'F-00021', kind: 'rule', title: 'تبدیل واحد', field: 'start_stock',
+      confirmed: false, fingerprint: 'sha256:21' },
+    { id: 'F-00030', kind: 'note', title: 'یادداشت انبار', confirmed: false,
+      fingerprint: 'sha256:30' },
+  ],
+  ...over,
+}, { id: 'F-00011', title: 'مانده شب فرنگی و برگر' })
+
+const ok = () =>
+  new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } })
+
+describe('a table’s page lists what lives in it', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('heads each section with how many of its rows are confirmed', () => {
+    render(<RecordCard bundle={HOMED()} onOpen={vi.fn()} />, { wrapper: createWrapper() })
+    expect(screen.getByText('قواعد این جدول — ۱ از ۲ تأیید شده')).toBeInTheDocument()
+    expect(screen.getByText('یادداشت‌های این جدول — ۰ از ۱ تأیید شده')).toBeInTheDocument()
+    // An empty section is omitted rather than drawn with a zero.
+    expect(screen.queryByText(/اندازه‌گیری‌های این جدول/)).toBeNull()
+  })
+
+  it('names the column a row is homed on, from the record’s own fields', () => {
+    render(<RecordCard bundle={HOMED()} onOpen={vi.fn()} />, { wrapper: createWrapper() })
+    const row = screen.getByRole('button', { name: /تبدیل واحد/ }).closest('li')!
+    expect(row).toHaveTextContent('مانده اول شب')
+    // The one with no `field` names no column.
+    const plain = screen.getByRole('button', { name: /سقف ضایعات/ }).closest('li')!
+    expect(plain).not.toHaveTextContent('مانده اول شب')
+  })
+
+  it('opens a row’s own page when it is pressed', async () => {
+    const onOpen = vi.fn()
+    render(<RecordCard bundle={HOMED()} onOpen={onOpen} />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: /سقف ضایعات/ }))
+    expect(onOpen).toHaveBeenCalledWith('F-00020')
+  })
+
+  it('ticks every unconfirmed row once, and never the table itself', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok())
+    render(<RecordCard bundle={HOMED()} onOpen={vi.fn()} />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: 'تأیید همهٔ موارد این جدول' }))
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2))
+    // The two unconfirmed ones, in the served order — and not `F-00020`, which
+    // is already ticked, nor `F-00011`, whose own tick this button never touches.
+    expect(fetchSpy.mock.calls.map((c) => c[0]))
+      .toEqual(['/api/confirmations/F-00021', '/api/confirmations/F-00030'])
+    // QF-24 — the print the server served, straight back.
+    expect(JSON.parse(String((fetchSpy.mock.calls[0][1] as RequestInit).body)))
+      .toEqual({ fingerprint: 'sha256:21' })
+  })
+
+  it('offers no press when every row is already confirmed', () => {
+    render(
+      <RecordCard bundle={HOMED({
+        subsets: [{ id: 'F-00020', kind: 'rule', title: 'سقف ضایعات', confirmed: true,
+                    fingerprint: 'sha256:20' }],
+      })} onOpen={vi.fn()} />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByRole('button', { name: 'تأیید همهٔ موارد این جدول' })).toBeDisabled()
+  })
+
+  it('draws a row the caller may not open as text, with no press', () => {
+    render(
+      <RecordCard bundle={HOMED({ subsets: [{ id: 'F-00099', kind: 'rule', restricted: true }] })}
+        onOpen={vi.fn()} />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByText('خارج از دسترسی شما')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /خارج از دسترسی شما/ })).toBeNull()
+  })
+
+  it('draws no section at all for a table nothing is homed on', () => {
+    render(<RecordCard bundle={HOMED({ subsets: [] })} onOpen={vi.fn()} />)
+    expect(screen.queryByText(/قواعد این جدول/)).toBeNull()
   })
 })

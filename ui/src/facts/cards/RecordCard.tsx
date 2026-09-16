@@ -1,18 +1,22 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import {
-  CADENCE_LABELS, FIELD_TYPE_LABELS, PAYLOAD_FIELD_LABELS, SCREEN_LABELS,
-  cellLabel, label,
+  CADENCE_LABELS, CONFIRMATION_LABELS, FIELD_TYPE_LABELS, PAYLOAD_FIELD_LABELS,
+  SCREEN_LABELS, cellLabel, label,
 } from '../../lib/factsLabels'
 import { toFa } from '../../lib/format'
+import { fetchJson } from '../../api/client'
 import {
-  isRecordFact, type ExternalLocation, type FactBundle, type NativeLocation,
-  type PaperLocation, type RecordData, type RecordField, type RecordInstance,
-  type SheetLocation,
+  isRecordFact, isRestricted, type ExternalLocation, type FactBundle,
+  type NativeLocation, type PaperLocation, type PlacedSubset, type RecordData,
+  type RecordField, type RecordInstance, type SheetLocation,
 } from '../../api/types'
-import { redPath, refTitle, resolvedTitle, rowCount, rowTitle, unitTitle } from '../bundle'
+import { useToast } from '../../write/ToastProvider'
+import { Button } from '../../ui/Button'
+import { redPath, refTitle, rowCount, rowTitle, unitTitle } from '../bundle'
 import {
   CELL_TRUNCATE, CountBand, DetailCard, Eyebrow, FactGrid, Filled, HeadBand, LabelRow, Mono, Unit,
-  PX, Pill, RefLink,
+  PX, Pill, RefLink, Tag,
   none, unanswered, type GridCell,
 } from './parts'
 
@@ -31,8 +35,7 @@ import {
  *   omitted `unit` is "not applicable"; only a present-and-`null` one is
  *   «بی‌پاسخ», and the server has already decided which is which.
  * * **note 2 — titles come from the served data.** A column's head is
- *   `fields[].title`, a `refItems` cell is `resolved[key]` with the key as its
- *   tooltip, a row's name is `row_titles[key]`.
+ *   `fields[].title`, a row's name is `row_titles[key]`.
  * * **note 6 — the «محل» row carries no bidi mix.** The design puts «شناسهٔ فایل
  *   {spreadsheetId}» — a Persian label INSIDE the latin island beside it
  *   (:1454) — and it renders garbled. The id lives in the footer chip only,
@@ -97,6 +100,10 @@ export function RecordCard({ bundle, onOpen }: {
       {!grid && (d.fields ?? []).length > 0 && <ColumnsTable bundle={bundle} data={d} onOpen={onOpen} />}
       {!grid && (d.rows ?? []).length > 0 && <PrintedRows bundle={bundle} data={d} />}
       <StructureCard bundle={bundle} data={d} onOpen={onOpen} />
+      {/* Mounted only when the table holds something: the section reads the
+          query client and the toast, and a record with nothing homed on it
+          draws — and asks for — nothing at all. */}
+      {bundle.subsets.length > 0 && <SubsetCard bundle={bundle} data={d} onOpen={onOpen} />}
     </>
   )
 }
@@ -190,23 +197,6 @@ function cellOf(
     return { node: <span className={cls}>{unanswered()}</span>, className: paint }
   }
   const raw = String(value)
-  // Note 2 — a `refItems` cell is the item's resolved title; the stored key is
-  // the tooltip and never the cell's own text.
-  if (f.refItems !== undefined) {
-    const named = resolvedTitle(bundle, raw)
-    return {
-      node: named === undefined
-        ? <Mono className={cls}>{raw}</Mono>
-        : (
-          <span className={cls}>
-            {named.text}
-            {named.code !== undefined && <>{' '}<Mono>{named.code}</Mono></>}
-          </span>
-        ),
-      className: paint,
-      title: raw,
-    }
-  }
   const numeric = raw !== '' && !Number.isNaN(Number(raw))
   if (numeric) {
     // QF-42 — a number is an LTR island in Latin digits.
@@ -224,16 +214,14 @@ function cellOf(
   const named = cellLabel(raw)
   return {
     // :4913 — `latin`: a value no map covers stays an LTR island rather than a
-    // latin run inside an RTL text node (QF-42), which is the same rule the
-    // `refItems` branch above keeps for an unresolved key.
+    // latin run inside an RTL text node (QF-42).
     node: named === raw && LATIN_VALUE.test(raw)
       ? <Mono className={cls}>{raw}</Mono>
       : <span className={cls}>{named}</span>,
     className: paint,
     // :4914 — the stored value is the cell's tooltip wherever the label differs
     // from it. It is the only place the machine value survives on a translated
-    // cell: «بسته» has to be able to say `pack`, exactly as the `refItems`
-    // branch shows the item key behind a resolved title.
+    // cell: «بسته» has to be able to say `pack`.
     title: named === raw ? undefined : raw,
   }
 }
@@ -374,7 +362,6 @@ function columnNotes(f: RecordField): string {
   const L = (k: string) => label(PAYLOAD_FIELD_LABELS, k)
   const parts: string[] = []
   if (f.filled_by !== undefined) parts.push(`${L('filled_by')}: ${f.filled_by}`)
-  if (f.refItems !== undefined) parts.push(L('refItems'))
   if (f.group?.title !== undefined) parts.push(`${L('group')}: ${f.group.title}`)
   if (f.constraints?.readOnly === true) parts.push(L('readOnly'))
   if (f.constraints?.required === true) parts.push(L('required'))
@@ -837,3 +824,110 @@ function Instances({ bundle, instances, onOpen }: {
     </div>
   )
 }
+
+/**
+ * «قواعد این جدول» / «اندازه‌گیری‌های این جدول» / «یادداشت‌های این جدول» — what
+ * lives in this table, and one press that vouches for all of it.
+ *
+ * **Owner ruling, 2026-09-16 («tables as the spine»).** A table is the spine of
+ * the quantitative store: every rule, measurement and note names the table it
+ * is about or written on, and this is where that shows. The rows are
+ * `bundle.subsets`, derived server-side out of `.index.json`'s `home` column
+ * and ordered by id — the panel joins nothing and counts nothing the server has
+ * not already decided, which is the rule `consumers` follows and for the same
+ * reason: the client holds one entry and the index holds the store.
+ *
+ * **The button ticks the rows and never the table.** It is the ordinary
+ * per-entry confirm endpoint, called once per unconfirmed row, in the served
+ * order, each echoing the print the server sent (QF-24 — the client computes
+ * none). A refusal is that row's alone: it is named in the toast and the run
+ * carries on, because a batch that unwound itself on one 409 would leave a
+ * reviewer with nothing signed and no way to tell which row moved.
+ *
+ * The record's own tick is `FactConfirm`'s, on the header, and this never
+ * touches it: confirming a table's contents is not confirming the table.
+ */
+function SubsetCard({ bundle, data, onOpen }: {
+  bundle: FactBundle; data: RecordData; onOpen: (id: string) => void
+}) {
+  const toast = useToast()
+  const qc = useQueryClient()
+  const [running, setRunning] = useState(false)
+
+  const placed = bundle.subsets.filter(
+    (r): r is PlacedSubset => !isRestricted(r))
+  const unconfirmed = placed.filter((r) => !r.confirmed)
+  // The record's own columns, which is what a row's `home.field` names — served
+  // as a key, drawn as the title this entry already carries for it.
+  const columns = Object.fromEntries(
+    (data.fields ?? []).map((f) => [f.key, f.title]))
+
+  const confirmAll = async () => {
+    setRunning(true)
+    for (const row of unconfirmed) {
+      try {
+        await fetchJson(`/api/confirmations/${row.id}`,
+          { method: 'POST', body: JSON.stringify({ fingerprint: row.fingerprint }) })
+      } catch {
+        toast.show(label(SCREEN_LABELS, 'subset_confirm_failed')
+          .replace('{n}', row.title ?? row.id))
+      }
+    }
+    setRunning(false)
+    // Every row's own bundle and the listing that carries its `confirmed`
+    // flag — `hooks.factConfirmationKeys` for the whole batch at once, by the
+    // prefix rather than one key per row.
+    qc.invalidateQueries({ queryKey: ['fact'] })
+    qc.invalidateQueries({ queryKey: ['facts'] })
+  }
+
+  return (
+    <DetailCard className="mt-s7">
+      <CountBand>
+        <Button variant="ghost" className="ms-auto px-s8 text-fs-caption"
+          disabled={unconfirmed.length === 0} loading={running}
+          onClick={() => { void confirmAll() }}>
+          {label(SCREEN_LABELS, 'confirm_all_subsets')}
+        </Button>
+      </CountBand>
+      {SUBSET_KINDS.map((kind) => {
+        const rows = bundle.subsets.filter((r) => r.kind === kind)
+        if (rows.length === 0) return null
+        const of = rows.filter((r): r is PlacedSubset => !isRestricted(r))
+        const count = label(SCREEN_LABELS, 'subset_confirmed_count')
+          .replace('{n}', toFa(of.filter((r) => r.confirmed).length))
+          .replace('{m}', toFa(of.length))
+        return (
+          <section key={kind}>
+            <HeadBand>
+              {`${label(SCREEN_LABELS, `heading_subset_${kind}`)} — ${count}`}
+            </HeadBand>
+            <ul className="list-none p-0 m-0">
+              {rows.map((r) => (
+                <li key={r.id} className="flex items-center gap-s5 px-s9 py-s6 flex-wrap
+                                          border-b border-line-row last:border-b-0">
+                  <RefLink className="text-fs-body-lead" onOpen={onOpen}
+                    named={isRestricted(r)
+                      ? { text: label(SCREEN_LABELS, 'restricted_neighbour'), restricted: true }
+                      : { text: r.title ?? r.id, restricted: false, id: r.id }} />
+                  {!isRestricted(r) && r.field !== undefined && (
+                    <Tag tone="quiet">{columns[r.field] ?? r.field}</Tag>
+                  )}
+                  {!isRestricted(r) && (
+                    <Tag tone={r.confirmed ? 'ok' : 'violet2'}>
+                      {label(CONFIRMATION_LABELS, r.confirmed ? 'confirmed' : 'unconfirmed')}
+                    </Tag>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      })}
+    </DetailCard>
+  )
+}
+
+/** The three kinds a table holds, in the order the sections are drawn. A
+ *  record is never one of them: a table has no home (§7, 2026-09-16). */
+const SUBSET_KINDS = ['rule', 'measurement', 'note'] as const

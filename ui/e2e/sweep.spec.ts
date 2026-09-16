@@ -81,18 +81,20 @@ const SAHAR: AdminUser = {
 const FACTS: FactsListResponse = {
   entries: [
     {
-      id: 'F-00001', kind: 'item', key: 'ing_1', title: 'پنیر پیتزا', aliases: [],
-      scope: { departments: [], branches: [] },
+      id: 'F-00001', kind: 'measurement', key: 'par_cheese', title: 'پار پنیر پیتزا',
+      aliases: [], scope: { departments: [], branches: [] },
       status: 'confirmed', retired: false, stub: false,
       red_counts: { unknown: 0, disputed: 0 },
-      fingerprint: 'f1', confirmed: true, updated_at: '2026-09-16T14:05:00Z',
+      fingerprint: 'f1', confirmed: true, home: null,
+      updated_at: '2026-09-16T14:05:00Z',
     },
     {
       id: 'F-00011', kind: 'record', key: 'mande_shab', title: 'مانده شب فرنگی و برگر',
       aliases: [], scope: { departments: ['cooking'], branches: ['chalebagh'] },
       status: 'unknown', retired: false, stub: false,
       red_counts: { unknown: 4, disputed: 0 },
-      fingerprint: 'f2', confirmed: false, updated_at: '2026-09-16T14:05:00Z',
+      fingerprint: 'f2', confirmed: false, home: null,
+      updated_at: '2026-09-16T14:05:00Z',
     },
   ],
   coverage: { read: 19, total: 28 },
@@ -131,6 +133,7 @@ const RULE: FactBundle = {
   confirmation: { confirmed: true, can_confirm: true, fingerprint: 'sha256:abc' },
   red_paths: { unknown: [], disputed: [] },
   resolved: {}, row_titles: {}, path_labels: {}, consumers: [], processes: [],
+  subsets: [],
   workbook_titles: {}, unit_titles: {}, binding_labels: {},
   original: null,
 }

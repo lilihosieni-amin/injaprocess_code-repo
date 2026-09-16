@@ -178,7 +178,7 @@ def _reachable(request: Request, user, fid: str) -> dict:
     entry = facts_store.load_entry(request.app.state.cfg.data_root, fid)
     # `is_fact` as well as "is there": `load_entry` finds an entry by id inside
     # whichever kind file the index points at, so a hand-edited store can hold
-    # one whose own `kind` is not one of the five. `visibility.filtered` would
+    # one whose own `kind` is not one of the four. `visibility.filtered` would
     # then send it down the *process* branch and hand back a whitelisted husk —
     # `{id, nodes: [], pending: []}` — which is a served body for a document
     # this service cannot shape. Fail closed instead: not a fact, not found.
@@ -202,9 +202,9 @@ def _served(shown: Disclosure, reach, entry: dict, mark: str | None) -> bool:
     restated them would start disagreeing with the route the first time one did.
 
     `is_fact` is one of the four and belongs here rather than only in
-    `_reachable`: a document whose `kind` is outside the five is one the route
+    `_reachable`: a document whose `kind` is outside the four is one the route
     answers 404 for, so this is not the route's conjunction without it.
-    `load_all` hands back whatever is in the five kind files, so a hand-edited
+    `load_all` hands back whatever is in the four kind files, so a hand-edited
     store really can put such a document in front of the mask.
 
     `redact_fact` is called for its emptiness alone (`{}` is a kind whose
@@ -217,8 +217,8 @@ def _served(shown: Disclosure, reach, entry: dict, mark: str | None) -> bool:
     literal "would the route return it".** The route reaches an entry through
     `facts_store.load_entry`, which finds the id in `.index.json` and uses the
     row's `kind` to pick a file; `_neighbour_visibility` builds its map from
-    `load_all`, which reads the five files directly. An entry present in
-    `items.json` but absent from the index is therefore 404 from its own route
+    `load_all`, which reads the four files directly. An entry present in
+    `records.json` but absent from the index is therefore 404 from its own route
     and *named* by the mask. Documented rather than closed, and the ruling
     (2026-08-31) gives three reasons: `load_entry` consults no scope, no
     confirmation and no policy, so what diverges is "does the route find it at
@@ -236,7 +236,7 @@ def _served(shown: Disclosure, reach, entry: dict, mark: str | None) -> bool:
 
 
 def _neighbour_visibility(conn, root, shown: Disclosure, reach):
-    """`id or item key -> may this caller be told what it names?`
+    """`id -> may this caller be told what it names?`
 
     The user's ruling on the bundle's three resolution maps (2026-08-31):
     **keep the row, hide the name.** An entry the caller cannot reach still
@@ -246,9 +246,10 @@ def _neighbour_visibility(conn, root, shown: Disclosure, reach):
 
     Two id namespaces, one predicate over both (QF-37):
 
-    * a **fact** — an `F-` id, or an item's key, which `resolved` uses as a key
-      too (QF-37's one exception) — is named iff `_served` says so, which is
-      `is_fact`, reach, `may_serve_fact` and the kind switch in one place;
+    * a **fact** — an `F-` id; an item's key was a second way in until
+      2026-09-16, and the item kind is gone — is named iff `_served` says so,
+      which is `is_fact`, reach, `may_serve_fact` and the kind switch in one
+      place;
     * a **process** is named iff `Disclosure.sees` **and**
       `Disclosure.may_serve` both say so — scope *and* the record gate a
       tombstone (D17) or a missing confirmation (D22) closes, which together
@@ -262,24 +263,14 @@ def _neighbour_visibility(conn, root, shown: Disclosure, reach):
     an admin the process route 404s was being handed all three. Half a route's
     conjunction is not a decision about disclosure, it is a gap.
 
-    An item key naming more than one entry — the store admits two items with
-    one key under different scopes — is named only if **every** one of them is
-    served. Fail closed: the label the map carries is one of them, and there is
-    no way to tell which from outside.
-
     One `load_all` and one `stored_for` for the whole bundle, resolved before
     the maps are walked, so this is not a read per neighbour.
-
-    Returns the pair `(visible, names_a_fact)` — see `names_a_fact` for why the
-    second one exists.
     """
     entries = facts_store.load_all(root)
     by_name: dict[str, list[dict]] = {}
     for e in entries:
         if isinstance(e.get("id"), str):
             by_name.setdefault(e["id"], []).append(e)
-        if e.get("kind") == "item" and isinstance(e.get("key"), str):
-            by_name.setdefault(e["key"], []).append(e)
     stored = confirmations.stored_for(
         conn, [e["id"] for e in entries if isinstance(e.get("id"), str)])
 
@@ -304,84 +295,7 @@ def _neighbour_visibility(conn, root, shown: Disclosure, reach):
             _served(shown, reach, e, stored.get(e.get("id")))
             for e in found)
 
-    def names_a_fact(value: object) -> bool:
-        """Is this string an id or an item key the **store** knows?
-
-        Beside `visible` because the two answer different questions, and
-        `_masked_rows` needs both: `visible` is `False` for a name nobody
-        minted as much as for one this caller may not be told about, and a
-        row's cells are full of strings that are neither — a unit, a date, a
-        number. Only a cell that really names an entry can mask a row.
-        """
-        return isinstance(value, str) and value in by_name
-
-    return visible, names_a_fact
-
-
-def _masked_rows(entry: dict, titles: dict, visible, names_a_fact) -> set[str]:
-    """Row keys whose title is **composed** out of a neighbour this caller may
-    not be told about (owner's ruling, extended 2026-08-31).
-
-    A reference table's row has no title of its own: the row *is* its cells, so
-    `facts_store.row_titles` builds one out of the titles of the items those
-    cells name — «اینجا پیتزا — قارچ» (§9). That is a neighbour's Persian
-    reaching the caller by composition rather than through `resolved`, and it
-    is the same boundary by a different path, so it takes the same answer:
-    masked **whole**, with the marker already approved, and never composed from
-    the half the caller may see. A partly-composed row is a screen state the
-    design does not draw.
-
-    A row that carries its **own** `title` is not composed — that title is this
-    entry's content, and this entry is one the caller was served — so it is
-    never masked. Same for a row whose cells resolve to nothing: `row_titles`
-    falls back to the row key, which names no neighbour.
-
-    The test is "does any cell of this row name a fact this caller may not be
-    told about", over **every** cell rather than over the `refItems` columns in
-    `primaryKey` order that `row_titles` actually composes from. Deliberate:
-    that column choice is `facts_store`'s private business, and a mask that
-    restated it would be the second copy of a rule this round exists to avoid.
-
-    **And a row whose served title is its own key is not masked either.** The
-    common way to reach `titles[key] == key` is `row_titles`' fallback, which
-    fires when no cell resolved — nothing composed, so marking the row
-    restricted would draw «خارج از دسترسی شما» over a label wholly this
-    entry's own. The check reads the *output* rather than re-deriving which
-    columns compose: that closes the over-masking without restating the column
-    rule this function deliberately does not know.
-
-    It is **not** a test for "did this compose". A single-`refItems` row whose
-    item's title is byte-equal to the row key composes to the key, and this
-    skips it — verified against a built store, so the earlier claim here that
-    Persian composition cannot collide with an ASCII minted key was simply
-    false: neither `data.rows[].key` nor an item's `title` is constrained to a
-    character set by the schema. The guard is right for a stronger reason than
-    the one it used to give. What it withholds is a *value*, and the value in
-    that case is byte-identical to the map key the caller already holds, so
-    nothing crosses the boundary that was not already on the wire. Masking it
-    would cost a legible label and buy nothing.
-
-    # ponytail: what survives is a row whose title really did compose and whose
-    # *non*-`refItems` cell happens to hold a string equal to some item's key —
-    # over-masked, never under-masked, which is the direction that matters.
-    # Narrow it by having `facts_store.row_titles` report which rows it
-    # composed, if a real store ever trips it.
-    """
-    out = set()
-    for row in (entry.get("data") or {}).get("rows") or []:
-        if not isinstance(row, dict):
-            continue
-        key = row.get("key")
-        if not isinstance(key, str) or key not in titles:
-            continue
-        if isinstance(row.get("title"), str) and row["title"]:
-            continue
-        if titles[key] == key:
-            continue
-        if any(names_a_fact(cell) and not visible(cell)
-               for cell in row.values()):
-            out.add(key)
-    return out
+    return visible
 
 
 #: The marker a masked neighbour carries in place of everything it would have
@@ -564,6 +478,11 @@ def list_facts(request: Request, user=Depends(panel_session)):
             # entry by itself, exactly as a `merge` run does for a process.
             "confirmed": mark is not None and mark == now,
             "updated_at": row.get("updated_at"),
+            # The index's own column, straight through (2026-09-16): the id of
+            # the record this entry is homed on, or `None`. From the row and
+            # not the entry, because it is the index that carries it flattened
+            # — and unlike `kind` and `scope` no gate reads it.
+            "home": row.get("home"),
         })
     out.sort(key=lambda r: r["id"], reverse=True)
     return {"entries": out, "coverage": facts_store.coverage(root)}
@@ -627,6 +546,44 @@ def _original_text(root: Path, entry: dict) -> str | None:
         return None
 
 
+def _subsets(conn, root: Path, fid: str, visible) -> list[dict]:
+    """A table's rules, measurements and notes — served with the pair every
+    confirmable surface carries.
+
+    `facts_store.subsets` decides membership and order; this adds the two
+    things it has no business holding — whether the caller may be told what a
+    row is, and the confirmation state — and both the way the rest of this
+    module already does. `fingerprint` beside `confirmed` for the reason
+    `list_facts` reports both: the batch tick has to be pressable, and QF-24
+    forbids the client computing a print.
+
+    **A masked row keeps its `kind`**, which `consumers` does not. The section
+    a row is drawn in *is* its kind, so a row without one could not be drawn at
+    all — and dropping it would withhold that the table holds something, which
+    is more than the ruling («keep the row, hide the name») asks for. What it
+    still carries no trace of is the title, the tick and the print.
+
+    One `stored_for` for the whole list, like every other confirmation read
+    here — never one query per row.
+    """
+    rows = facts_store.subsets(root, fid)
+    if not rows:
+        return []
+    entries = {e["id"]: e for e in facts_store.load_all(root)
+               if isinstance(e.get("id"), str)}
+    stored = confirmations.stored_for(conn, [r["id"] for r in rows])
+    out = []
+    for row in rows:
+        if not visible(row["id"]):
+            out.append({"id": row["id"], "kind": row["kind"], _RESTRICTED: True})
+            continue
+        now = fact_fingerprint(entries[row["id"]])
+        mark = stored.get(row["id"])
+        out.append({**row, "fingerprint": now,
+                    "confirmed": mark is not None and mark == now})
+    return out
+
+
 def _bundle(request: Request, user, fid: str) -> dict:
     """One entry, with every map a screen needs to render it without a raw key.
 
@@ -638,7 +595,7 @@ def _bundle(request: Request, user, fid: str) -> dict:
     assembled by the write path.
 
     §17's closing promise is that `resolved`, `row_titles` and `path_labels`
-    between them cover every id, item key, row key and red path the entry
+    between them cover every id, row key and red path the entry
     references, so no screen can fall back to `prod_61__ing_22`. They are
     computed server-side because the client has neither the store nor the
     `departments/**` tree to compute them from.
@@ -674,9 +631,7 @@ def _bundle(request: Request, user, fid: str) -> dict:
     # The listing's rule for one entry — see `list_facts`.
     confirmed = mark is not None and mark == now
     served = shown.redact_fact(entry, targets)
-    visible, names_a_fact = _neighbour_visibility(conn, root, shown, reach)
-    titles = facts_store.row_titles(root, entry)
-    hidden_rows = _masked_rows(entry, titles, visible, names_a_fact)
+    visible = _neighbour_visibility(conn, root, shown, reach)
     may_confirm = permits(conn, user, "confirm")
     return {
         "entry": served,
@@ -711,7 +666,8 @@ def _bundle(request: Request, user, fid: str) -> dict:
         # A masked row keeps **only what makes it a row** — the key of
         # `resolved`, the `id` of a consumer, the `ref` of a process link — and
         # gains `restricted`. Everything else goes, with no per-field
-        # judgement: not the title, not an item's estate `code`, not the `kind`.
+        # judgement: not the title, not the `kind` (a subset row keeps that
+        # one; see `_subsets`).
         # For a process that means `tombstoned`, `heir` and `missing_nodes` go
         # too, and deliberately: a tombstone state is a statement about a
         # process this caller may not see, and `heir` is a bare id disclosure of
@@ -721,19 +677,15 @@ def _bundle(request: Request, user, fid: str) -> dict:
         "resolved": {name: (label if visible(name) else {_RESTRICTED: True})
                      for name, label in
                      facts_store.resolved_map(root, entry).items()},
-        # A composed row title is a neighbour's Persian reaching the caller by
-        # another road, so it takes the same marker — whole, never half of a
-        # composition (`_masked_rows`).
-        "row_titles": {k: (v if k not in hidden_rows else {_RESTRICTED: True})
-                       for k, v in titles.items()},
-        # And `path_labels` renders «ستون — ردیف» out of those same row
-        # titles, so a path that **names** a masked row inherits the mask. The
-        # test is segment-wise — does this path name that row — rather than a
-        # second reading of QF-7's path grammar.
-        "path_labels": {p: (label if hidden_rows.isdisjoint(p.split("/"))
-                            else {_RESTRICTED: True})
-                        for p, label in
-                        facts_store.path_labels(root, entry).items()},
+        # Neither of these carries a neighbour's Persian, so neither is masked.
+        # A reference table's row used to have no title of its own — it was
+        # composed out of the titles of the items its cells named, and that
+        # composition was masked whole (`_masked_rows`, retired 2026-09-16).
+        # With the item kind gone a row's only Persian is its own `title`, and
+        # this entry is one the caller was served; `path_labels` renders
+        # «ستون — ردیف» out of those same titles and inherits the same answer.
+        "row_titles": facts_store.row_titles(root, entry),
+        "path_labels": facts_store.path_labels(root, entry),
         # The two maps the «محل اجرا» and «نسخه‌ها» sections need and the entry
         # cannot carry: a workbook's title is the manifest's, and a binding's
         # sheet and branch live on the record the rule points at. Unmasked —
@@ -755,6 +707,11 @@ def _bundle(request: Request, user, fid: str) -> dict:
         "processes": [p if visible(p.get("ref"))
                       else {"ref": p.get("ref"), _RESTRICTED: True}
                       for p in facts_store.process_links(root, entry)],
+        # What lives in this table (2026-09-16). Empty for every other kind —
+        # a rule holds nothing, and asking the store would be a walk per
+        # bundle for a list that is always empty.
+        "subsets": (_subsets(conn, root, fid, visible)
+                    if entry.get("kind") == "record" else []),
     }
 
 
@@ -981,7 +938,7 @@ def _entry_targets(request: Request) -> list[str] | None:
     out-of-scope target gets (D56).
 
     `is_fact` as well as "is there", for `_reachable`'s reason: an `F-` id
-    carrying a kind outside the five is a document this service cannot shape,
+    carrying a kind outside the four is a document this service cannot shape,
     and it must not become a *writable* one merely because its id looked right.
 
     No grammar check of its own, unlike `_reachable`'s: `load_entry` finds an
