@@ -596,3 +596,30 @@ def test_each_attachment_text_is_headed_by_its_name_and_its_path(tmp_path):
         "یک\nدو\nسه\n", encoding="utf-8")
     assert _unit_text(tmp_path,
                       {"inputs": ["meetings/transcripts/m.txt#L1-L2"]}) == "یک\nدو"
+
+
+def test_an_image_sidecars_heading_names_the_photo_itself(tmp_path):
+    """Task H 2026-09-16: the unit reads the description, and looks at the photo
+    for the table's structure — so the heading of an image sidecar also names
+    the image, when the image is still there. A docx sidecar names none, and
+    neither does a photo the estate has lost."""
+    from facts_plan.build import _unit_text
+    att = tmp_path / "departments" / "cooking" / "attachments"
+    (att / "forms").mkdir(parents=True)
+    (att / ".text").mkdir()
+    (att / "forms" / "tabdil.jpg").write_bytes(b"\xff\xd8")
+    (att / "forms" / "sanad.docx").write_bytes(b"PK")
+    for name, body in (("forms__tabdil.image.md", "وزن مرغ"),
+                       ("forms__sanad.txt", "سند"),
+                       ("forms__gomshode.image.md", "گم‌شده")):
+        (att / ".text" / name).write_text(body + "\n", encoding="utf-8")
+    base = "departments/cooking/attachments/.text/"
+    text = _unit_text(tmp_path, {"inputs": [f"{base}forms__tabdil.image.md",
+                                            f"{base}forms__sanad.txt",
+                                            f"{base}forms__gomshode.image.md"]})
+    heads = [line for line in text.splitlines() if line.startswith("### ")]
+    assert heads == [
+        f"### forms/tabdil.image · {base}forms__tabdil.image.md"
+        " · عکس: departments/cooking/attachments/forms/tabdil.jpg",
+        f"### forms/sanad · {base}forms__sanad.txt",
+        f"### forms/gomshode.image · {base}forms__gomshode.image.md"]

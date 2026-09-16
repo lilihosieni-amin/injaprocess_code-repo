@@ -2645,14 +2645,11 @@ def _attachment_name(root, rel):
     """The owner's name for the file a `.text/` sidecar was read out of —
     `extract_attachment.cache_path` read backwards, `forms__tahvil.txt` →
     `forms/tahvil.docx` — or the sidecar's own name when the file is gone."""
-    from extract_attachment import CONVERTERS
+    from extract_attachment import owner_rel
     sidecar = pathlib.PurePosixPath(rel)
-    for ext, suffix in sorted(CONVERTERS.items()):
-        if sidecar.name.endswith(suffix):
-            name = sidecar.name[:-len(suffix)].replace("__", "/") + ext
-            if (pathlib.Path(root) / sidecar.parent.parent / name).is_file():
-                return name
-    return sidecar.name
+    owner = owner_rel(root, rel)
+    return pathlib.PurePosixPath(owner).relative_to(
+        sidecar.parent.parent).as_posix() if owner else sidecar.name
 
 
 def _workbook_name(root, department, file):

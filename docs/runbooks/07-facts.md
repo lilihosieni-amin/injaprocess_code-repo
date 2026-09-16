@@ -879,7 +879,13 @@ citations' gate: a path this unit was not handed is **REPAIR**-dropped in
 silence (INV-3 at file level), and an entry that names none of its inputs still
 cites all of them, so nothing is lost — citing too much is a smaller loss than
 citing nothing. A transcript unit reads one excerpt whole and is unaffected;
-sheet, voice and process citations keep their order.
+sheet, voice and process citations keep their order. A photographed form's
+heading also names the photo itself («· عکس: departments/preparation/
+attachments/forms/tabdil.jpg», while the file is still in the estate), and the
+unit opens it to see the structure the extracted description cannot spell — a
+title spanning two cells, a group: the description stays the source of the
+columns, units and titles, and what only the photo shows becomes a `new[]` note
+on that form rather than a different reading of it.
 
 **The budgets (design §4).** The input budgets rose with the phases; the output
 estimate did not.

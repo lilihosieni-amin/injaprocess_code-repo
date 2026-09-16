@@ -2597,6 +2597,9 @@ def _wrap(line):
 #: Where `extract-attachment` caches the text of a `.docx`/`.pdf`/image — the
 #: one mark that tells a unit's photographed form from its meeting excerpt.
 SIDECAR_DIR = "/attachments/.text/"
+#: …and the suffix `extract-attachment` gives every image it describes, which
+#: is the one sidecar whose own file is worth looking at.
+IMAGE_SIDECAR = ".image.md"
 
 
 def _unit_text(root, unit):
@@ -2611,7 +2614,13 @@ def _unit_text(root, unit):
     all fourteen photos of the unit on each of its thirteen entries. A
     transcript unit reads one excerpt whole and needs no heading to tell it
     from another.
+
+    A photograph's heading also names the photo itself (`· عکس: <path>`), so
+    the unit can open it and see what the extracted description cannot say — a
+    title spanning two cells, a group. The description stays the source; the
+    image is structure only, and is named only while it is still in the estate.
     """
+    from extract_attachment import owner_rel
     root, parts = pathlib.Path(root), []
     for ref in unit["inputs"]:
         rel, _, span = ref.partition("#")
@@ -2623,8 +2632,12 @@ def _unit_text(root, unit):
             first, last = (int(n[1:]) for n in span.split("-"))
             lines = lines[first - 1:last]
         body = "\n".join(w for line in lines for w in _wrap(line))
-        parts.append(f"### {_input_label(rel)} · {rel}\n\n{body}"
-                     if SIDECAR_DIR in rel else body)
+        if SIDECAR_DIR not in rel:
+            parts.append(body)
+            continue
+        photo = owner_rel(root, rel) if rel.endswith(IMAGE_SIDECAR) else None
+        head = f"### {_input_label(rel)} · {rel}"
+        parts.append(f'{head}{f" · عکس: {photo}" if photo else ""}\n\n{body}')
     return "\n\n".join(parts)
 
 
