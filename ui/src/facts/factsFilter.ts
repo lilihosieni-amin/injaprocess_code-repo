@@ -50,6 +50,20 @@ export function anyActive(f: FactFilters, q: string): boolean {
 }
 
 /**
+ * **An entry that lives under a table is read on that table's page, not here.**
+ *
+ * The owner's second ruling of 2026-09-16 (after seeing the first run): the
+ * facts list carries the records and the entries that belong under no table;
+ * a rule, measurement or note with a `home` is listed on its table's page and
+ * nowhere else. This is a standing rule of the list, not one of the four
+ * filters — nothing in the dropdowns brings a homed entry back. The served
+ * `home` is `.index.json`'s column, null on every record.
+ */
+export function onList(r: FactListRow): boolean {
+  return r.home === null
+}
+
+/**
  * **The search is over the title, the id and the aliases.**
  *
  * The title and the id are the design's own two (`:4645`). The aliases are the

@@ -996,8 +996,11 @@ a record). The owner's side is the `edit-fact` playbook's two new cases —
 جدا کن» — each resolved against the index, shown as one Persian line («قاعدهٔ
 «…» زیر «…» می‌رود.») and applied on «بله».
 
-**In the panel.** The facts list pages are unchanged, and an unattached entry
-stays in them (owner decision 2); only the entry's own page says «بدون جدول».
+**In the panel.** The facts list pages keep their filters, search and columns
+but list only the records and the unattached entries: a rule, measurement or
+note with a `home` is read on its table's page and is not in the list (owner
+decision 2, revised after the first run); an unattached entry stays in the list
+and its own page says «بدون جدول».
 A record's page gains «قواعد این جدول», «اندازه‌گیری‌های این جدول» and
 «یادداشت‌های این جدول» — the entries whose `home` is this record, listed off
 `.index.json`'s `home` rows, plus the notes whose `about` names it and whose

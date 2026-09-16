@@ -857,10 +857,12 @@ key, title, scope, status, `retired`, `stub`, `red_counts` (how many unanswered 
 disputes), the current fingerprint and whether it is confirmed. Filtering (kind, department,
 branch, confirmation, free text over title/id/aliases) happens in the browser over that one
 response; the server has already applied scope and visibility. The UI deliberately does **not**
-draw the served `coverage` number (workbooks read / total) — the owner refused it. These lists did
-not change when the table became the spine (2026-09-16): an entry that belongs under no table is
-listed here like any other, and there is no separate "no table" list — only the entry's own page
-says «بدون جدول» (owner decision 2).
+draw the served `coverage` number (workbooks read / total) — the owner refused it. When the table
+became the spine (2026-09-16) these lists kept their shape but not every entry: the browser also
+drops every row whose served `home` is set (`factsFilter.onList`), so the list holds the records
+and the entries that belong under no table, and a homed rule, measurement or note is read on its
+table's page only. There is no separate "no table" list — an unattached entry is listed here like
+any other and only its own page says «بدون جدول» (owner decision 2, revised after the first run).
 
 ### 6.3 The detail bundle
 

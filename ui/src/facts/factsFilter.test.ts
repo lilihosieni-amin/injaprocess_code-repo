@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { NO_FILTERS, UNIVERSAL, anyActive, matches, type FactFilters } from './factsFilter'
+import { NO_FILTERS, UNIVERSAL, anyActive, matches, onList, type FactFilters } from './factsFilter'
 import type { FactListRow } from '../api/types'
 
 /**
@@ -105,6 +105,14 @@ describe('matches — the four filters', () => {
   it('ANDs the filters together', () => {
     expect(kept('', { ...NO_FILTERS, kind: 'record', dept: 'cooking' })).toEqual(['F-00011'])
     expect(kept('', { ...NO_FILTERS, kind: 'record', dept: 'management' })).toEqual([])
+  })
+})
+
+describe('onList — an entry that lives under a table is read on the table, not here', () => {
+  it('keeps a record and an unattached entry, drops an entry with a home', () => {
+    const homed = row({ id: 'F-00040', kind: 'rule', key: 'burger_mass', title: 'تطبیق مایهٔ برگر', home: 'F-00007' })
+    expect([CHEESE, NIGHT, TOLERANCE, homed].filter(onList).map((r) => r.id))
+      .toEqual(['F-00001', 'F-00011', 'F-00026'])
   })
 })
 

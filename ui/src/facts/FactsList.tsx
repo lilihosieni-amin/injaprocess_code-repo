@@ -12,7 +12,7 @@ import { Icon } from '../ui/Icon'
 import { SearchField } from '../ui/SearchField'
 import { LoadFailedScreen, LoadingState } from '../ui/states'
 import { RefusalScreen } from '../screens/Refusal'
-import { NO_FILTERS, UNIVERSAL, anyActive, matches, type FactFilters } from './factsFilter'
+import { NO_FILTERS, UNIVERSAL, anyActive, matches, onList, type FactFilters } from './factsFilter'
 import { FACT_KINDS, type FactListRow, type FactScope } from '../api/types'
 import { useHistoryState } from '../shell/historyState'
 
@@ -107,7 +107,7 @@ function FactsBody({ entries }: { entries: FactListRow[] }) {
   const deptNames = Object.fromEntries(departments.map((d) => [d.code, d.name]))
   const branchNames = Object.fromEntries(branches.map((b) => [b.code, b.name]))
 
-  const rows = entries.filter((r) => matches(r, q, filters))
+  const rows = entries.filter((r) => onList(r) && matches(r, q, filters))
   const set = <K extends keyof FactFilters>(k: K, v: FactFilters[K]) =>
     setFilters({ ...filters, [k]: v })
   const clearable = anyActive(filters, q)
