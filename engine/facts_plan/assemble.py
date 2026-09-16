@@ -1627,15 +1627,21 @@ READ_OFF_A_FORM = ("sheet", "photo", "pdf", "docx")
 HOMED_KINDS = ("rule", "measurement", "note")
 
 
-def derive_home(entry):
+def derive_home(entry, kind_of=None):
     """The table an entry belongs to — what the unit wrote, else what the
     entry's own references say (spec 2026-09-16 §4.1).
 
-    A pure function of the entry: a rule whose bindings all name one record
+    A pure function of its arguments: a rule whose bindings all name one record
     belongs to that record, a measurement belongs to what it is `of` (with the
-    column, when it names one), and a note to the first table it is `about`
+    column, when it names one), and a note to the first **table** it is `about`
     (owner decision 3). Anything else is unattached — including a record, which
     is a place and has none.
+
+    `kind_of(ref) -> kind | None` is what tells a table from a rule: a note
+    that speaks of a rule before the form it is written on belongs to the form,
+    and a measurement `of` a rule belongs nowhere. A ref the caller cannot
+    place answers `None` and is taken as written — the store severs a `home`
+    that names no record, with a note the owner reads (C29).
     """
     if entry.get("kind") not in HOMED_KINDS:
         return None
@@ -1648,11 +1654,32 @@ def derive_home(entry):
                 for m in data.get("applies_to") or [] if isinstance(m, dict)]
         named = {r for r in refs if isinstance(r, str)}
         return {"ref": named.pop()} if len(named) == 1 else None
+
+    def a_table(member):
+        if not (isinstance(member, dict) and isinstance(member.get("ref"), str)):
+            return False
+        return kind_of is None or kind_of(member["ref"]) in (None, "record")
+
     source = data.get("of") if entry["kind"] == "measurement" \
-        else next(iter(data.get("about") or []), None)
-    if not isinstance(source, dict) or not isinstance(source.get("ref"), str):
+        else next((m for m in data.get("about") or [] if a_table(m)), None)
+    if not a_table(source):
         return None
     return {k: source[k] for k in ("ref", "field") if source.get(k)}
+
+
+def _kind_of(state):
+    """`ref -> the kind it names`, over this run's candidates (a `new[]` entry
+    included) and the store. An `S-`/`N-`/`F-` id nothing knows answers `None`,
+    which every caller reads as "no reason to rule it out"."""
+    candidates = state.get("candidates") or {}
+    stored = state.get("store_kinds") or {}
+
+    def kind_of(ref):
+        candidate = candidates.get(ref)
+        if candidate:
+            return KIND_OF.get(candidate["kind"], candidate["kind"])
+        return stored.get(ref)
+    return kind_of
 
 
 def _entry(candidate, decision, state, part=None):
@@ -1751,7 +1778,8 @@ def _entry(candidate, decision, state, part=None):
              "_skeleton": candidate["id"], "_unit": decision["unit"],
              "_renames": renames}
     if kind in HOMED_KINDS:
-        entry["home"] = derive_home(dict(entry, home=written.get("home")))
+        entry["home"] = derive_home(dict(entry, home=written.get("home")),
+                                    _kind_of(state))
     if written.get("aliases"):
         entry["aliases"] = written["aliases"]
     if written.get("accounts"):
@@ -2405,7 +2433,11 @@ def _prepare(root, run_dir, review, exclude=frozenset(), held=None, only=None):
         # exists (1a) and where its entry sits (§3.2's attachment union).
         "store_scopes": {e["id"]: canonical_scope(e.get("scope"))
                          for kind in KIND_ORDER
-                         for e in store[kind]["entries"]}})
+                         for e in store[kind]["entries"]},
+        # …and what kind each one is, which is what tells a note's `about`
+        # list which of its members is a table (`derive_home`).
+        "store_kinds": {e["id"]: kind for kind in KIND_ORDER
+                        for e in store[kind]["entries"]}})
     if review:
         # The reviewer read the assembly as it stood *before* the review, flags
         # and all — so the hash is checked against that same document, rebuilt
