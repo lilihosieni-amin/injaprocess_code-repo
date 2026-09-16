@@ -23,7 +23,7 @@
       "required": ["id", "kind", "key", "title", "scope", "status", "retired", "updated_at"],
       "properties": {
         "id": { "$ref": "#/$defs/factId" },
-        "kind": { "enum": ["item", "record", "measurement", "rule", "note"] },
+        "kind": { "enum": ["record", "measurement", "rule", "note"] },
         "key": { "$ref": "#/$defs/mintedKey" },
         "title": { "type": "string" },
         "aliases": { "type": "array", "items": { "type": "string" } },
@@ -32,6 +32,7 @@
         "retired": { "type": "boolean" },
         "valid_to": { "oneOf": [{ "$ref": "#/$defs/jalali" }, { "type": "null" }] },
         "processes": { "type": "array", "items": { "type": "string", "pattern": "^[a-z]+-[0-9]{3}$" } },
+        "home": { "oneOf": [{ "$ref": "#/$defs/factId" }, { "type": "null" }] },
         "field_status_counts": { "type": "object", "additionalProperties": false,
           "properties": {
             "disputed": { "type": "integer", "minimum": 0 },

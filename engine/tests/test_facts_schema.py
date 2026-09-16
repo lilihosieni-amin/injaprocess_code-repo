@@ -1,32 +1,15 @@
 """`facts.schema.json` and `facts-delta.schema.json` — the two halves of one
 contract (§3.2, I6). A change that reaches only one of them is the drift these
 tests exist to catch."""
-import re
+import copy
 
-from engine_common import read_json, schema_dir
-
-NAMESPACE = {"type": "string", "pattern": r"^[^\sA-Za-z0-9]{1,3}$"}
+from engine_common import read_json, schema_dir, validate
+from merge_facts import KIND_FILES, KINDS, save_store
 
 
 def _both():
     return [read_json(schema_dir() / name)["$defs"]
             for name in ("facts.schema.json", "facts-delta.schema.json")]
-
-
-def test_an_estate_declares_its_own_item_code_namespaces():
-    """I6 — `##` and `#` are cooking's manifest, not the engine's. An estate
-    that declares `@@` or `؛` writes a `refItems` field with it, and an enum of
-    two literals refused it before a run could even reach the store."""
-    for defs in _both():
-        # spec 2026-09-13 C17: the sigil grammar is the closed form of an open
-        # string — the gate marks a namespace outside it instead of refusing
-        assert defs["field"]["properties"]["refItems"]["properties"][
-            "namespace"] == {"anyOf": [NAMESPACE, {"type": "string"}]}
-    pattern = re.compile(NAMESPACE["pattern"])
-    for good in ("#", "##", "@@", "؛", "**"):
-        assert pattern.fullmatch(good), good
-    for bad in ("", "a", "1", "# ", "####"):
-        assert not pattern.fullmatch(bad), bad
 
 
 def test_a_set_aside_candidate_s_issue_kind_is_in_both_halves():
@@ -39,3 +22,106 @@ def test_a_set_aside_candidate_s_issue_kind_is_in_both_halves():
 def test_the_issue_definition_is_one_definition_in_two_files():
     store, delta = _both()
     assert store["issue"] == delta["issue"]
+
+
+# --------------------------------------------------------------------------- #
+# tables as the spine (2026-09-16): four kinds, no items, `home`
+#
+# `facts_helpers.py` is frozen for the parallel phase, and this module had no
+# fixtures of its own beyond `_both()`, so the three below are local.
+# --------------------------------------------------------------------------- #
+
+_DATA = {"record": {"medium": "native", "role": "config", "location": {}},
+         "measurement": {"quantity": "mass", "unit": "g"},
+         "rule": {"inputs": [], "outputs": []},
+         "note": {"about": [{"ref": "F-00025"}], "question": "؟"}}
+
+
+def entry(kind="rule", id="F-00030", **kw):
+    """One store-shaped entry of `kind`, minimal and valid."""
+    out = {"id": id, "kind": kind, "key": "yek", "title": "عنوان",
+           "statement": "جمله", "scope": {"departments": [], "branches": []},
+           "source": [], "status": "confirmed", "retired": False,
+           "updated_at": "2026-09-16T00:00:00Z",
+           "data": copy.deepcopy(_DATA.get(kind, {}))}
+    out.update(kw)
+    return out
+
+
+def delta_entry(id="T-1", **kw):
+    """The same entry as a delta states it — `status` and `updated_at` are the
+    store's own, derived leaves and no delta carries them."""
+    e = entry(id=id, **kw)
+    del e["status"], e["updated_at"]
+    return e
+
+
+def validates(schema, e):
+    try:
+        validate(f"{schema}.schema.json", {"schema_version": 2, "entries": [e]})
+        return True
+    except ValueError:
+        return False
+
+
+def seeded_store(tmp_path, entries):
+    """A `facts/` directory holding `entries`, written by the store's own
+    writer so `.index.json` is the one `save_store` builds."""
+    (tmp_path / "facts").mkdir()
+    save_store(tmp_path, {kind: {"schema_version": 2,
+                                 "entries": [e for e in entries if e["kind"] == kind]}
+                          for kind in KIND_FILES})
+    return tmp_path / "facts"
+
+
+def test_the_store_has_four_kinds_and_no_item():
+    assert not validates("facts", entry(kind="item",
+                                        data={"category": "ingredient", "unit": "kg"}))
+    assert set(KINDS) == {"record", "measurement", "rule", "note"}
+
+
+def test_a_refitems_column_is_gone_and_text_takes_its_place():
+    rec = entry(kind="record", id="F-00025", data={
+        "medium": "sheet", "role": "reference", "location": {},
+        "fields": [{"key": "qalam", "title": "قلم", "type": "refItems",
+                    "refItems": {"namespace": "##"}}]})
+    assert not validates("facts", rec)
+    rec["data"]["fields"][0] = {"key": "qalam", "title": "قلم", "type": "string"}
+    assert validates("facts", rec)
+
+
+def test_home_is_a_record_ref_on_rules_measurements_and_notes_and_never_on_a_record():
+    for kind in ("rule", "measurement", "note"):
+        assert validates("facts", entry(kind=kind, home={"ref": "F-00025"}))
+        assert validates("facts", entry(kind=kind, home={"ref": "F-00025",
+                                                         "field": "vazn"}))
+        assert validates("facts", entry(kind=kind, home=None))
+        assert not validates("facts", entry(kind=kind, home={"ref": "F-00025",
+                                                             "row": "r1"}))
+        assert not validates("facts", entry(kind=kind, home={"ref": "cooking-001"}))
+    assert not validates("facts", entry(kind="record", id="F-00025",
+                                        home={"ref": "F-00026"}))
+
+
+def test_the_delta_carries_the_same_home_and_the_same_four_kinds():
+    """§3.2: the two halves of one contract. A delta places a new entry under a
+    table this same delta creates, so `home` takes a temp id too."""
+    assert not validates("facts-delta", delta_entry(
+        kind="item", data={"category": "ingredient", "unit": "kg"}))
+    assert validates("facts-delta", delta_entry(kind="rule", home={"ref": "T-3"}))
+    assert not validates("facts-delta", delta_entry(kind="record",
+                                                    home={"ref": "T-3"}))
+
+
+def test_the_index_row_carries_the_home_record_id(tmp_path):
+    store = seeded_store(tmp_path, [
+        entry(kind="record", id="F-00025", key="jadval"),
+        entry(kind="rule", id="F-00030", home={"ref": "F-00025", "field": "vazn"})])
+    rows = read_json(store / ".index.json")["entries"]
+    assert next(r for r in rows if r["id"] == "F-00030")["home"] == "F-00025"
+    assert next(r for r in rows if r["id"] == "F-00025")["home"] is None
+
+
+def test_a_placement_note_is_an_issue_kind_in_both_halves():
+    for defs in _both():
+        assert "placement" in defs["issue"]["properties"]["kind"]["anyOf"][0]["enum"]
