@@ -1,6 +1,6 @@
 # Facts store: no item entries — design
 
-**Status:** proposal for the owner's approval, 2026-09-16. **Nothing in this document is implemented.**
+**Status:** folded into `2026-09-16-facts-tables-as-the-spine-design.md` §3 on 2026-09-16; kept for the record. **Nothing in this document is implemented.**
 **Owner's instruction (2026-09-16):** «I don't want anything referencing items anymore either. Items, and
 any reference that was made to items, should be removed.» Raw materials appear once, in a table, as
 quantitative data — nowhere else.
