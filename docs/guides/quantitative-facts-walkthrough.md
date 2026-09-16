@@ -814,8 +814,10 @@ in the panel's own database when a reviewer confirms. Any change to the entry mo
 the tick silently disappears — that is the point of hashing instead of a boolean. A bot edit is
 such a change: it rewrites content and stamps a new `updated_at`, so the entry reads «تأییدنشده»
 again the moment the edit lands, and a person re-confirms it in the panel when they have read it
-there. Moving an entry to another table is the one edit that is *not* such a change: `home` is
-placement, not content, so the tick — and the entry's history — survive the move.
+there. Moving an entry to another table — or detaching it from one — is the one edit that is *not*
+such a change: `home` is placement, not content, and a patch that touches nothing else adds no
+chat citation either, so the tick — and the entry's history — survive the move. A detach holds
+like a move: the next run never re-files what a person unattached.
 
 v3.7 briefly shipped a second channel — `facts/.confirmations.json`, a file the engine wrote on a
 chat-origin run and the panel counted as a confirmation, so that a bot edit left nothing to accept.

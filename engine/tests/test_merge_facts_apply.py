@@ -4,7 +4,7 @@ import pytest
 
 from engine_common import read_json, validate
 from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _units_delta, _write
-from merge_facts import account_id, is_open, load_store
+from merge_facts import account_id, is_open, load_store, save_store
 from merge_facts.apply import apply, simulate, used
 from merge_facts.preconditions import process_findings
 from merge_facts.tiers import lines
@@ -1069,6 +1069,29 @@ def test_apply_records_the_homes_it_did_not_move(tmp_path):
     moved = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol"][0]
     assert moved["home"] == {"ref": first}                 # the person's placement stands
     assert [i["kind"] for i in moved["issues"]] == ["placement"]
+
+
+def test_apply_records_a_home_a_person_detached(tmp_path):
+    """I2 — the same row for a detach, with `stored: null`: there is no table
+    to name on the store's side, and the report's line names the run's table
+    only. Without this, a run re-filed under «مانده صبح» the entry the owner
+    had just said belongs to no table, and said nothing about it."""
+    root = _root(tmp_path)
+    _seed_units(root)
+    first, second = _two_tables(root)
+    apply(root, _write(root, "d1.json", _placed_delta(first)), _run_dir(root, "p1"))
+    store = load_store(root)                # the person's detach, as `edit` leaves it
+    rule = [e for e in store["rule"]["entries"] if e["key"] == "tol"][0]
+    rule.pop("home")
+    rule["home_detached"] = True
+    save_store(root, store, only={rule["id"]})
+    run2 = _run_dir(root, "p2")
+    apply(root, _write(root, "d2.json", _placed_delta(second)), run2)
+    assert read_json(run2 / "moved-home.json") == [
+        {"id": rule["id"], "title": "سقف ضایعات", "stored": None, "seen": second}]
+    after = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol"][0]
+    assert after.get("home") is None
+    assert [i["kind"] for i in after["issues"]] == ["placement"]
 
 
 def test_a_second_run_seeing_the_same_other_table_writes_nothing_new(tmp_path):

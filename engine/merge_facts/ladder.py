@@ -52,17 +52,25 @@ PLACEMENT_ISSUE = {"kind": "placement", "description": PLACEMENT_FA, "affects": 
 # `home` joins them: placement is not a leaf to fill or dispute — `merge_home`
 # below is its whole ladder.
 TOP_SKIP = IMMUTABLE | frozenset(UNION_FIELDS) | frozenset({"accounts", "extra",
-                                                            "home"})
+                                                            "home",
+                                                            "home_detached"})
 
 
 def merge_home(existing, incoming):
     """Owner decision 1 (2026-09-16): `home` is placement, not a fact. A stored
     home is never overwritten by a run — the run's view becomes a `placement`
-    issue and is returned for the report; an unplaced entry adopts the run's."""
-    mine, theirs = existing.get("home"), incoming.get("home")
-    if not theirs or theirs == mine:
+    issue and is returned for the report; an unplaced entry adopts the run's.
+
+    A person's DETACH is the same decision and holds the same way: `edit unset
+    home` leaves `home_detached`, because a null home and an absent one both
+    read as "unattached" and the ladder could not otherwise tell «این قاعده به
+    هیچ جدولی مربوط نیست» from an entry nobody had placed yet."""
+    if existing.get("kind") == "record":
+        return None                     # a table is a place and has no home;
+    mine, theirs = existing.get("home"), incoming.get("home")  # adopting one
+    if not theirs or theirs == mine:    # would only fail `save_store` later
         return None
-    if not mine:
+    if not mine and not existing.get("home_detached"):
         existing["home"] = copy.deepcopy(theirs)
         return None
     issues = existing.setdefault("issues", [])

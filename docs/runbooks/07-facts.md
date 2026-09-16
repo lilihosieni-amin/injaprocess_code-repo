@@ -961,7 +961,10 @@ When a run's entry names a different table, the entry gains the issue `{"kind":
 — and `report.md` says it in the owner's own words: «جای «سقف ضایعات» تغییر
 نکرد؛ این اجرا آن را زیر «فرم تولید نیمه‌ساخته» می‌دید.» (owner decision 1: the
 disagreement is in the chat message, not only on the entry). An entry with no
-stored `home` simply adopts the run's.
+stored `home` simply adopts the run's — unless a person DETACHED it, which
+holds exactly like a move: `edit unset home` leaves `home_detached` on the
+entry, the ladder never adopts over it, and the row it writes carries
+`"stored": null`.
 
 **The report reads by table.** After the counts line, under the heading «زیر
 هر جدول چه ثبت شد:», `report.md` prints one line per table — «فرم تبدیل
@@ -979,8 +982,13 @@ with a `keep` carrying `home` like any other field.
 
 **Moving one entry.** `merge facts edit` (§13) takes `home` like any other
 envelope path: `{"op": "set", "path": "home", "value": {"ref": "F-00031"}}`
-moves an entry, `{"op": "unset", "path": "home"}` detaches it. The move keeps
-the entry's id, its confirm tick and its history, and stamps `updated_at`. Three
+moves an entry, `{"op": "unset", "path": "home"}` detaches it — on an entry
+written before `home` existed too, where it removes nothing and records the
+decision. Both keep the entry's id, its confirm tick and its history, and stamp
+`updated_at`; a patch that touches nothing but `home` adds no citation of its
+own, because a citation is content and would cost the entry its tick (the run
+directory's delta and `facts-before/` are the move's record). A detach holds
+against a later run the way a move does. Three
 refusals, one line each, exit 2, nothing written: `home: F-00116 is not a
 record`, `home: F-09999 names no entry`, `home: a table has no home` (a `set` on
 a record). The owner's side is the `edit-fact` playbook's two new cases —

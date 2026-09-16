@@ -266,6 +266,35 @@ def test_the_same_home_read_twice_is_not_a_disagreement():
     assert "issues" not in existing
 
 
+def test_a_run_never_re_files_an_entry_a_person_detached():
+    """I2: `edit unset home` leaves `home_detached`, and owner decision 1
+    covers the detach as it covers the move — «این قاعده به هیچ جدولی مربوط
+    نیست» is a placement a run may disagree with, never one it may overwrite.
+    The disagreement is reported: the issue on the entry, the id back to
+    `apply` for `moved-home.json`, the line in `report.md`."""
+    existing = _placed(None)
+    existing["home_detached"] = True
+    assert merge_home(existing, _placed("F-00031")) == "F-00031"
+    assert existing.get("home") is None
+    assert {"kind": "placement", "description": PLACEMENT_FA,
+            "affects": []} in existing["issues"]
+    fresh = _placed(None)
+    fresh["home_detached"] = True
+    assert ("home", "placement") in merge_entry(fresh, _placed("F-00031"), SRC_B)
+    assert fresh.get("home") is None
+
+
+def test_a_record_never_adopts_a_home():
+    """Unreachable today — both schemas forbid a record a `home` and no
+    assembly writes one — but one that somehow arrived would be adopted here
+    and only then refused by `save_store`, which is a crash instead of a
+    severed link."""
+    existing = _placed(None)
+    existing["kind"] = "record"
+    assert merge_home(existing, _placed("F-00031")) is None
+    assert existing.get("home") is None and "issues" not in existing
+
+
 def test_merge_entry_notes_the_placement_once_and_unions_an_adoption():
     existing, incoming = _placed("F-00025"), _placed("F-00031")
     assert ("home", "placement") in merge_entry(existing, incoming, SRC_B)

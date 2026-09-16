@@ -706,7 +706,10 @@ def _upsert(store, plans):
             changed = filled or any(act != "noop" for _, act in changes)
             if any(path == "home" and act != "union" for path, act in changes):
                 moved.append({"id": fid, "title": match["title"],
-                              "stored": match["home"]["ref"],
+                              # `null` when the person DETACHED it: there is
+                              # no stored table to name, and the report's line
+                              # names the run's one either way (I2).
+                              "stored": (match.get("home") or {}).get("ref"),
                               "seen": incoming["home"]["ref"]})
         if _recompute_location(entry):
             changed = True

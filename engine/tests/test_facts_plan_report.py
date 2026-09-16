@@ -436,6 +436,26 @@ def test_the_report_groups_by_table_then_the_unattached_then_the_unmoved(tmp_pat
     assert not re.search(r"F-\d{5}|T-\d+", text)
 
 
+def test_the_report_names_a_table_the_run_would_have_given_a_detached_entry(tmp_path):
+    """I2: the row for a detach carries `stored: null` — there is no stored
+    table to name — and the owner still has to hear that this run disagreed,
+    so the line prints off the entry's title and the run's table alone."""
+    run_dir = _run(tmp_path)
+    records = [_stored("F-00031", "record", "form_nime", "فرم تولید نیمه‌ساخته",
+                      data={"medium": "paper", "role": "log", "location": {}})]
+    _store(tmp_path, [_stored("F-00116", "rule", "saqf", "سقف ضایعات", home=None)],
+           records=records)
+    (run_dir / "touched.json").write_text(json.dumps(["F-00031", "F-00116"]),
+                                          encoding="utf-8")
+    (run_dir / "moved-home.json").write_text(json.dumps(
+        [{"id": "F-00116", "title": "سقف ضایعات", "stored": None,
+          "seen": "F-00031"}], ensure_ascii=False), encoding="utf-8")
+    text = report(tmp_path, run_dir).read_text(encoding="utf-8")
+    assert "جای «سقف ضایعات» تغییر نکرد؛ این اجرا آن را زیر " \
+           "«فرم تولید نیمه‌ساخته» می‌دید." in text
+    assert not re.search(r"F-\d{5}|T-\d+", text)
+
+
 def test_a_run_that_placed_everything_says_nothing_about_the_unattached(tmp_path):
     run_dir = _run(tmp_path)
     records = [_stored("F-00025", "record", "form_tabdil", "فرم تبدیل",
