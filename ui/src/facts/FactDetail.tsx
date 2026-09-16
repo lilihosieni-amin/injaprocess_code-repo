@@ -223,7 +223,7 @@ function HomeLine({ bundle, onOpen }: {
   // «جدول: …» over whatever the map gave — a title, or the restricted marker,
   // which `RefLink` then draws as text with no press (R5).
   return line(
-    <RefLink className="text-fs-caption" onOpen={onOpen}
+    <RefLink className="text-fs-caption" color="text-role-title-on-field" onOpen={onOpen}
       named={{ ...named,
         text: label(SCREEN_LABELS, 'home_table').replace('{n}', named.text) }} />,
   )
