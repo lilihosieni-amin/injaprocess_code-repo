@@ -893,10 +893,16 @@ function SubsetCard({ bundle, data, onOpen }: {
       {SUBSET_KINDS.map((kind) => {
         const rows = bundle.subsets.filter((r) => r.kind === kind)
         if (rows.length === 0) return null
-        const of = rows.filter((r): r is PlacedSubset => !isRestricted(r))
+        // **The denominator is every row the section draws, masked ones
+        // included** — «keep the row, hide the name … so a count stays
+        // honest» (`routers/facts._neighbour_visibility`). Counting only the
+        // rows that can say whether they are confirmed would print «۰ از ۱»
+        // over two rows. The numerator is the confirmed count among those
+        // that can say, which is what a masked row withholds.
         const count = label(SCREEN_LABELS, 'subset_confirmed_count')
-          .replace('{n}', toFa(of.filter((r) => r.confirmed).length))
-          .replace('{m}', toFa(of.length))
+          .replace('{n}', toFa(rows.filter(
+            (r) => !isRestricted(r) && r.confirmed).length))
+          .replace('{m}', toFa(rows.length))
         return (
           <section key={kind}>
             <HeadBand>

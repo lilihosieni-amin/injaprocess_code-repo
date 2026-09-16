@@ -567,6 +567,25 @@ describe('a table’s page lists what lives in it', () => {
     expect(screen.queryByRole('button', { name: /خارج از دسترسی شما/ })).toBeNull()
   })
 
+  it('counts a row it may not name in the denominator, like every other count', () => {
+    // «Keep the row, hide the name … so a count stays honest» — the rule
+    // `consumers` follows (`routers/facts.py`). The section draws two rows, so
+    // it says two; the numerator is what is confirmed among the rows that can
+    // say, which is none of them.
+    render(
+      <RecordCard bundle={HOMED({
+        subsets: [
+          { id: 'F-00020', kind: 'rule', title: 'سقف ضایعات', confirmed: false,
+            fingerprint: 'sha256:20' },
+          { id: 'F-00099', kind: 'rule', restricted: true },
+        ],
+      })} onOpen={vi.fn()} />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByText('قواعد این جدول — ۰ از ۲ تأیید شده')).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+  })
+
   it('draws no section at all for a table nothing is homed on', () => {
     render(<RecordCard bundle={HOMED({ subsets: [] })} onOpen={vi.fn()} />)
     expect(screen.queryByText(/قواعد این جدول/)).toBeNull()
