@@ -1,5 +1,5 @@
-"""`facts-plan build`'s record templates, reference rows and items, over the
-mini estate in `fixtures/facts_plan/make_dump.py`."""
+"""`facts-plan build`'s record templates and reference rows, over the mini
+estate in `fixtures/facts_plan/make_dump.py`."""
 import json
 import re
 
@@ -18,7 +18,6 @@ from facts_plan.build import (
     code_key,
     estimate_tokens,
     header_notes,
-    item_candidates,
     load_estate,
     plan_units,
     record_templates,
@@ -153,15 +152,6 @@ def test_a_repeated_header_inside_one_tab_is_reported(estate):
     fields = [{"key": "c_a", "title": "نام"}, {"key": "c_b", "title": "پنیر پیتزا ##1"}]
     _, _, issues = reference_rows(estate["SBOM"], "مواد", header, fields)
     assert [i["kind"] for i in issues] == ["ambiguous_row_header"]
-
-
-def test_items_are_one_per_code_with_labels_by_instance_count(estate):
-    _, instances, _ = record_templates(estate, "cooking")
-    items = {c["payload"]["code"]: c for c in
-             item_candidates(estate, "cooking", instances)}
-    assert set(items) == {"##1", "##26", "##33", "#71", "#61"}
-    assert items["##1"]["render"]["labels"] == ["پنیر پیتزا", "پنیر پیتزا میکس"]
-    assert ("mini_bom__s1", "b") in items["##1"]["render"]["sites"]
 
 
 #: What an owner-facing sentence may never contain — an instance key, a
@@ -299,7 +289,7 @@ def test_attachments_pack_to_the_budget_and_a_huge_one_goes_alone():
     render = lambda u: "x" * sum(size[p] for p in u["inputs"])   # noqa: E731
     skeleton = {"candidates": [], "instances": []}
 
-    units = plan_units(skeleton, {}, [], [], list(size), render=render)
+    units = plan_units(skeleton, {}, [], list(size), render=render)
 
     assert [(u["id"], u["type"], u["inputs"]) for u in units] == [
         ("u-att-1", "attachment", ["a.txt", "b.txt"]),
@@ -318,7 +308,7 @@ def test_an_input_no_unit_reads_exits_2_naming_it(monkeypatch, capsys):
     with pytest.raises(SystemExit) as excinfo:
         plan_units({"candidates": [], "instances": []}, {},
                    [("prep", "meetings/transcripts/prep.txt", (1, 9), "x")],
-                   [], ["departments/cooking/attachments/.text/form.txt"],
+                   ["departments/cooking/attachments/.text/form.txt"],
                    render=lambda u: "x" * (IN_BUDGET * 2))
     assert excinfo.value.code == 2
     err = capsys.readouterr().err
@@ -347,11 +337,10 @@ def test_every_unit_carries_its_phase():
     skeleton = {"candidates": [], "instances": []}
     units = plan_units(
         skeleton, {}, [("m", "meetings/transcripts/m.txt", (1, 3), "a\nb\nc")],
-        [], ["departments/x/attachments/.text/p.image.md"])
+        ["departments/x/attachments/.text/p.image.md"])
     assert {u["type"]: u["phase"] for u in units} == {"transcript": 2,
                                                       "attachment": 1}
-    assert PHASE_OF == {"workbook": 1, "items": 1, "attachment": 1,
-                        "transcript": 2}
+    assert PHASE_OF == {"workbook": 1, "attachment": 1, "transcript": 2}
 
 
 LINES_A = ["سلام، امروز دربارهٔ فرم تبدیل برگر حرف می‌زنیم"] + ["حرف‌های دیگر"] * 30 + \
@@ -488,12 +477,13 @@ def test_a_transcript_units_recorded_section_replaces_the_reuse_slice():
          "data": {"fields": [{"key": "vorudi", "title": "ورودی", "unit": "kg"}]}},
         {"handle": "N-u-att-1-2", "kind": "rule", "key": "saqf", "title": "سقف ضایعات",
          "statement": "ضایعات از ده درصد بیشتر نمی‌شود"},
-        {"handle": "S-item-3", "kind": "item", "key": "khamir", "title": "خمیر",
-         "data": {"code": "##7"}}],
+        {"handle": "N-u-att-1-3", "kind": "note", "key": "khamir",
+         "title": "خمیر", "statement": "خمیر هر روز صبح آماده می‌شود"}],
         ["F-00001 · record · units · واحدها"])
     assert lines[0] == "S-rec-1 · record · bazdehi · بازدهی تولید · ستون‌ها: vorudi (ورودی، kg)"
     assert lines[1].startswith("N-u-att-1-2 · rule · saqf · سقف ضایعات · ضایعات از ده")
-    assert lines[2] == "S-item-3 · item · ##7 · khamir · خمیر"   # the code first
+    assert lines[2] == "N-u-att-1-3 · note · khamir · خمیر · " \
+                       "خمیر هر روز صبح آماده می‌شود"
     assert lines[-1] == "F-00001 · record · units · واحدها"
     # §3: the same slot, under the heading that says what it now holds.
     from facts_plan.build import render_input
@@ -543,7 +533,7 @@ def test_each_part_of_a_split_form_unit_gets_its_own_talk(tmp_path, monkeypatch)
         "\n".join(["شمارش موجودی پیتزا و پنیر را در جدول مغایرت می‌نویسیم"] * 20),
         encoding="utf-8")
     # just under the pizza book's own core, so that book — and only it — splits
-    monkeypatch.setattr(B, "IN_BUDGET", 5200)
+    monkeypatch.setattr(B, "IN_BUDGET", 5100)
     run = tmp_path / "run"
     build(root, "cooking", run, ["prep-1405-06-01"])
     plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
@@ -623,3 +613,18 @@ def test_an_image_sidecars_heading_names_the_photo_itself(tmp_path):
         " · عکس: departments/cooking/attachments/forms/tabdil.jpg",
         f"### forms/sanad · {base}forms__sanad.txt",
         f"### forms/gomshode.image · {base}forms__gomshode.image.md"]
+
+
+def test_no_item_unit_is_planned_and_the_coded_tab_is_still_a_record(tmp_path):
+    """Spec 2026-09-16: the codes stay where the estate keeps them — the
+    reference tab's own rows — and no candidate, unit or card is minted for
+    them."""
+    root = _tiny_estate(tmp_path)
+    build(root, "cooking", tmp_path / "run", [])
+    plan = json.loads((tmp_path / "run" / "plan.json").read_text(encoding="utf-8"))
+    assert not [u for u in plan["units"] if u["type"] == "items"]
+    skeleton = json.loads((tmp_path / "run" / "skeleton.json")
+                          .read_text(encoding="utf-8"))
+    assert not [c for c in skeleton["candidates"] if c["kind"] == "item"]
+    assert [c for c in skeleton["candidates"]
+            if c["kind"] == "record" and c["payload"].get("rows")]

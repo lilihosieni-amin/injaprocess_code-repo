@@ -58,8 +58,6 @@ def _minimal(candidate):
         return data
     if kind in ("rule", "script"):
         return {"lang": "sheets"}
-    if kind == "item":
-        return {"category": "ingredient", "unit": "kg"}
     return {}
 
 

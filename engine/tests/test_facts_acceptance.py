@@ -31,28 +31,17 @@ def _delta(tmp_path):
                                  .read_text(encoding="utf-8"))
 
 
-def test_bacon_carries_its_pack_units(tmp_path):
-    _root, _run, delta = _delta(tmp_path)
-    bacon = next(e for e in delta["entries"]
-                 if e["kind"] == "item" and "بیکن" in e["title"])
-    assert [u["pack_unit"] for u in bacon["data"]["units"]] == ["pack"]
-    assert bacon["data"]["units"][0]["factor_to_base"] > 0
-
-
-def test_nine_items_are_tracked_false(tmp_path):
-    _root, _run, delta = _delta(tmp_path)
-    untracked = [e for e in delta["entries"] if e["kind"] == "item"
-                 and any(t.get("value") is False
-                         for t in e["data"].get("tracked") or [])]
-    assert len(untracked) == 9
-
-
 def test_the_night_stock_record_carries_movement_and_the_day_boundary(tmp_path):
     _root, _run, delta = _delta(tmp_path)
     record = next(e for e in delta["entries"] if e["kind"] == "record"
                   and e["data"].get("day_boundary"))
     assert record["data"]["day_boundary"] == "01:15"
-    assert set(record["data"]["movement"]) == {"from", "to", "reason"}
+    # The end is the `new[]` paper ledger the same document mints, addressed
+    # by its `N-` handle — the one reference nothing in the sheets can mint.
+    assert set(record["data"]["movement"]) == {"to", "reason"}
+    ledger = next(e for e in delta["entries"]
+                  if e["key"] == "daftar_tahvil_anbar_markazi")
+    assert record["data"]["movement"]["to"] == {"ref": ledger["id"]}
 
 
 def test_the_delta_validates_and_gate_b_is_owner_ready(tmp_path):

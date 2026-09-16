@@ -14,8 +14,8 @@ import re
 
 import pytest
 from facts_helpers import _seed_units
-from facts_plan.assemble import (assemble, digest, phase_entries,
-                                 validate_unit)
+from facts_plan.assemble import (_resolve_refs, assemble, derive_home,
+                                 digest, phase_entries, validate_unit)
 from merge_facts import tiers
 from merge_facts.apply import simulate
 
@@ -24,7 +24,7 @@ from engine_common import validate
 
 def _root(tmp_path):
     (tmp_path / "facts").mkdir()
-    for name in ("items", "records", "measurements", "rules", "notes"):
+    for name in ("records", "measurements", "rules", "notes"):
         (tmp_path / "facts" / f"{name}.json").write_text(
             json.dumps({"schema_version": 2, "entries": []}), encoding="utf-8")
     (tmp_path / "departments").mkdir()
@@ -77,9 +77,14 @@ def _skeleton():
                                              "variant": 0, "range": "J6:J15",
                                              "params": {}}]},
                  "render": {"output": "انحراف", "variants": []}},
-                {"id": "S-i-000000000003", "kind": "item", "unit": "u-b",
-                 "payload": {"code": "##1"},
-                 "render": {"labels": ["پنیر"]}}]}
+                # Nothing in the sheets mints a measurement candidate, but
+                # a unit writes measurements and every step below treats one
+                # exactly as it treats a record or a rule — so the third
+                # candidate of this run is one. A skeleton id carries the
+                # prefix of the pass that minted it and says nothing about the
+                # kind; `kind` does.
+                {"id": "S-r-000000000003", "kind": "measurement", "unit": "u-b",
+                 "payload": {}, "render": {"name": "وزن پنیر"}}]}
 
 
 def _plan():
@@ -89,7 +94,7 @@ def _plan():
                       for u, i, c in (
                           ("u-a", [], ["S-rec-000000000001"]),
                           ("u-b", ["meetings/transcripts/c.txt#L1-L20"],
-                           ["S-r-000000000002", "S-i-000000000003"]))]}
+                           ["S-r-000000000002", "S-r-000000000003"]))]}
 
 
 def _run(tmp_path, outputs, skeleton=None, plan=None):
@@ -134,10 +139,10 @@ def _rule_out(**over):
                                      "from": "operator"}],
                          "outputs": [{"key": "enheraf", "title": "انحراف",
                                       "unit": "kg", "nature": "observed"}]}},
-               {"skeleton": "S-i-000000000003", "action": "keep",
-                "key": "item_1", "title": "پنیر پیتزا",
-                "statement": "پنیر پیتزا که با کیلوگرم شمرده می‌شود.",
-                "data": {"category": "ingredient",
+               {"skeleton": "S-r-000000000003", "action": "keep",
+                "key": "vazn_panir", "title": "وزن پنیر پیتزا",
+                "statement": "پنیر پیتزا با کیلوگرم وزن می‌شود.",
+                "data": {"quantity": "mass",
                          "unit": {"value": "kg", "inferred": True}}}]}
     doc.update(over)
     return doc
@@ -169,8 +174,8 @@ def test_refs_and_field_keys_resolved_and_delta_written(tmp_path):
                                                        "field": "masraf_elami"}
     assert record["data"]["fields"][0]["columns"] == {"pitza__s5": "H"}
     assert record["data"]["fields"][0]["title"] == "مصرف اعلامی"
-    assert by_key["item_1"]["field_status"] == {"data/unit": "inferred"}
-    assert by_key["item_1"]["data"]["unit"] == "kg"
+    assert by_key["vazn_panir"]["field_status"] == {"data/unit": "inferred"}
+    assert by_key["vazn_panir"]["data"]["unit"] == "kg"
     assert record["scope"] == {"departments": ["cooking"],
                                "branches": ["chalebagh"]}
     assert record["issues"][0]["kind"] == "column_shift"
@@ -200,7 +205,7 @@ def test_ids_are_minted_in_kind_order(tmp_path):
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     assert [(e["kind"], e["id"]) for e in delta["entries"]][:2] == \
-        [("item", "T-1"), ("record", "T-2")]
+        [("record", "T-1"), ("measurement", "T-2")]
 
 
 def test_drop_and_failed_unit_land_in_assembly_json(tmp_path):
@@ -222,20 +227,21 @@ def test_merge_into_and_split(tmp_path):
     root = _root(tmp_path)
     rule = _rule_out()
     rule["decisions"] = rule["decisions"][:1] + [
-        {"skeleton": "S-i-000000000003", "action": "split", "reason_code": "other",
-         "into": [{"key": "item_1", "title": "پنیر پیتزا",
-                   "statement": "پنیر پیتزا که با کیلوگرم شمرده می‌شود.",
-                   "data": {"category": "ingredient", "unit": "kg"},
+        {"skeleton": "S-r-000000000003", "action": "split", "reason_code": "other",
+         "into": [{"key": "vazn_panir", "title": "وزن پنیر پیتزا",
+                   "statement": "پنیر پیتزا با کیلوگرم وزن می‌شود.",
+                   "data": {"quantity": "mass", "unit": "kg"},
                    "takes": ["pitza__s5"]},
-                  {"key": "item_2", "title": "پنیر ورقه‌ای",
-                   "statement": "پنیر ورقه‌ای که با بسته شمرده می‌شود.",
-                   "data": {"category": "ingredient", "unit": "pack"},
+                  {"key": "vazn_panir_varaqei", "title": "وزن پنیر ورقه‌ای",
+                   "statement": "پنیر ورقه‌ای با بسته شمرده می‌شود.",
+                   "data": {"quantity": "count", "unit": "pack"},
                    "takes": ["pitza__s6"]}]}]
     run_dir = _run(root, {"u-a": _record_out(), "u-b": rule})
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
-    assert sorted(e["key"] for e in delta["entries"] if e["kind"] == "item") == \
-        ["item_1", "item_2"]
+    assert sorted(e["key"] for e in delta["entries"]
+                  if e["kind"] == "measurement") == \
+        ["vazn_panir", "vazn_panir_varaqei"]
 
 
 def test_merge_into_moves_the_bindings_and_mints_no_entry(tmp_path):
@@ -265,7 +271,8 @@ def test_merge_into_moves_the_bindings_and_mints_no_entry(tmp_path):
                    skeleton=skeleton, plan=plan)
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
-    assert [e["kind"] for e in delta["entries"]] == ["item", "record", "rule"]
+    assert [e["kind"] for e in delta["entries"]] == \
+        ["record", "measurement", "rule"]
     merged = next(e for e in delta["entries"] if e["kind"] == "rule")
     assert [m["key"] for m in merged["data"]["applies_to"]] == ["pitza__s5__j__r6"]
 
@@ -422,39 +429,6 @@ def test_a_review_of_any_size_is_accepted(tmp_path):
     _write_review(run_dir, [dict(keep) for _ in range(61)])
     problems = validate_unit(root, run_dir, run_dir / "review" / "out.json")
     assert not any("at most" in p for p in problems)
-
-
-def test_a_code_a_decision_writes_is_ignored(tmp_path):
-    """R4: the cooking review of 2026-09-08 was refused whole for copying the
-    engine-owned `code` back in. It passes now and changes nothing."""
-    root = _root(tmp_path)
-    record = _record_out()
-    record["decisions"][0]["data"]["code"] = "##99"
-    run_dir = _run(root, {"u-a": record, "u-b": _rule_out()})
-    assert validate_unit(root, run_dir, run_dir / "units" / "u-a" / "out.1.json") == []
-    assemble(root, run_dir)
-    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
-    rec = next(e for e in delta["entries"] if e["key"] == "gozaresh_shabane_pitza")
-    assert rec["data"].get("code") != "##99"
-
-
-def test_a_code_the_review_writes_is_ignored_too(tmp_path):
-    """R4 on the path it actually broke on: the review copied the item codes
-    back into `data`, and the whole document was refused for it. The estate's
-    code stands and everything else the reviewer wrote lands."""
-    root = _root(tmp_path)
-    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
-    digest(root, run_dir)
-    _write_review(run_dir, [{"entry": {"kind": "item", "key": "item_1"},
-                             "action": "keep", "key": "item_1",
-                             "title": "پنیر ورقه‌ای",
-                             "statement": "پنیر ورقه‌ای که با بسته شمرده می‌شود.",
-                             "data": {"code": "##99", "unit": "pack"}}])
-    assert validate_unit(root, run_dir, run_dir / "review" / "out.json") == []
-    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
-    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
-    item = next(e for e in delta["entries"] if e["key"] == "item_1")
-    assert item["data"]["code"] == "##1" and item["data"]["unit"] == "pack"
 
 
 def test_a_digest_over_the_ceiling_stops_the_run(tmp_path, monkeypatch):
@@ -676,39 +650,43 @@ def test_a_review_merge_into_folds_a_new_entry_away(tmp_path):
 
 
 def test_a_review_split_reaches_a_new_entry(tmp_path):
-    """One `new[]` item the reviewer reads as two — split over the pseudo
+    """One `new[]` entry the reviewer reads as two — split over the pseudo
     candidate, whose payload each part is written over."""
     root = _root(tmp_path)
     rule = _rule_out()
-    rule["new"] = [{"kind": "item", "key": "panir", "title": "پنیر",
-                    "statement": "پنیری که آشپز روی پیتزا می‌ریزد.",
-                    "data": {"category": "ingredient", "unit": "kg"}}]
+    rule["new"] = [{"kind": "measurement", "key": "vazn_panir_line",
+                    "title": "وزن پنیر لاین",
+                    "statement": "پنیر لاین پیتزا هر شب وزن می‌شود.",
+                    "data": {"quantity": "mass", "unit": "kg"}}]
     run_dir = _run(root, {"u-a": _record_out(), "u-b": rule})
     assemble(root, run_dir)
     digest(root, run_dir)
-    _write_review(run_dir, [{"entry": {"kind": "item", "key": "panir",
+    _write_review(run_dir, [{"entry": {"kind": "measurement",
+                                       "key": "vazn_panir_line",
                                        "scope": {"departments": ["cooking"],
                                                  "branches": []}},
                              "action": "split", "reason_code": "other",
                              "into": [
-                                 {"key": "panir_pitza", "title": "پنیر پیتزا",
-                                  "statement": "پنیری که با کیلوگرم شمرده "
+                                 {"key": "vazn_panir_pitza",
+                                  "title": "وزن پنیر پیتزا",
+                                  "statement": "پنیر پیتزا با کیلوگرم وزن "
                                                "می‌شود.",
                                   "takes": ["x"],
-                                  "data": {"category": "ingredient",
-                                           "unit": "kg"}},
-                                 {"key": "panir_varaqei",
-                                  "title": "پنیر ورقه‌ای",
-                                  "statement": "پنیری که با بسته شمرده می‌شود.",
+                                  "data": {"quantity": "mass", "unit": "kg"}},
+                                 {"key": "shomaresh_panir_varaqei",
+                                  "title": "شمارش پنیر ورقه‌ای",
+                                  "statement": "پنیر ورقه‌ای با بسته شمرده "
+                                               "می‌شود.",
                                   "takes": ["x"],
-                                  "data": {"category": "ingredient",
+                                  "data": {"quantity": "count",
                                            "unit": "pack"}}]}])
     assert assemble(root, run_dir, review=True)["review_status"] == "applied"
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
-    items = {e["key"]: e for e in delta["entries"] if e["kind"] == "item"}
-    assert "panir" not in items
-    assert items["panir_pitza"]["data"]["unit"] == "kg"
-    assert items["panir_varaqei"]["data"]["unit"] == "pack"
+    parts = {e["key"]: e for e in delta["entries"]
+             if e["kind"] == "measurement"}
+    assert "vazn_panir_line" not in parts
+    assert parts["vazn_panir_pitza"]["data"]["unit"] == "kg"
+    assert parts["shomaresh_panir_varaqei"]["data"]["unit"] == "pack"
 
 
 def test_two_records_on_one_tab_are_flagged_template_split(tmp_path):
@@ -729,7 +707,7 @@ def test_two_records_on_one_tab_are_flagged_template_split(tmp_path):
     run_dir = _run(root, {"u-a": _record_out(), "u-b": rule},
                    skeleton=skeleton, plan=plan)
     text = digest(root, run_dir).read_text(encoding="utf-8")
-    assert "template_split · T-2 · T-2 (gozaresh_shabane_pitza) and T-3 " \
+    assert "template_split · T-1 · T-1 (gozaresh_shabane_pitza) and T-2 " \
            "(gozaresh_shabane_digar) both claim SID/پیتزا" in text
 
 
@@ -742,7 +720,7 @@ def test_a_ref_into_an_undecided_candidate_holds_the_entry_back(tmp_path):
     run_dir = _run(root, {"u-b": _rule_out()})           # u-a never returned
     result = assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
-    assert [e["kind"] for e in delta["entries"]] == ["item"]   # the rule waits
+    assert [e["kind"] for e in delta["entries"]] == ["measurement"]  # rule waits
     assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
     held = [u for u in assembly["undecided"] if u["skeleton"] == "S-r-000000000002"]
     assert held and held[0]["unit"] == "u-b" \
@@ -862,7 +840,7 @@ def test_merge_into_a_target_no_unit_kept_holds_the_merger_back(tmp_path):
                    skeleton=skeleton, plan=plan)
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
-    assert {e["kind"] for e in delta["entries"]} == {"record", "item"}
+    assert {e["kind"] for e in delta["entries"]} == {"record", "measurement"}
     assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
     held = next(u for u in assembly["undecided"]
                 if u["skeleton"] == "S-r-000000000002")
@@ -874,8 +852,8 @@ def test_merge_into_a_target_no_unit_kept_holds_the_merger_back(tmp_path):
 
 def test_a_merge_into_cycle_holds_its_candidates_back_and_the_rest_lands(tmp_path):
     """I5 — two units each merge their rule into the other's. Nobody's target
-    exists, so every candidate on the cycle waits and the record and the item
-    still land."""
+    exists, so every candidate on the cycle waits and the record and the
+    measurement still land."""
     root = _root(tmp_path)
     skeleton, plan = _twinned()
     record = _record_out()
@@ -892,7 +870,7 @@ def test_a_merge_into_cycle_holds_its_candidates_back_and_the_rest_lands(tmp_pat
                    skeleton=skeleton, plan=plan)
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
-    assert {e["kind"] for e in delta["entries"]} == {"record", "item"}
+    assert {e["kind"] for e in delta["entries"]} == {"record", "measurement"}
     assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
     cycled = [u for u in assembly["undecided"] if u.get("reason") == "cycle"]
     assert sorted(u["skeleton"] for u in cycled) == \
@@ -927,7 +905,7 @@ def test_a_run_that_assembles_nothing_still_stops(tmp_path, capsys):
     held-back reason is printed."""
     root = _root(tmp_path)
     rule = _rule_out()
-    rule["decisions"][1] = {"skeleton": "S-i-000000000003", "action": "drop",
+    rule["decisions"][1] = {"skeleton": "S-r-000000000003", "action": "drop",
                             "reason_code": "cosmetic"}
     run_dir = _run(root, {"u-b": rule})
     with pytest.raises(SystemExit) as excinfo:
@@ -947,7 +925,7 @@ def test_a_run_that_drops_everything_says_why_it_stopped(tmp_path, capsys):
                             "reason_code": "cosmetic"}]
     rule["decisions"] = [{"skeleton": s, "action": "drop",
                           "reason_code": "cosmetic"}
-                         for s in ("S-r-000000000002", "S-i-000000000003")]
+                         for s in ("S-r-000000000002", "S-r-000000000003")]
     run_dir = _run(root, {"u-a": record, "u-b": rule})
     with pytest.raises(SystemExit) as excinfo:
         assemble(root, run_dir)
@@ -967,8 +945,8 @@ def test_a_column_derived_by_a_waiting_rule_keeps_its_table(tmp_path):
         {"ref": "S-r-000000000002"}
     rule = _rule_out()
     rule["decisions"][0]["data"]["inputs"][1] = {
-        "key": "masraf_vaqei", "unit": "kg", "from": {"ref": "S-i-000000000003"}}
-    rule["decisions"][1] = {"skeleton": "S-i-000000000003", "action": "drop",
+        "key": "masraf_vaqei", "unit": "kg", "from": {"ref": "S-r-000000000003"}}
+    rule["decisions"][1] = {"skeleton": "S-r-000000000003", "action": "drop",
                             "reason_code": "cosmetic"}
     run_dir = _run(root, {"u-a": record, "u-b": rule})
     assemble(root, run_dir)
@@ -1064,7 +1042,7 @@ def test_a_ref_into_a_dropped_candidate_holds_the_entry_back(tmp_path):
     run_dir = _run(root, {"u-a": record, "u-b": _rule_out()})
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
-    assert [e["kind"] for e in delta["entries"]] == ["item"]
+    assert [e["kind"] for e in delta["entries"]] == ["measurement"]
     assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
     held = next(u for u in assembly["undecided"] if u["unit"] == "u-b")
     assert held["waits_for"] == "S-rec-000000000001" \
@@ -1077,14 +1055,14 @@ def test_a_unit_that_spent_both_attempts_leaves_undecided_candidates(tmp_path):
     unit's other decision lands."""
     root = _root(tmp_path)
     broken = _rule_out()
-    broken["decisions"] = broken["decisions"][:1]     # its item is undecided
+    broken["decisions"] = broken["decisions"][:1]  # its measurement is undecided
     run_dir = _run(root, {"u-a": _record_out(), "u-b": broken})
     (run_dir / "units" / "u-b" / "out.2.json").write_text(
         json.dumps(broken, ensure_ascii=False), encoding="utf-8")
     assemble(root, run_dir)
     doc = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
     assert [(u["skeleton"], u["reason"]) for u in doc["undecided"]] == \
-        [("S-i-000000000003", "not_decided")]
+        [("S-r-000000000003", "not_decided")]
 
 
 def test_the_delta_is_schema_valid_and_survives_a_simulated_apply(tmp_path):
@@ -1266,17 +1244,22 @@ def test_a_contradiction_whose_address_the_review_renamed_is_named(capsys):
 
 def test_a_new_entry_is_referenceable_in_the_same_run(tmp_path):
     """§2.6 step 6's `N-<unit>-<n>` handle resolves like a skeleton id, so a
-    unit can mint a `place` item and point at it — a record's `movement` ends
-    are place items, and nothing in the sheets mints one."""
+    unit can mint a form the meetings describe and point at it — a record's
+    `movement` ends are records of their own, and nothing in the sheets mints
+    the paper one."""
     root = _root(tmp_path)
     record = _record_out()
     record["decisions"][0]["data"]["movement"] = {
         "from": {"ref": "N-u-b-0"},                      # another unit's new[]
         "reason": "باقی‌ماندهٔ لاین در پایان شب به انبار برگردانده می‌شود."}
     rule = _rule_out(new=[
-        {"kind": "item", "key": "anbar_markazi", "title": "انبار مرکزی",
-         "statement": "انباری که اقلام از آنجا به لاین‌ها تحویل می‌شود.",
-         "data": {"category": "place", "unit": None}},
+        {"kind": "record", "key": "daftar_anbar_markazi",
+         "title": "دفتر انبار مرکزی",
+         "statement": "دفتر کاغذی انبار مرکزی که تحویل هر قلم به لاین‌ها در آن "
+                      "نوشته می‌شود.",
+         "data": {"medium": "paper", "role": "log",
+                  "location": {"kept_at": "انبار مرکزی",
+                               "holder": "انباردار"}}},
         {"kind": "note", "key": "note_placeholder", "title": "ساعت تحویل",
          "statement": "ساعت تحویل اقلام به انبار پرسیده نشده است.",
          "data": {"about": [{"ref": "N-u-b-0"}],          # its own unit's new[]
@@ -1287,7 +1270,7 @@ def test_a_new_entry_is_referenceable_in_the_same_run(tmp_path):
 
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     by_key = {e["key"]: e for e in delta["entries"]}
-    place = by_key["anbar_markazi"]
+    place = by_key["daftar_anbar_markazi"]
     assert by_key["gozaresh_shabane_pitza"]["data"]["movement"]["from"] \
         == {"ref": place["id"]}
     note = next(e for e in delta["entries"] if e["kind"] == "note")
@@ -1439,7 +1422,7 @@ def test_a_review_decision_that_would_break_the_store_waits_alone(tmp_path):
 
 def test_the_review_gate_holds_the_folded_result_to_the_store_contract(tmp_path):
     """The owner's 2026-09-08 run: the reviewer's document passed its gate,
-    then `assemble --review` refused sixteen items — a refusal the reviewer
+    then `assemble --review` refused sixteen entries — a refusal the reviewer
     never saw while it had an attempt. The gate now folds and lints exactly
     as the assembly does, under the same `review: <key>` labels."""
     root, run_dir = _drifted_run(tmp_path)
@@ -1454,28 +1437,28 @@ def test_the_review_gate_holds_the_folded_result_to_the_store_contract(tmp_path)
 
 
 def test_a_review_keep_with_partial_data_keeps_the_units_other_members(tmp_path):
-    """A reviewer rewriting one member of an item's `data` (its unit) must not
-    lose the unit's `category`: `data` merges member by member, as a unit's
-    decision merges over a skeleton's payload."""
+    """A reviewer rewriting one member of a measurement's `data` (its unit)
+    must not lose the unit's `quantity`: `data` merges member by member, as a
+    unit's decision merges over a skeleton's payload."""
     root = _root(tmp_path)
     _seed_units(root)
     run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
     digest(root, run_dir)
-    _write_review(run_dir, [{"entry": {"kind": "item", "key": "item_1"},
-                             "action": "keep", "key": "item_1",
-                             "title": "پنیر پیتزا",
-                             "statement": "پنیر پیتزا که با کیلوگرم شمرده می‌شود.",
+    _write_review(run_dir, [{"entry": {"kind": "measurement", "key": "vazn_panir"},
+                             "action": "keep", "key": "vazn_panir",
+                             "title": "وزن پنیر پیتزا",
+                             "statement": "پنیر پیتزا با گرم وزن می‌شود.",
                              "data": {"unit": {"value": "g", "inferred": True}}}])
     assert validate_unit(root, run_dir, run_dir / "review" / "out.json") == []
     assert assemble(root, run_dir, review=True)["review_status"] == "applied"
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
-    item = next(e for e in delta["entries"] if e["kind"] == "item")
-    assert item["data"]["category"] == "ingredient" and item["data"]["unit"] == "g"
-    assert item["field_status"]["data/unit"] == "inferred"
+    entry = next(e for e in delta["entries"] if e["kind"] == "measurement")
+    assert entry["data"]["quantity"] == "mass" and entry["data"]["unit"] == "g"
+    assert entry["field_status"]["data/unit"] == "inferred"
 
 
 def test_a_keep_the_contract_refuses_is_held_back_and_the_unit_s_version_kept(tmp_path):
-    """R2: the cooking review lost 22 decisions to sixteen items the fold could
+    """R2: the cooking review lost 22 decisions to sixteen entries the fold could
     not store. The decision that fails the lint is held back; the rest apply."""
     root = _root(tmp_path)
     run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
@@ -1725,13 +1708,13 @@ def test_a_merge_into_a_skeleton_no_unit_kept_is_held_back(tmp_path):
     blamed on the unit that wrote the source and taking its entry with it."""
     root = _root(tmp_path)
     rule = _rule_out()
-    rule["decisions"][1] = {"skeleton": "S-i-000000000003", "action": "drop",
+    rule["decisions"][1] = {"skeleton": "S-r-000000000003", "action": "drop",
                             "reason_code": "cosmetic"}
     run_dir = _run(root, {"u-a": _record_out(), "u-b": rule})
     digest(root, run_dir)
     _write_review(run_dir, [{"entry": {"kind": "rule", "key": "enheraf"},
                              "action": "merge_into", "reason_code": "duplicate",
-                             "into": "S-i-000000000003"}])
+                             "into": "S-r-000000000003"}])
     assert assemble(root, run_dir, review=True)["review_status"] == "partial"
     assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
     assert [(r["n"], r["reason"]) for r in assembly["review_held"]] \
@@ -1751,15 +1734,15 @@ def test_two_refused_decisions_are_both_held_in_order(tmp_path):
         {"entry": {"kind": "rule", "key": "enheraf"}, "action": "keep",
          "key": "enheraf", "title": "انحراف مصرف",
          "statement": "انحراف مصرف برابر است با J6."},
-        {"entry": {"kind": "item", "key": "item_1"}, "action": "keep",
-         "key": "item_1", "title": "پنیر ورقه‌ای",
-         "statement": "پنیر ورقه‌ای در K7 نگهداری می‌شود."}])
+        {"entry": {"kind": "measurement", "key": "vazn_panir"},
+         "action": "keep", "key": "vazn_panir", "title": "وزن پنیر ورقه‌ای",
+         "statement": "پنیر ورقه‌ای در K7 وزن می‌شود."}])
     # B38 — both cell references are notes: both rewrites apply.
     assert assemble(root, run_dir, review=True)["review_status"] == "applied"
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     by_key = {e["key"]: e for e in delta["entries"]}
     assert by_key["enheraf"]["statement"] == "انحراف مصرف برابر است با J6."
-    assert by_key["item_1"]["title"] == "پنیر ورقه‌ای"
+    assert by_key["vazn_panir"]["title"] == "وزن پنیر ورقه‌ای"
 
 
 # --------------------------------------------------------------------------- #
@@ -1778,15 +1761,15 @@ def test_a_review_keep_with_no_statement_keeps_the_units_statement(tmp_path):
     _seed_units(root)
     run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
     digest(root, run_dir)
-    _write_review(run_dir, [{"entry": {"kind": "item", "key": "item_1"},
-                             "action": "keep", "key": "item_1",
-                             "title": "پنیر پیتزا",
+    _write_review(run_dir, [{"entry": {"kind": "measurement", "key": "vazn_panir"},
+                             "action": "keep", "key": "vazn_panir",
+                             "title": "وزن پنیر پیتزا",
                              "data": {"unit": {"value": "g", "inferred": True}}}])
     assert assemble(root, run_dir, review=True)["review_status"] == "applied"
-    item = _items(run_dir)["item_1"]
-    assert item["statement"] == "پنیر پیتزا که با کیلوگرم شمرده می‌شود."
-    assert item["data"]["unit"] == "g"
-    assert "issues" not in item
+    entry = _items(run_dir)["vazn_panir"]
+    assert entry["statement"] == "پنیر پیتزا با کیلوگرم وزن می‌شود."
+    assert entry["data"]["unit"] == "g"
+    assert "issues" not in entry
 
 
 def test_a_review_keep_with_no_statement_to_keep_is_empty_and_marked(tmp_path):
@@ -1798,14 +1781,14 @@ def test_a_review_keep_with_no_statement_to_keep_is_empty_and_marked(tmp_path):
     del rule["decisions"][1]["statement"]
     run_dir = _run(root, {"u-a": _record_out(), "u-b": rule})
     digest(root, run_dir)
-    _write_review(run_dir, [{"entry": {"kind": "item", "key": "item_1"},
-                             "action": "keep", "key": "item_1",
-                             "title": "پنیر پیتزا",
+    _write_review(run_dir, [{"entry": {"kind": "measurement", "key": "vazn_panir"},
+                             "action": "keep", "key": "vazn_panir",
+                             "title": "وزن پنیر پیتزا",
                              "data": {"unit": {"value": "g", "inferred": True}}}])
     assert assemble(root, run_dir, review=True)["review_status"] == "applied"
-    item = _items(run_dir)["item_1"]
-    assert item["statement"] == ""
-    assert [i["kind"] for i in item["issues"]] == ["shape"]
+    entry = _items(run_dir)["vazn_panir"]
+    assert entry["statement"] == ""
+    assert [i["kind"] for i in entry["issues"]] == ["shape"]
 
 
 def _dangling_of_keep():
@@ -1979,6 +1962,14 @@ FORM = {"kind": "record", "key": "form_tahvil", "title": "فرم تحویل", "s
                  "fields": [{"key": "vazn", "title": "وزن", "type": "number"}]}}
 NOTE = {"kind": "note", "key": "n", "title": "یادداشت", "statement": "هر روز وزن می‌شود",
         "data": {"about": [{"ref": "N-u-att-1-0"}]}}
+
+#: A constant rule a transcript unit writes up. It binds nothing of the estate,
+#: so nothing derives its `home` — the unit names it, or it is unattached.
+RULE = {"kind": "rule", "key": "saqf", "title": "سقف ضایعات",
+        "statement": "ضایعات هر شب از پنج کیلوگرم بیشتر نمی‌شود.",
+        "data": {"inputs": [],
+                 "outputs": [{"key": "saqf", "title": "سقف ضایعات",
+                              "unit": "kg", "nature": "limit", "value": 5}]}}
 
 #: The photographed form phase 1 reads, and the meeting phase 2 reads.
 PHOTO = "departments/cooking/attachments/.text/photo-1.image.md"
@@ -2201,3 +2192,148 @@ def test_the_phase_two_input_prints_a_phase_one_entry_by_handle_and_location(
     assert RECORDED_HEADING in text
     assert ("N-u-att-1-0 · record · form_tahvil · فرم تحویل · paper · "
             "آشپزخانه · سرپرست · ستون‌ها: vazn (وزن)") in text
+
+
+# --------------------------------------------------------------------------
+# `home` (spec 2026-09-16): every rule, measurement and note names the table it
+# belongs to — the unit writes it, or it is derived from the entry's own refs.
+
+
+def _schema_knows_home():
+    """Does the landed contract carry `home` yet?
+
+    `home` is Track S's (the three schemas); the two end-to-end tests below
+    write one through a unit document and read it back off the delta, so they
+    can only run once that contract has landed. Task I deletes this guard with
+    the tracks' merge — every other test here runs on either contract.
+    """
+    from engine_common import read_json, schema_dir
+    unit = read_json(schema_dir() / "facts-unit.schema.json")
+    return "home" in (unit["$defs"]["newEntry"].get("properties") or {})
+
+
+needs_home_schema = pytest.mark.skipif(
+    not _schema_knows_home(), reason="`home` is Track S's schema change")
+
+
+def test_home_is_derived_from_bindings_of_and_about():
+    assert derive_home({"kind": "rule", "data": {"applies_to": [
+        {"key": "a", "record": {"ref": "T-3"}}]}}) == {"ref": "T-3"}
+    assert derive_home({"kind": "rule", "data": {"applies_to": [
+        {"key": "a", "record": {"ref": "T-3"}},
+        {"key": "b", "record": {"ref": "T-4"}}]}}) is None
+    assert derive_home({"kind": "measurement",
+                        "data": {"of": {"ref": "T-3", "field": "vazn"}}}) \
+        == {"ref": "T-3", "field": "vazn"}
+    assert derive_home({"kind": "note", "data": {"about": [{"ref": "T-3"}]}}) \
+        == {"ref": "T-3"}
+    # owner decision 3: the first table it names
+    assert derive_home({"kind": "note", "data": {"about": [{"ref": "T-3"},
+                                                           {"ref": "T-4"}]}}) \
+        == {"ref": "T-3"}
+    # what the unit wrote wins over every derivation
+    assert derive_home({"kind": "rule", "home": {"ref": "T-9"},
+                        "data": {"applies_to": [
+                            {"key": "a", "record": {"ref": "T-3"}}]}}) \
+        == {"ref": "T-9"}
+    # a record is its own place and carries no home; nothing derives one
+    assert derive_home({"kind": "record", "data": {"fields": []}}) is None
+    assert derive_home({"kind": "measurement", "data": {"of": "وزن مرغ"}}) is None
+
+
+def _homes_run(tmp_path, home):
+    """The two-phase run with the transcript unit's rule homed on the photo
+    unit's form — the `N-` handle, and the column the form's unit re-keyed."""
+    return _two_unit_run(tmp_path, att_new=[FORM], tr_new=[dict(RULE, home=home)])
+
+
+@needs_home_schema
+def test_a_units_home_resolves_through_temp_ids_and_renamed_fields(tmp_path):
+    root, run = _homes_run(tmp_path, {"ref": "N-u-att-1-0", "field": "vazn"})
+    assemble(root, run)
+    delta = json.loads((run / "facts-delta.json").read_text(encoding="utf-8"))
+    by_key = {e["key"]: e for e in delta["entries"]}
+    assert by_key["saqf"]["home"] == {"ref": by_key["form_tahvil"]["id"],
+                                      "field": "vazn"}
+
+
+@needs_home_schema
+def test_a_home_naming_a_dropped_candidate_is_cleared_with_a_note_not_held(tmp_path):
+    """C29 at the assembly, and never the hold-back: a table this run did not
+    keep costs the entry its place, not its landing."""
+    root, run = _homes_run(tmp_path, {"ref": "N-u-att-1-0"})
+    digest(root, run)
+    _write_review(run, [{"entry": {"kind": "record", "key": "form_tahvil",
+                                   "scope": {"departments": ["cooking"],
+                                             "branches": []}},
+                         "action": "drop", "reason_code": "other",
+                         "reason": "این فرم در این اجرا ثبت نمی‌شود."}])
+    assemble(root, run, review=True)
+    delta = json.loads((run / "facts-delta.json").read_text(encoding="utf-8"))
+    assembly = json.loads((run / "assembly.json").read_text(encoding="utf-8"))
+    rule = next(e for e in delta["entries"] if e["key"] == "saqf")
+    # …and unattached: the store's repair pass drops a null envelope member,
+    # so an entry with no table carries no `home` at all — «بدون جدول» either
+    # way (the contract reads null and absent alike).
+    assert rule.get("home") is None
+    assert "extra" not in rule
+    assert any(i["kind"] == "shape" for i in rule["issues"])
+    assert not [u for u in assembly["undecided"] if u.get("label") == RULE["title"]]
+
+
+def _resolve_state(**over):
+    """The slice of `_prepare`'s state `_resolve_refs` reads."""
+    return {"dropped": [], "undecided": [], "provenance": {}, "candidates": {},
+            "locators": {}, "store_scopes": {}, **over}
+
+
+def _homed_rule(home, **over):
+    return {"kind": "rule", "key": "saqf", "title": "سقف ضایعات",
+            "statement": "", "data": {"inputs": [], "outputs": []},
+            "home": home, "id": "T-2", "_skeleton": "S-r", "_unit": "u-b",
+            "_renames": {}, **over}
+
+
+def test_resolve_rewrites_a_home_like_any_other_ref():
+    """The handle becomes the temp id and the provisional column key becomes
+    the one the record's own unit minted — `home` is a ref, so it follows."""
+    record = {"kind": "record", "key": "form_tahvil", "title": "فرم", "data": {},
+              "id": "T-1", "_skeleton": "N-u-att-1-0", "_unit": "u-att-1",
+              "_renames": {"c_a": "vazn"}}
+    rule = _homed_rule({"ref": "N-u-att-1-0", "field": "c_a"})
+    kept = _resolve_refs([record, rule], _resolve_state())
+    assert kept == [record, rule]
+    assert rule["home"] == {"ref": "T-1", "field": "vazn"}
+    # …and the temp id itself stands: the digest's `homeless` flag names the
+    # tables by theirs, so that is what a review's `home` carries.
+    reviewed = _homed_rule({"ref": "T-1"}, id="T-3", _skeleton="S-r2")
+    assert _resolve_refs([record, reviewed], _resolve_state()) == [record, reviewed]
+    assert reviewed["home"] == {"ref": "T-1"}
+
+
+def test_resolve_clears_a_home_that_names_no_kept_entry_and_keeps_the_entry():
+    rule = _homed_rule({"ref": "N-u-att-1-0"})
+    state = _resolve_state(dropped=[{"skeleton": "N-u-att-1-0", "unit": "u-att-1"}])
+    kept = _resolve_refs([rule], state)
+    assert kept == [rule]
+    assert rule["home"] is None
+    assert [i["kind"] for i in rule["issues"]] == ["shape"]
+    assert state["undecided"] == []
+    # …and so does a home naming a store entry this store does not hold (C29).
+    other = _homed_rule({"ref": "F-09999"})
+    assert _resolve_refs([other], _resolve_state()) == [other]
+    assert other["home"] is None
+
+
+def test_the_digest_flags_a_homeless_rule_beside_a_matching_table(tmp_path):
+    """The reviewer is told which table a homeless rule reads like, so its
+    `keep` can set the `home` the unit left out."""
+    root, run = _two_unit_run(
+        tmp_path,
+        att_new=[dict(FORM, key="form_burger",
+                      title="فرم تبدیل آماده‌سازی برگر")],
+        tr_new=[dict(RULE, key="saqf_burger",
+                     title="سقف ضایعات آماده‌سازی برگر")])
+    text = digest(root, run).read_text(encoding="utf-8")
+    assert "homeless · " in text
+    assert "form_burger" in text.split("homeless")[1][:120]
