@@ -358,7 +358,8 @@
         { "$ref": "#/$defs/envelope" },
         { "oneOf": [
           { "properties": { "kind": { "const": "record" },
-              "data": { "$ref": "#/$defs/recordData" }, "home": false } },
+              "data": { "$ref": "#/$defs/recordData" },
+              "home": false, "home_detached": false } },
           { "properties": { "kind": { "const": "measurement" },
               "data": { "$ref": "#/$defs/measurementData" } } },
           { "properties": { "kind": { "const": "rule" },

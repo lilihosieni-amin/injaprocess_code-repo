@@ -99,8 +99,14 @@ def test_home_is_a_record_ref_on_rules_measurements_and_notes_and_never_on_a_rec
         assert not validates("facts", entry(kind=kind, home={"ref": "F-00025",
                                                              "row": "r1"}))
         assert not validates("facts", entry(kind=kind, home={"ref": "cooking-001"}))
+        # I2's marker travels with `home`: a person may detach any of the three
+        assert validates("facts", entry(kind=kind, home_detached=True))
     assert not validates("facts", entry(kind="record", id="F-00025",
                                         home={"ref": "F-00026"}))
+    # …and a table has no placement to detach either (the record branch forbids
+    # both members, not just the one)
+    assert not validates("facts", entry(kind="record", id="F-00025",
+                                        home_detached=True))
 
 
 def test_the_delta_carries_the_same_home_and_the_same_four_kinds():
