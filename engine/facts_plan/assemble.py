@@ -2252,7 +2252,13 @@ def _homeless(entries):
     """§2.6 step 7's third run-scoped flag (spec 2026-09-16): a rule or a
     measurement this run placed under no table, beside the tables of the same
     run whose titles read like it. The reviewer answers it with a `keep`
-    carrying `home`, exactly as it corrects any other member."""
+    carrying `home`, exactly as it corrects any other member.
+
+    Both halves of the line are addresses the reviewer can use: the flag
+    carries its `entry`, so `_digest_text` names it `rule <key>` the way a
+    decision addresses it, and each candidate is named by the temp id a
+    review's `home` carries as well as by its key and title.
+    """
     records = [e for e in entries if e["kind"] == "record"]
     out = []
     for entry in entries:
@@ -2264,10 +2270,12 @@ def _homeless(entries):
                                                + list(r.get("aliases") or [])))) >= 2]
         if near:
             out.append({"code": "homeless", "id": entry["id"],
+                        "entry": {"kind": entry["kind"], "key": entry["key"],
+                                  "scope": entry["scope"]},
                         "candidates": [r["id"] for r in near],
                         "message": "no home; these tables read like it: "
-                                   + "، ".join(f'{r["key"]} «{r["title"]}»'
-                                               for r in near)})
+                                   + "، ".join(f'{r["id"]} {r["key"]} '
+                                               f'«{r["title"]}»' for r in near)})
     return out
 
 

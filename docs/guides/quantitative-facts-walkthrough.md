@@ -464,7 +464,8 @@ per assembled entry (kind, key, scope, title, statement, the kinds of source beh
 engine's **flags** (things it noticed across units — a title used twice, two units disagreeing
 about a leaf, one tab claimed by two keys, variants that differ only by a wrapper function, and
 since 2026-09-16 `homeless`: a rule or measurement with no table beside a record whose title or
-aliases share at least two of its words, with the candidates named), the
+aliases share at least two of its words, each candidate named by the temp id a review's `home`
+would carry, its key and its title), the
 dropped candidates, and the same shape section. It also writes `review/input.sha256`, a hash of
 the digest, so a review written against an older digest is detected — and detected means *redone*:
 `assemble --review` refuses a stale review («the digest changed since this review was written»),

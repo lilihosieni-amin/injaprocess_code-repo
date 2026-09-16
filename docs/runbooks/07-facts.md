@@ -970,10 +970,12 @@ anything is unattached (the line is omitted when nothing is), then the lines
 above for what this run would have moved. The whole block is omitted when a run
 placed nothing. No
 id, as everywhere in that file. The reviewer's digest gains a flag of its own —
-`homeless · <kind> <key> · no home; these tables read like it: <key> «<title>»`
-— a rule or a measurement with no home standing beside a record of the same run
-whose title or aliases share at least two of its words; and the reviewer may set
-`home` in a `keep` like any other field.
+`homeless · <kind> <key> · no home; these tables read like it: <id> <key>
+«<title>»` — a rule or a measurement with no home standing beside a record of
+the same run whose title or aliases share at least two of its words. Both halves
+are addresses: the flag names the entry the way a decision addresses it, and
+each candidate by the temp id a review's `home` carries, so the reviewer answers
+with a `keep` carrying `home` like any other field.
 
 **Moving one entry.** `merge facts edit` (§13) takes `home` like any other
 envelope path: `{"op": "set", "path": "home", "value": {"ref": "F-00031"}}`
