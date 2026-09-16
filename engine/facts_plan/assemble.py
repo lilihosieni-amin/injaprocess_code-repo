@@ -359,19 +359,18 @@ def _drop_items(doc, items):
             return True
         return row.get("skeleton") in items
 
+    # The slot is emptied, never removed: a `new[]` index is its
+    # `N-<unit>-<n>` handle, a decision's index is the `decisions[n]` a gate
+    # line names, and closing the gap would move both. `_folded` drops a
+    # non-dict decision and keeps a `None` in `new[]`, which is what the A16
+    # duplicate rule already does.
     out = 0
     for where in ("decisions", "new"):
         kept = []
         for row in doc[where]:
-            if isinstance(row, dict) and about_an_item(row):
-                out += 1
-                # A `new[]` slot is emptied rather than removed: every later
-                # `N-<unit>-<n>` handle is its index, and closing the gap
-                # would move entries the same document points at.
-                if where == "new":
-                    kept.append(None)
-                continue
-            kept.append(row)
+            drop = isinstance(row, dict) and about_an_item(row)
+            out += drop
+            kept.append(None if drop else row)
         doc[where] = kept
     return out
 

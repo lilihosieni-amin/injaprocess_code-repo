@@ -13,7 +13,7 @@ def _wrap(*entries):
     return {"schema_version": 2, "entries": list(entries)}
 
 
-KINDS = ["item", "record", "measurement", "rule", "note"]
+KINDS = ["record", "measurement", "rule", "note"]
 
 
 def test_one_valid_fixture_per_kind_validates(validate):
@@ -22,41 +22,48 @@ def test_one_valid_fixture_per_kind_validates(validate):
 
 
 def test_unknown_envelope_key_fails(validate):
-    e = _load("entry-item.json")
+    e = _load("entry-record.json")
     e["provenance"] = "x"
     assert validate("facts.schema.json", _wrap(e)) != []
 
 
 def test_wrong_kind_payload_fails_on_required(validate):
-    e = _load("entry-item.json")
-    e["kind"] = "rule"  # item payload lacks inputs/outputs
+    e = _load("entry-record.json")
+    e["kind"] = "rule"  # a record payload lacks inputs/outputs
     assert validate("facts.schema.json", _wrap(e)) != []
 
 
 def test_unknown_data_key_fails(validate):
     # §3.3: every payload is closed now — an invented key is what cause C looked
     # like in the store (`achieved_count`, `vents_per_carton`, `port_reason`).
-    e = _load("entry-item.json")
+    e = _load("entry-record.json")
     e["data"]["future_field"] = {"anything": 1}
     assert validate("facts.schema.json", _wrap(e)) != []
 
 
 def test_persian_key_fails(validate):
-    e = _load("entry-item.json")
+    e = _load("entry-record.json")
     e["key"] = "پنیر"
     assert validate("facts.schema.json", _wrap(e)) != []
 
 
 def test_doubled_underscore_minted_segment_fails(validate):
-    e = _load("entry-item.json")
+    e = _load("entry-record.json")
     e["key"] = "bad___key"
     assert validate("facts.schema.json", _wrap(e)) != []
 
 
 def test_bare_string_reference_fails(validate):
-    e = _load("entry-measurement.json")
-    e["data"]["of"] = "F-00003"
+    """A reference member is `{"ref"}`, never a bare id — but `of` is not one
+    of them since 2026-09-16: what a measurement is of may be a record, or the
+    words for it, so a string there is the words (spec «tables as the spine»
+    §3.2). `about[]` is the reference member the rule is shown on."""
+    e = _load("entry-note.json")
+    e["data"]["about"] = ["F-00003"]
     assert validate("facts.schema.json", _wrap(e)) != []
+    e = _load("entry-measurement.json")
+    e["data"]["of"] = "وزن مرغ خام"
+    assert validate("facts.schema.json", _wrap(e)) == []
 
 
 def test_ref_object_with_foreign_key_fails(validate):
@@ -350,7 +357,7 @@ def test_rule_applies_to_with_params_validates(validate):
         {"key": "gozaresh_cb__s0__l__r6", "record": {"ref": "F-00040", "field": "c_l"},
          "variant": 0, "range": "L6:L15",
          "params": {"tolerancePerFoodGr": 5, "ref_1": {"ref": "F-00040", "field": "c_k"}},
-         "rows": [{"key": "r6", "row": 6, "label": "پنیر پیتزا", "item": "##1"}]}]
+         "rows": [{"key": "r6", "row": 6, "label": "پنیر پیتزا"}]}]
     assert validate("facts.schema.json", _wrap(e)) == []
 
 
@@ -437,12 +444,19 @@ def test_a_review_is_not_capped_by_the_schema(validate):
     assert validate("facts-unit.schema.json", d) == []
 
 
-def test_a_decision_may_carry_the_engine_s_code(validate):
-    # R4 — `code` is the estate's and the fold drops it, but a document that
-    # copies it back in is not a broken document.
+def test_the_engine_s_code_left_the_contract_with_the_item_payload(validate):
+    """`code` was `itemData`'s member and nothing else's, so it left with the
+    kind on 2026-09-16 («tables as the spine»): a coded raw-materials tab is a
+    record now, and a row's code is a cell of it.
+
+    A unit that copies one back in is still not a broken document — R4 stands
+    — because `assemble._repair` drops every `ENGINE_OWNED_DATA` member,
+    `code` among them, before the schema is ever asked. This pins the contract
+    side only: there is no payload with a `code` in it any more.
+    """
     d = _unit_doc()
     d["decisions"][0]["data"]["code"] = "##99"
-    assert validate("facts-unit.schema.json", d) == []
+    assert validate("facts-unit.schema.json", d) != []
 
 
 def test_unit_decision_shapes(validate):
@@ -500,9 +514,8 @@ def _delta_reference_record(row):
 def test_a_reference_delta_row_needs_no_key_the_stored_row_does(validate):
     # QF-32 requires `rows[].key`, and the store schema holds it to that. The
     # delta cannot: §9's `apply._derive_row_keys` mints a reference row's key
-    # from the primaryKey join AFTER the delta has validated — and a `refItems`
-    # cell may still be a temp id at that point — so the delta must not demand
-    # what its author cannot yet know.
+    # from the primaryKey join AFTER the delta has validated, so the delta must
+    # not demand what its author cannot yet know.
     d = _delta_reference_record({"code": "prod_61"})
     assert validate("facts-delta.schema.json", _wrap(d)) == []
     e = _load("entry-record.json")
