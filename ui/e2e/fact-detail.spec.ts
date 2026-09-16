@@ -32,6 +32,7 @@ const bundle = (
   confirmation: { confirmed: false, can_confirm: true, fingerprint: 'sha256:abc' },
   red_paths: { unknown: [], disputed: [] },
   resolved: {}, row_titles: {}, path_labels: {}, consumers: [], processes: [],
+  subsets: [],
   workbook_titles: {}, unit_titles: {}, binding_labels: {},
   original: null,
   ...over,
@@ -114,12 +115,12 @@ const BOM = bundle('F-00014', 'record', 'مواد اولیه — پیتزا ای
   grain: 'هر ردیف یک (محصول، ماده)',
   primaryKey: ['product', 'ingredient'],
   fields: [
-    { key: 'ingredient', title: 'ماده اولیه', type: 'string', refItems: { namespace: '##' } },
+    { key: 'ingredient', title: 'ماده اولیه', type: 'string' },
     { key: 'grams', title: 'گرم', type: 'number', unit: 'g' },
   ],
   rows: [
-    { key: 'prod_61__ing_1', ingredient: 'ing_1', grams: 250 },
-    { key: 'prod_61__ing_41', ingredient: 'ing_41', grams: null },
+    { key: 'prod_61__ing_1', ingredient: 'پنیر پیتزا', grams: 250 },
+    { key: 'prod_61__ing_41', ingredient: 'قارچ', grams: null },
   ],
 }, {
   red_paths: {
@@ -129,10 +130,6 @@ const BOM = bundle('F-00014', 'record', 'مواد اولیه — پیتزا ای
   row_titles: {
     prod_61__ing_1: 'اینجا پیتزا — پنیر پیتزا',
     prod_61__ing_41: 'اینجا پیتزا — قارچ',
-  },
-  resolved: {
-    ing_1: { kind: 'item', title: 'پنیر پیتزا', code: '##1' },
-    ing_41: { kind: 'item', title: 'قارچ', code: '##41' },
   },
 }, { status: 'disputed' })
 
@@ -183,38 +180,15 @@ const CONSTANT = bundle('F-00026', 'rule', 'تلورانس هر واحد — پ�
 }, { confirmation: { confirmed: true, can_confirm: true, fingerprint: 'sha256:c26' },
      unit_titles: { g: 'گرم' } })
 
-/** F-00048 — the item, with a RANGED `factor_to_base` (§7). */
-const ITEM = bundle('F-00048', 'item', 'روغن سرخ‌کردنی', {
-  code: '##77', category: 'consumable', unit: 'l', unit_raw: 'لیتر',
-  // F-00048's own group, and one of the only two in the mock that `GROUP_FA`
-  // does not map — the trimmed fixture had dropped it, which is why no browser
-  // check could see the group row at all.
-  group: 'oil',
-  pack: { size: 16, unit: 'l' }, state: 'raw',
-  units: [{ pack_unit: 'carton', factor_to_base: { min: 0.28, max: 0.32 } }],
-  tracked: [{ value: true, reason: 'ارزش ریالی بالا' }],
-})
-
-/** F-00001 («پنیر پیتزا»), verbatim — the entry the GROUP row needs.
- *
- *  `enumFa`'s third site is `sfItemGroup` (:5009), and F-00048's `oil` is one of
- *  the only two groups in the whole mock that `GROUP_FA` does not map. Asserting
- *  the row on F-00048 alone is what let the defect live through three rounds. */
-const CHEESE = bundle('F-00001', 'item', 'پنیر پیتزا', {
-  code: '##1', category: 'ingredient', group: 'cheese', state: 'raw',
-  unit: 'g', unit_raw: 'گرم', pack: { size: 10, unit: 'kg' },
-  units: [{ pack_unit: 'carton', factor_to_base: 10000 }],
-})
-
 /** F-00023 — the measurement, whose «ثبت در» is note 2's correction. */
 const MEASUREMENT = bundle('F-00023', 'measurement', 'وزن‌کشی پنیر در پایان شب', {
   quantity: 'mass', unit: 'kg',
-  of: { ref: 'F-00001' }, writes_to: { ref: 'F-00011', field: 'end_stock' },
+  of: { ref: 'F-00011', field: 'start_stock' },
+  writes_to: { ref: 'F-00011', field: 'end_stock' },
   when: 'پایان شیفت شب', by: 'مسئول واحد',
   method: 'ترازوی دیجیتال کنار یخچال', exceptions: 'شب‌های تعطیل ثبت نمی‌شود',
 }, {
   resolved: {
-    'F-00001': { kind: 'item', title: 'پنیر پیتزا', code: '##1' },
     'F-00011': { kind: 'record', title: 'مانده شب فرنگی و برگر' },
   },
 })
@@ -266,12 +240,13 @@ const WIDE = bundle('F-00099', 'record', 'مواد اولیه پیتزا امر�
   })),
 })
 
-/** F-00021 — a stub, and F-00010 — a retired item. Neither draws a tick. */
+/** F-00021 — a stub, and F-00010 — a retired measurement. Neither draws a
+ *  tick. */
 const STUB = bundle('F-00021', 'record', 'موجودی آخر شب — پیتزا (ناهارخوران)', {
   medium: 'sheet', role: 'log', location: { sheet: 'پیتزا' }, stub: true,
 })
-const RETIRED = bundle('F-00010', 'item', 'گوشت چرخ‌کرده', {
-  code: '##22', category: 'ingredient', unit: 'g',
+const RETIRED = bundle('F-00010', 'measurement', 'وزن گوشت چرخ‌کرده', {
+  quantity: 'mass', unit: 'g',
 }, {}, { retired: true })
 
 const BRANCHES: Branch[] = [
@@ -321,8 +296,6 @@ async function open(page: Page, id: string) {
     '/api/facts/F-00014': BOM,
     '/api/facts/F-00011': PAPER,
     '/api/facts/F-00026': CONSTANT,
-    '/api/facts/F-00048': ITEM,
-    '/api/facts/F-00001': CHEESE,
     '/api/facts/F-00023': MEASUREMENT,
     '/api/facts/F-00017': UNITS,
     '/api/facts/F-00099': WIDE,
@@ -492,11 +465,6 @@ test('fact detail — the BOM grid paints red from `red_paths` and nothing else'
   await expect(disputed.locator('span')).toHaveCSS('color', 'rgb(226, 61, 53)')
   await expect(unknown).toHaveText('؟')
 
-  /* ---- note 2: a refItems cell is the item's resolved title, key as tooltip ---- */
-  const cell = rows.nth(1).getByRole('cell').first()
-  await expect(cell).toHaveText('پنیر پیتزا ##1')
-  await expect(cell).toHaveAttribute('title', 'ing_1')
-
   /* ---- note 6: the spreadsheet id is in the footer and in no other run ---- */
   const id = '15M2ovUmQ7kX3nR9pLwT2aB8cD4eF6gH1'
   await expect(page.getByText(id)).toHaveCount(1)
@@ -591,29 +559,6 @@ test('fact detail — the constant, the item and the measurement', async ({ page
   await expect(page.getByText(/به ازای هر/)).toBeVisible()
   // A confirmed entry the caller may tick: the green box, and the design's word.
   await expect(page.getByTestId('fact-tick')).toHaveText(/تأییدشده/)
-
-  await open2(page, 'F-00048')
-  /* ---- a ranged `factor_to_base`, as one Latin island (§7) ---- */
-  const ranged = page.getByText('0.28–0.32')
-  await expect(ranged).toHaveAttribute('dir', 'ltr')
-  await expect(page.getByText('واحد پایه')).toBeVisible()
-  await expect(page.getByText('ردیابی می‌شود')).toHaveCSS('color', 'rgb(31, 138, 91)') // --green
-  // `oil` is in neither `GROUP_FA` nor this build's map: the key stands alone,
-  // as an island, and never at the Persian prose node.
-  await expect(page.getByText('oil', { exact: true })).toHaveAttribute('dir', 'ltr')
-
-  await open2(page, 'F-00001')
-  /* ---- `enumFa`'s THIRD site: the item's group, in the design's two nodes ---- */
-  const group = page.getByText('گروه', { exact: true }).locator('..')
-  // :1573 — the Persian word at 13.5px…
-  await expect(group.getByText('پنیر', { exact: true })).toBeVisible()
-  // …and :1574 — the stored key beside it, a 10.5px mono LTR hint.
-  const groupKey = group.getByText('cheese', { exact: true })
-  await expect(groupKey).toHaveAttribute('dir', 'ltr')
-  await expect(groupKey).toHaveCSS('font-size', '10.5px')
-  // QF-42 over the design's `toFa(size) + unitFa(unit)` (:5008): Latin digits,
-  // and one island rather than a latin run inside a Persian row.
-  await expect(page.getByText('10 kg', { exact: true })).toHaveAttribute('dir', 'ltr')
 
   await open2(page, 'F-00023')
   /* ---- note 2: «ثبت در» is the record's TITLE, never `F-00011 end_stock` ---- */

@@ -124,10 +124,20 @@ def fingerprint(doc: dict) -> str:
 #: deep, unlike `EXCLUDED` above (spec QF-24). `updated_at` is the envelope's
 #: own bookkeeping timestamp; a nested `updated_at` — a `data` key, a record
 #: column genuinely named `updated_at` — is content and must change the
-#: print. `source` is not excluded at all: on a process it is pipeline
-#: provenance, but on a fact it is the account trail a reviewer is vouching
-#: for, so it counts as content like everything else in the envelope.
-FACT_EXCLUDED_TOP_LEVEL: tuple[str, ...] = ("updated_at",)
+#: print.
+#:
+#: **`home` is placement, not content** (spec §4.5, 2026-09-16: *moving an
+#: entry does not reset its tick*). A reviewer vouches for what an entry says;
+#: which table it is filed under is a filing decision, and an `edit set home`
+#: or a run adopting a derived home would otherwise move the print and throw
+#: away every signature on the store. A run that *disagrees* with a stored
+#: home does not move it — it writes a `placement` issue instead, and an issue
+#: is content, so that path resets the tick exactly like any other issue.
+#:
+#: `source` is not excluded at all: on a process it is pipeline provenance, but
+#: on a fact it is the account trail a reviewer is vouching for, so it counts
+#: as content like everything else in the envelope.
+FACT_EXCLUDED_TOP_LEVEL: tuple[str, ...] = ("updated_at", "home")
 
 
 def _fact_value(value):
@@ -149,7 +159,7 @@ def _fact_value(value):
 
 
 def fact_canonical(doc: dict) -> dict:
-    """`doc` with its top-level `updated_at` gone and nothing else excluded.
+    """`doc` with its top-level `updated_at` and `home` gone, nothing else.
 
     A separate function from `canonical` rather than a shared one taking a
     parametrised exclusion set: `canonical`'s exclusion is deep by design

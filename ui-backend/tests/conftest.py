@@ -12,9 +12,9 @@ DEPTS = ["management", "accounting", "warehouse", "procurement", "cooking",
          "preparation", "dining", "cashier", "logistics"]
 
 #: Kind -> facts store file (spec §16's layout — the plural of the kind name).
-_FACT_FILES = {"item": "items.json", "record": "records.json",
-              "measurement": "measurements.json", "rule": "rules.json",
-              "note": "notes.json"}
+#: Four since 2026-09-16; `items.json` went with the item kind.
+_FACT_FILES = {"record": "records.json", "measurement": "measurements.json",
+               "rule": "rules.json", "note": "notes.json"}
 
 #: The facts store's two seed entries, hand-written (the merge-only rule of
 #: CLAUDE.md's `facts/**` binds the live store, not a test fixture): a
@@ -46,7 +46,7 @@ def _dump(obj):
 
 
 def _write_facts_store(root):
-    """`facts/`: the five kind files (one seeded per `_FACT_ENTRIES`, the rest
+    """`facts/`: the four kind files (one seeded per `_FACT_ENTRIES`, the rest
     empty) plus the index row for each — matching how `process.cooking-001.json`
     is seeded above, by hand rather than through `merge facts` (a live store's
     only writer), because this is a served fixture, not the live store."""
@@ -60,6 +60,8 @@ def _write_facts_store(root):
     index_rows = [
         {"id": e["id"], "kind": e["kind"], "key": e["key"], "title": e["title"],
          "scope": e["scope"], "status": e["status"], "retired": e["retired"],
+         # The index's `home` column (2026-09-16): the record id, or `None`.
+         "home": (e.get("home") or {}).get("ref"),
          "updated_at": e["updated_at"]}
         for e in _FACT_ENTRIES
     ]

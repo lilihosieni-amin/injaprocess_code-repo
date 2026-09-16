@@ -53,9 +53,8 @@ FIELD = "data/unit"
 CHOSEN = "a1b2c3d4"
 OTHER = "e5f6a7b8"
 
-_FILES = {"item": "items.json", "record": "records.json",
-          "measurement": "measurements.json", "rule": "rules.json",
-          "note": "notes.json"}
+_FILES = {"record": "records.json", "measurement": "measurements.json",
+          "rule": "rules.json", "note": "notes.json"}
 
 #: The cited files. One per root, so containment is asserted per root — and one
 #: cited **only by an account**, because `accounts[].source` is the other half
@@ -97,7 +96,10 @@ def _entry(fid, dept, key, title, sources, account_refs):
     kind file it writes.
     """
     return {
-        "id": fid, "kind": "item", "key": key, "title": title,
+        # A **measurement**: the kind is incidental to every test in this file
+        # — what they need is one disputed field a real `resolve` settles — and
+        # the item kind these were written as is gone (2026-09-16).
+        "id": fid, "kind": "measurement", "key": key, "title": title,
         "statement": "بیانیهٔ آزمایشی",
         "scope": {"departments": [dept], "branches": []},
         "source": [{"type": t, "ref": ref} for t, ref in sources],
@@ -111,7 +113,7 @@ def _entry(fid, dept, key, title, sources, account_refs):
         ],
         "status": "disputed", "retired": False,
         "updated_at": "2026-07-06T10:00:00Z",
-        "data": {"category": "ingredient", "unit": "g"},
+        "data": {"quantity": "mass", "unit": "g"},
     }
 
 
@@ -166,6 +168,7 @@ def _plant(data_root, entries=None):
              "field_status_counts": {"disputed": 2, "unknown": 0,
                                      "informal": 0, "inferred": 0},
              "processes": [], "retired": False, "stub": False,
+             "home": (e.get("home") or {}).get("ref"),
              "updated_at": e["updated_at"]} for e in entries]},
             ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -284,9 +287,9 @@ def test_a_resolve_runs_the_engine_and_serves_the_settled_entry(data_root,
     statuses = {a["id"]: a["status"] for a in body["entry"]["accounts"]}
     assert statuses == {CHOSEN: "chosen", OTHER: "rejected"}
     # …and the store on disk really moved, which is the engine's doing.
-    items = json.loads(
-        (data_root / "facts" / "items.json").read_text(encoding="utf-8"))
-    assert items["entries"][0]["data"]["unit"] == "kg"
+    settled = json.loads(
+        (data_root / "facts" / "measurements.json").read_text(encoding="utf-8"))
+    assert settled["entries"][0]["data"]["unit"] == "kg"
     # …and both halves are committed. The store and the run directory that
     # says why it moved land in one commit, which is what a confirmation's
     # `data_repo_commit` column is later reconciled against (QF-24); a store
@@ -325,7 +328,7 @@ def test_the_run_directory_records_a_ui_run(data_root, tmp_path):
                          "finished_at", "recordings", "attachments",
                          "workbooks", "delta", "merged", "ids_created"}
     # The verb's own half of the directory, which `revert` needs.
-    assert (runs[0] / "facts-before" / "items.json").is_file()
+    assert (runs[0] / "facts-before" / "measurements.json").is_file()
     assert (runs[0] / "facts-delta.json").is_file()
 
 
@@ -558,22 +561,22 @@ def test_an_editor_of_only_one_of_the_entrys_departments_is_404(data_root,
     assert len(_runs(data_root, "accounting")) == 1
 
 
-#: A document the index calls an item and whose own `kind` is outside the five
-#: — what a hand-edited or partially-migrated store can hold, and what
+#: A document the index calls a measurement and whose own `kind` is outside
+#: the four — what a hand-edited or partially-migrated store can hold, and what
 #: `visibility.is_fact` refuses.
 ODD = "F-00009"
 
 
 def _plant_a_non_fact(data_root):
-    items = data_root / "facts" / "items.json"
-    doc = json.loads(items.read_text(encoding="utf-8"))
+    kind_file = data_root / "facts" / "measurements.json"
+    doc = json.loads(kind_file.read_text(encoding="utf-8"))
     doc["entries"].append({**ENTRIES[0], "id": ODD, "key": "test_ajib",
                            "kind": "weird"})
-    items.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    kind_file.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
     index = data_root / "facts" / ".index.json"
     rows = json.loads(index.read_text(encoding="utf-8"))
     rows["entries"].append(
-        {"id": ODD, "kind": "item", "key": "test_ajib", "title": "عجیب",
+        {"id": ODD, "kind": "measurement", "key": "test_ajib", "title": "عجیب",
          "aliases": [], "scope": {"departments": ["cooking"], "branches": []},
          "status": "disputed",
          "field_status_counts": {"disputed": 2, "unknown": 0, "informal": 0,
@@ -701,15 +704,16 @@ def test_an_unconfirmed_entry_hides_the_files_it_cites(data_root, tmp_path):
 
 
 def test_a_kind_switched_off_hides_the_files_it_cites(data_root, tmp_path):
-    """QF-26's *withheld whole* reaching the download. With `fact_items` down
-    an admin is served no item at all, so the only entries citing this file are
-    entries they are not being shown — and the file goes with them."""
+    """QF-26's *withheld whole* reaching the download. With `fact_measurements`
+    down an admin is served no measurement at all, so the only entries citing
+    this file are entries they are not being shown — and the file goes with
+    them."""
     _plant(data_root)
     _plant_sources(data_root)
     client = _client_as(data_root, tmp_path, "admin", "*")
     _confirm(client, COOKING)
     assert _get(client, TRANSCRIPT).status_code == 200
-    _switch(client, "fact_items", False)
+    _switch(client, "fact_measurements", False)
     r = _get(client, TRANSCRIPT)
     assert r.status_code == 404, r.text
     assert r.json()["detail"] == NOT_FOUND

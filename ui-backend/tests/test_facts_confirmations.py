@@ -110,6 +110,48 @@ def test_fact_fingerprint_drops_updated_at_top_level_only(data_root):
     assert fact_fingerprint(c) != fact_fingerprint(d)
 
 
+def test_moving_an_entry_between_tables_does_not_move_its_print(data_root):
+    """Spec §4.5 (2026-09-16): *moving an entry does not reset its tick*.
+
+    `home` says which table an entry is filed under, and a reviewer vouches for
+    what the entry SAYS. An `edit set home`, or a run adopting a derived home
+    for an entry nobody had placed, would otherwise change the print of every
+    entry it touched and throw away the signature on each — including on the
+    day the store first grows the member, which would un-confirm everything at
+    once.
+
+    A run that *disagrees* with a stored home takes the other road: it leaves
+    the home alone and writes a `placement` issue, and an issue is ordinary
+    content, so that path resets the tick exactly like any other issue.
+    """
+    base = _entry(data_root, "rules.json", RULE)
+    assert "home" not in base
+
+    placed = copy.deepcopy(base)
+    placed["home"] = {"ref": "F-00002"}
+    moved = copy.deepcopy(base)
+    moved["home"] = {"ref": "F-00002", "field": "grams"}
+    elsewhere = copy.deepcopy(base)
+    elsewhere["home"] = {"ref": "F-00099"}
+    detached = copy.deepcopy(base)
+    detached["home"] = None
+
+    prints = {fact_fingerprint(e)
+              for e in (base, placed, moved, elsewhere, detached)}
+    assert len(prints) == 1
+
+    # And the exclusion is the envelope's alone: a `data` key named `home` is
+    # payload — a record column could be called that — and still counts.
+    deep = copy.deepcopy(base)
+    deep["data"]["home"] = "خانه"
+    assert fact_fingerprint(deep) != fact_fingerprint(base)
+
+    # The control: content still moves the print.
+    changed = copy.deepcopy(placed)
+    changed["statement"] = "بیانیهٔ تازه"
+    assert fact_fingerprint(changed) != fact_fingerprint(placed)
+
+
 # --- _kind ---
 
 def test_kind_is_fact_for_F_ids(data_root, tmp_path):
