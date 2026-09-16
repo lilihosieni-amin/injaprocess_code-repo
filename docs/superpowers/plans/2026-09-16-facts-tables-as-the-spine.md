@@ -184,7 +184,7 @@ def merge_home(existing, incoming):
 **Interfaces:**
 - Consumes: Task S's `KINDS`, `home` shapes, `moved-home.json` (`[{"id","title","stored","seen"}]`).
 - Produces:
-  - `derive_home(entry) -> dict | None` (pure): rule with `applies_to` on exactly one record → `{"ref": that}`; measurement whose `data.of` names a record → `{"ref": of.ref, "field": of.field}` when it has one; note whose `data.about` names exactly one record → that; otherwise `None`. A unit-written `home` wins over derivation.
+  - `derive_home(entry) -> dict | None` (pure): rule with `applies_to` on exactly one record → `{"ref": that}`; measurement whose `data.of` names a record → `{"ref": of.ref, "field": of.field}` when it has one; note whose `data.about` names one or more records → the **first** record it names (owner decision 3); otherwise `None`. A unit-written `home` wins over derivation.
   - `_resolve_refs` rewrites `home` (temp ids, renamed fields) as any ref; a `home` naming a dropped/failed candidate is cleared to `None` with a shape note (not held back).
   - digest flag `{"code": "homeless", "id": "T-…", "candidates": ["T-…"]}` for a rule/measurement with no home whose title shares ≥ 2 tokens (`_tokens`) with a record's title/aliases; the reviewer's `keep` may set `home`.
   - `report.md`: after the losses block, a **by-table block**: one line per record with counts (`«فرم تبدیل آماده‌سازی برگر»: ۸ قاعده، ۳ اندازه‌گیری، ۱ یادداشت`), then `بدون جدول: ۱۲ قاعده، ۴ اندازه‌گیری، ۲ یادداشت` (omitted when zero), then one line per `moved-home.json` row: `جای «سقف ضایعات» تغییر نکرد؛ این اجرا آن را زیر «فرم تولید نیمه‌ساخته» می‌دید.` Titles come from the store/delta, never ids.
@@ -198,7 +198,7 @@ def test_home_is_derived_from_bindings_of_and_about():
     assert derive_home({"kind": "rule", "data": {"applies_to": [{"key": "a", "record": {"ref": "T-3"}}, {"key": "b", "record": {"ref": "T-4"}}]}}) is None
     assert derive_home({"kind": "measurement", "data": {"of": {"ref": "T-3", "field": "vazn"}}}) == {"ref": "T-3", "field": "vazn"}
     assert derive_home({"kind": "note", "data": {"about": [{"ref": "T-3"}]}}) == {"ref": "T-3"}
-    assert derive_home({"kind": "note", "data": {"about": [{"ref": "T-3"}, {"ref": "T-4"}]}}) is None
+    assert derive_home({"kind": "note", "data": {"about": [{"ref": "T-3"}, {"ref": "T-4"}]}}) == {"ref": "T-3"}   # owner decision 3: the first it names
     assert derive_home({"kind": "rule", "home": {"ref": "T-9"}, "data": {"applies_to": [{"key": "a", "record": {"ref": "T-3"}}]}}) == {"ref": "T-9"}
 
 
@@ -209,7 +209,14 @@ def test_a_units_home_resolves_through_temp_ids_and_renamed_fields(tmp_path):
     assert rule["home"] == {"ref": form["id"], "field": "vazn"}
 
 
-def test_a_home_naming_a_dropped_candidate_is_cleared_with_a_note_not_held(tmp_path): ...
+def test_a_home_naming_a_dropped_candidate_is_cleared_with_a_note_not_held(tmp_path):
+    root, run = _two_unit_run(tmp_path, att_new=[FORM], tr_new=[dict(RULE, home={"ref": "N-u-att-1-0"})])
+    drop_new(run, "u-att-1", 0)                      # the photo unit's form is dropped by the review
+    assemble(root, run, review=True)
+    a = read_json(run / "assembly.json"); d = read_json(run / "facts-delta.json")
+    rule = by_key(d, "saqf")
+    assert rule["home"] is None and any(i["kind"] == "shape" for i in rule["issues"])
+    assert not [u for u in a["undecided"] if u.get("label") == RULE["title"]]
 
 
 def test_the_digest_flags_a_homeless_rule_beside_a_matching_table(tmp_path):
