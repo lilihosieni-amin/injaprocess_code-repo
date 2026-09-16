@@ -864,6 +864,23 @@ today (A7) — it never costs the decision. The reviewer sees the change too: th
 digest names each entry's source kinds (`sheet · voice`, `voice`), and when two
 entries merge the one read off a form is the keeper.
 
+**A photo unit cites the photo, not the batch (added 2026-09-16).** An
+attachment unit reads several files at once, and until now they reached it as
+one nameless block of text: the preparation run of 2026-09-15 put all fourteen
+photos of `u-att-1` on each of its thirteen records. Each `.text/` sidecar is
+now printed under a heading of its own — the file's own name and the path a
+citation has to spell («### forms/tabdil.image ·
+departments/preparation/attachments/.text/forms__tabdil.image.md»), in input
+order — and a decision or a `new[]` entry may answer with
+`from: ["<path exactly as printed>"]`, one path, or several when the entry
+really spans several files. The entry's evidence is then exactly those files,
+typed by their suffix (`photo`, `pdf`, `docx`) as before. The gate is the talk
+citations' gate: a path this unit was not handed is **REPAIR**-dropped in
+silence (INV-3 at file level), and an entry that names none of its inputs still
+cites all of them, so nothing is lost — citing too much is a smaller loss than
+citing nothing. A transcript unit reads one excerpt whole and is unaffected;
+sheet, voice and process citations keep their order.
+
 **The budgets (design §4).** The input budgets rose with the phases; the output
 estimate did not.
 
