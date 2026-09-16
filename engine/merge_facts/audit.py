@@ -39,14 +39,14 @@ from engine_common import read_json
 from merge_facts import (KIND_ORDER, canonical_scope, collect_leaves, is_open,
                          iter_ref_objects, load_store, open_accounts,
                          sha256_file)
-from merge_facts.apply import (FACT_ID_RE, PROC_ID_RE, TEMP_ID_RE,
-                               _declared_fields, _declared_rows, _is_stub)
+from merge_facts.apply import (PROC_ID_RE, _declared_fields,
+                               _declared_rows, _is_stub)
 from merge_facts.content import lint_prose
 # `_unit_row_keys` is `preconditions`' own (Task 5 moved it there; `apply`
 # re-exports the neighbours above but not this one), and it answers the same
 # question `_style` has to ask: which Latin symbols the units record
 # licenses.
-from merge_facts.preconditions import _unit_row_keys
+from merge_facts.preconditions import FACT_ID_RE, TEMP_ID_RE, _unit_row_keys
 
 TOLERANCE = 0.01          # 1 % — §12's reconciliation and component-sum bound
 STALE_RUNS = 3            # §12: "untouched for three facts runs"

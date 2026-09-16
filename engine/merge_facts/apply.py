@@ -64,7 +64,7 @@ from merge_facts.conventions import load as load_conventions
 from merge_facts.normalise import normalise_entry
 # The precondition pass and the helpers that moved with it (v3 §4). Imported,
 # not re-declared — and re-exported by being imported.
-from merge_facts.preconditions import (FACT_ID_RE, PACK_KEYS, TEMP_ID_RE,
+from merge_facts.preconditions import (PACK_KEYS,
                                        UNITS_KEY, UNKNOWN_UNIT,
                                        _declared_fields, _declared_rows,
                                        _is_stub, _lookup,

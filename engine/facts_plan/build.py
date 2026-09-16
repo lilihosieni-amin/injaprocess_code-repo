@@ -1631,8 +1631,9 @@ def plan_units(skeleton, groups, chunks, attachments,
 
     `chunks` is `[(recording, path, (first, last), text)]` and `attachments`
     the cached `.text`/`.md` paths; they become `attachment` units of their own
-    (`u-att-1`, … in input order), packed to the budget. Until 2026-09-13 they rode on the last transcript
-    unit, and when that unit split on its line range every one of them was
+    (`u-att-1`, … in input order), packed to the budget. Until 2026-09-13
+    they rode on the last transcript unit, and when that unit split on its
+    line range every one of them was
     dropped: 13 form photos of the preparation run reached no unit (F4).
     """
     by_id = {c["id"]: c for c in skeleton["candidates"]}
