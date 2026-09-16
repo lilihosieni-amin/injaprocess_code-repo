@@ -2241,6 +2241,31 @@ def test_home_is_derived_from_bindings_of_and_about():
     assert derive_home({"kind": "measurement", "data": {"of": "وزن مرغ"}}) is None
 
 
+#: What this run's refs name, for the three assertions that need to know.
+KIND_OF_REF = {"T-3": "record", "T-4": "record", "T-5": "rule"}.get
+
+
+def test_a_notes_home_is_the_first_table_it_names_not_the_first_ref():
+    """Owner decision 3 reads «the first record it names»: a note that speaks
+    of a rule before the table it is written on belongs to the table."""
+    note = {"kind": "note", "data": {"about": [{"ref": "T-5"}, {"ref": "T-3"}]}}
+    assert derive_home(note, KIND_OF_REF) == {"ref": "T-3"}
+    # …and a note about no table at all stays unattached
+    assert derive_home({"kind": "note", "data": {"about": [{"ref": "T-5"}]}},
+                       KIND_OF_REF) is None
+    # a ref this run cannot place is no reason to skip it (the store severs a
+    # home that names no record, and says so)
+    assert derive_home({"kind": "note", "data": {"about": [{"ref": "F-09999"}]}},
+                       KIND_OF_REF) == {"ref": "F-09999"}
+
+
+def test_a_measurement_of_something_that_is_not_a_table_has_no_home():
+    assert derive_home({"kind": "measurement", "data": {"of": {"ref": "T-3"}}},
+                       KIND_OF_REF) == {"ref": "T-3"}
+    assert derive_home({"kind": "measurement", "data": {"of": {"ref": "T-5"}}},
+                       KIND_OF_REF) is None
+
+
 def _homes_run(tmp_path, home):
     """The two-phase run with the transcript unit's rule homed on the photo
     unit's form — the `N-` handle, and the column the form's unit re-keyed."""
@@ -2323,6 +2348,21 @@ def test_resolve_clears_a_home_that_names_no_kept_entry_and_keeps_the_entry():
     other = _homed_rule({"ref": "F-09999"})
     assert _resolve_refs([other], _resolve_state()) == [other]
     assert other["home"] is None
+
+
+def test_a_notes_home_skips_the_rule_it_also_names(tmp_path):
+    """The same rule through the whole assembly: the photo unit writes a form
+    and a rule, the meeting's note is about both, and the digest shows it under
+    the form. (The digest, because an unattached `home` reaches the delta only
+    once the store contract carries it — Track S.)"""
+    root, run = _two_unit_run(
+        tmp_path, att_new=[FORM, RULE],
+        tr_new=[dict(NOTE, data={"about": [{"ref": "N-u-att-1-1"},
+                                           {"ref": "N-u-att-1-0"}],
+                                 "question": "هر روز چه ساعتی وزن می‌شود؟"})])
+    text = digest(root, run).read_text(encoding="utf-8")
+    line = next(ln for ln in text.splitlines() if ln.startswith("note · "))
+    assert "جدول: form_tahvil" in line
 
 
 def test_the_digest_flags_a_homeless_rule_beside_a_matching_table(tmp_path):
