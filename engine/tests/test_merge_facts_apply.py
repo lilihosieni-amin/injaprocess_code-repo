@@ -1124,3 +1124,58 @@ def test_a_delta_that_still_carries_an_item_is_refused_with_one_line(tmp_path, c
         "facts: kind item is no longer stored (spec 2026-09-16)"
     assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
     assert not (run / "facts-before").exists()
+
+
+# --------------------------------------------------------------------------- #
+# what a measurement is `of`: a record, or words (§3.2, 2026-09-16)
+# --------------------------------------------------------------------------- #
+
+def _measurement_delta(of, writes_to=None, key="vazn_kahu"):
+    data = {"quantity": "mass", "unit": "g", "of": of}
+    if writes_to:
+        data["writes_to"] = writes_to
+    return {"schema_version": 2, "entries": [{
+        "id": "T-1", "kind": "measurement", "key": key, "title": "وزن کاهو",
+        "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+        "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt",
+                    "lines": "7"}],
+        "retired": False, "data": data}]}
+
+
+def _measurement(root):
+    return load_store(root)["measurement"]["entries"][0]
+
+
+def test_a_measurement_of_something_with_no_table_keeps_the_words(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _measurement_delta("کاهو")),
+          _run_dir(root, "m1"))
+    stored = _measurement(root)
+    assert stored["data"]["of"] == "کاهو"          # stored as written, no ref
+    assert "issues" not in stored and "extra" not in stored
+    assert stored["key"] == "vazn_kahu"            # nothing to derive a key from
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    apply(root, _write(root, "d2.json", _measurement_delta("کاهو")),
+          _run_dir(root, "m2"))
+    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
+
+
+def test_a_measurement_of_a_table_still_resolves_and_keys_itself(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    first, _second = _two_tables(root)
+    apply(root, _write(root, "d1.json", _measurement_delta(
+        {"ref": first, "field": "vazn"},
+        writes_to={"ref": first, "field": "vazn"})), _run_dir(root, "m1"))
+    stored = _measurement(root)
+    assert stored["data"]["of"] == {"ref": first, "field": "vazn"}
+    assert stored["key"] == "mande_shab__mande_shab__vazn"     # derived by merge
+
+
+def test_a_measurement_of_a_table_that_is_not_there_is_severed_with_a_note(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _measurement_delta({"ref": "F-09999"})),
+          _run_dir(root, "m1"))
+    stored = _measurement(root)
+    assert "of" not in stored["data"]
+    assert stored["extra"] == {"data/of": '{"ref": "F-09999"}'}
+    assert any(i["kind"] == "shape" for i in stored["issues"])

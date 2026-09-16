@@ -125,3 +125,24 @@ def test_the_index_row_carries_the_home_record_id(tmp_path):
 def test_a_placement_note_is_an_issue_kind_in_both_halves():
     for defs in _both():
         assert "placement" in defs["issue"]["properties"]["kind"]["anyOf"][0]["enum"]
+
+
+def test_what_a_measurement_is_of_is_a_record_or_text(tmp_path):
+    """§3.2 — with the item kind gone, a measurement of an ingredient has no
+    entry to point at: `of` names a record (and a field or row of it) or says
+    in words what is measured. The same for a rule output's `of`."""
+    def measured(of):
+        return entry(kind="measurement",
+                     data={"quantity": "mass", "unit": "g", "of": of})
+
+    for schema, ref in (("facts", "F-00025"), ("facts-delta", "T-3")):
+        build = measured if schema == "facts" else (
+            lambda of: {k: v for k, v in measured(of).items()
+                        if k not in ("status", "updated_at")} | {"id": "T-1"})
+        for of in ("کاهو", None, {"ref": ref}, {"ref": ref, "field": "vazn"},
+                   {"ref": ref, "row": "kahu"}):
+            assert validates(schema, build(of)), (schema, of)
+        assert not validates(schema, build({"ref": "cooking-001"}))
+        assert not validates(schema, build(7))
+    assert validates("facts", entry(kind="rule", data={
+        "inputs": [], "outputs": [{"key": "v", "title": "مقدار", "of": "کاهو"}]}))

@@ -27,6 +27,8 @@
         "field": { "$ref": "#/$defs/mintedKey" },
         "row": { "$ref": "#/$defs/mintedKey" } } },
     "refOrNull": { "oneOf": [{ "$ref": "#/$defs/ref" }, { "type": "null" }] },
+    "refOrText": { "oneOf": [{ "$ref": "#/$defs/ref" },
+                             { "type": ["string", "null"] }] },
     "homeRef": { "type": "object", "additionalProperties": false,
       "required": ["ref"],
       "properties": {
@@ -191,7 +193,7 @@
         "unit": { "type": ["string", "null"] },
         "nature": { "anyOf": [{ "enum": ["standard", "target", "observed", "limit", null] },
                               { "type": ["string", "null"] }] },
-        "of": { "$ref": "#/$defs/ref" },
+        "of": { "$ref": "#/$defs/refOrText" },
         "per": { "type": ["string", "null"] },
         "writes_to": { "$ref": "#/$defs/ref" },
         "share": { "type": ["number", "null"] },
@@ -276,7 +278,7 @@
     "measurementData": { "type": "object", "additionalProperties": false,
       "required": ["quantity", "unit"],
       "properties": {
-        "of": { "$ref": "#/$defs/ref" },
+        "of": { "$ref": "#/$defs/refOrText" },
         "quantity": { "anyOf": [{ "enum": ["mass", "count", "volume", "duration", "money", "ratio",
                                          "other", null] },
                                 { "type": ["string", "null"] }] },
