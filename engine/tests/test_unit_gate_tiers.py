@@ -17,7 +17,7 @@ from facts_plan.assemble import _judge, assemble, materialise, report, validate_
 from facts_plan.cli import unit_states
 from merge_facts import tiers
 from test_facts_plan_assemble import _plan as _a_plan
-from test_facts_plan_assemble import FORM, PHOTO, _two_unit_run
+from test_facts_plan_assemble import FORM, PHOTO, TALK, _two_unit_run
 from test_facts_plan_assemble import _record_out, _rule_out, _second_record
 from test_facts_plan_assemble import _root as _a_root
 from test_facts_plan_assemble import _run as _a_run
@@ -839,3 +839,21 @@ def test_an_entry_with_no_from_still_cites_every_photo_of_its_unit(tmp_path):
     entry, _findings = _photo_run(tmp_path, FORM)
     assert entry["source"] == [{"type": "photo", "ref": PHOTO},
                                {"type": "photo", "ref": PHOTO_2}]
+
+
+def test_a_new_entrys_voice_citation_reaches_its_sources(tmp_path):
+    """The fix wave of 2026-09-15 gated `voice` on a `new[]` entry and then lost
+    it: `_pseudo` copies a whitelist of members onto the synthetic decision, and
+    `voice` was not on it. A photo unit cites no transcript of its own, so the
+    meeting it names is only in `source[]` if the member survived the round
+    trip."""
+    root, run = _two_unit_run(tmp_path, att_new=[
+        {**FORM, "voice": [{"ref": TALK, "lines": "1-3"}]}], tr_new=[])
+    plan = read_json(run / "plan.json")
+    plan["units"][0]["talk"] = [{"rel": TALK, "first": 1, "last": 3}]
+    write_json_atomic(run / "plan.json", plan)
+    path = run / "units" / "u-att-1" / "out.1.json"
+    entry = _built(root, run, path)[0]
+    assert entry["source"] == [{"type": "photo", "ref": PHOTO},
+                               {"type": "voice", "ref": TALK, "lines": "1-3"}]
+    assert not _refused(_judge(root, run, path)[1])

@@ -1099,8 +1099,11 @@ def _pseudo(entry, unit, n):
                  "render": {"name": entry["title"]}}
     decision = {"action": "keep", "unit": unit, "data": {},
                 **{k: v for k, v in entry.items()
+                   # `voice` and `from` are the entry's citations, gated in
+                   # `_judge_doc` and read by `_entry` off the decision: a
+                   # member left off this list is gated and then silently lost.
                    if k in ("key", "title", "statement", "aliases", "branches",
-                            "processes", "accounts", "from", "extra",
+                            "processes", "accounts", "voice", "from", "extra",
                             "_notes")}}
     return handle, candidate, decision
 
