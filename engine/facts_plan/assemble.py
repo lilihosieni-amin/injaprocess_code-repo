@@ -348,8 +348,11 @@ def _drop_items(doc, items):
     other unknown skeleton is left alone — that is the `unknown_skeleton`
     hold-back, and it is still a thing the reviewer has to hear about.
 
-    Returns how many were dropped, for the one line `assemble` and `digest`
-    print on stderr.
+    Returns the `(where, n)` of every slot it emptied: the count is the one
+    line `assemble` and `digest` print on stderr, and the set is what tells
+    the judging loop below to pass the slot over in silence rather than refuse
+    it as «is not an object» — which is how the review's three item decisions
+    came back as held rows saying «item …» in a message that carries no ids.
     """
     def about_an_item(row):
         if "item" in (row.get("kind"),
@@ -364,13 +367,15 @@ def _drop_items(doc, items):
     # line names, and closing the gap would move both. `_folded` drops a
     # non-dict decision and keeps a `None` in `new[]`, which is what the A16
     # duplicate rule already does.
-    out = 0
+    out = set()
     for where in ("decisions", "new"):
         kept = []
-        for row in doc[where]:
-            drop = isinstance(row, dict) and about_an_item(row)
-            out += drop
-            kept.append(None if drop else row)
+        for n, row in enumerate(doc[where]):
+            if isinstance(row, dict) and about_an_item(row):
+                out.add((where, n))
+                kept.append(None)
+            else:
+                kept.append(row)
         doc[where] = kept
     return out
 
@@ -410,7 +415,8 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
              if c.get("kind") == "item"}
     candidates = {c["id"]: c for c in skeleton["candidates"]
                   if c["id"] not in items}
-    doc["_items_ignored"] = _drop_items(doc, items)
+    ignored = _drop_items(doc, items)
+    doc["_items_ignored"] = len(ignored)
     nodes = process_index(root, skeleton["department"])
     plan = read_json(pathlib.Path(run_dir) / "plan.json")
     unit = next((u for u in plan.get("units") or []
@@ -431,6 +437,9 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
     found, passed, unshaped = [], [], set()
     for where in ("decisions", "new"):
         for n, item in enumerate(doc[where]):
+            if (where, n) in ignored:      # an item, read away above
+                unshaped.add((where, n))
+                continue
             if not isinstance(item, dict):
                 found.append(refuse(f"{where}[{n}]", "is not an object"))
                 unshaped.add((where, n))
@@ -1403,7 +1412,10 @@ def _fold_review(root, run_dir, state, draft, scratch, exclude=frozenset(),
     skip = set(verdicts) | set(exclude) | set(gate)
     folded, settled, reviewed_by = [], [], {}
     for n, decision in enumerate(doc["decisions"]):
-        if n in skip:
+        # A slot rather than a decision: A16 empties a duplicate, `_drop_items`
+        # empties one about a retired `item` kind. Both keep the index, which
+        # is what `verdicts`, `gate` and `raw` are all keyed by.
+        if n in skip or not isinstance(decision, dict):
             continue
         if decision.get("action") == "contradiction":
             # The fifth action, `review`-only: the reviewer settles a
