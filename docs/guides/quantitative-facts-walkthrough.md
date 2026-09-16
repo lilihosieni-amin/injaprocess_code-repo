@@ -463,8 +463,8 @@ per assembled entry (kind, key, scope, title, statement, the kinds of source beh
 `sheet · voice`, `voice` — and the formula or the columns), the
 engine's **flags** (things it noticed across units — a title used twice, two units disagreeing
 about a leaf, one tab claimed by two keys, variants that differ only by a wrapper function, and
-since 2026-09-16 `homeless`: a rule or measurement with no table beside a record whose title
-shares at least two of its words, with the candidates named), the
+since 2026-09-16 `homeless`: a rule or measurement with no table beside a record whose title or
+aliases share at least two of its words, with the candidates named), the
 dropped candidates, and the same shape section. It also writes `review/input.sha256`, a hash of
 the digest, so a review written against an older digest is detected — and detected means *redone*:
 `assemble --review` refuses a stale review («the digest changed since this review was written»),
@@ -595,7 +595,9 @@ merge facts apply --delta <run_dir>/facts-delta.json --run <run_dir>
    engine-owned member dropped, an unknown member moved to the entry's `extra`); validate each
    entry against `facts-delta.schema.json` **on its own**; canonicalise scope (sorted, unique).
 3. **Derive keys.** A reference record's row keys are re-derived from its primary key; a
-   measurement's key becomes the `__`-join of what it is of, the record and the column.
+   measurement's key becomes the `__`-join of what it is of, the record and the column — when
+   `of` names an entry and `writes_to` a record's column. An `of` written in words leaves the
+   unit's own key standing.
 4. **Preconditions** — every one is checked before the first byte is written, **per entry**. An
    entry that fails a refusal-tier rule is **held back**: `precondition failed: held back: <label>:
    <message>` on stderr and a `{label, lines}` row in `held.json`; every other entry goes on, and
@@ -899,7 +901,9 @@ been retired. Then the cards, by kind:
   sheet, branch, hidden) and «ورودی از» (imports), the grain, cadence, day boundary, primary key,
   who fills and who approves; and then, since 2026-09-16, the three subset sections — «قواعد این
   جدول», «اندازه‌گیری‌های این جدول», «یادداشت‌های این جدول» — the entries whose `home` is this
-  record, found from the index rows without opening a kind file, each row showing the title, the
+  record, and the notes *about* it that no table claims, listed off `.index.json`'s `home` rows
+  (the entries themselves are read for the two things the index does not carry: a `home`'s column
+  and a note's `about`), each row showing the title, the
   tick state and the column when `home.field` names one, each section headed by its count («۵ از ۸
   تأیید شده»), and a click opening the entry's own page as always. Above them one button, «تأیید
   همهٔ موارد این جدول», confirms every still-unconfirmed entry of those sections through the same
@@ -1077,7 +1081,9 @@ promote` turns a note into a real kind on approval.
 A sheet-derived rule gets a *concept* key from the agent (`masraf_elami`); the workbook and column
 live in `applies_to[]`, never in the key. A record template gets a concept key; its instances are
 `<short>__s<sheetId>`; a binding is `<instance>__<column letter>__r<first row>`; a binding's row is
-`r<row>`. A measurement's key is the `__`-join of what it is of, the record and the column. A note
+`r<row>`. A measurement whose `of` names an entry and whose `writes_to` names a record's column
+is keyed by the `__`-join of the three; one measuring something written in words keeps the key the
+unit minted. A note
 is `note_` plus twelve hex characters. Read-before-mint is the rule: the unit's input carries a reuse
 slice so an existing key is reused rather than reinvented.
 
@@ -1210,12 +1216,13 @@ relayed 2 068 one-per-cell errors taught everyone that nobody reads them.
 
 ### 10.4 The audit (`merge facts audit`)
 
-Read-only, always exit 0, one check per code, each `{code, id, message, proposal}`: `two_writers`,
+Read-only, always exit 0, twenty-four checks over twenty-six codes (`_process_link` and
+`_row_gone` answer for two each), every finding a `{code, id, message, proposal}`: `two_writers`,
 `duplicate_title`, `note_overlap`, `equal_expr`, `edge_disagreement`,
 `orphan_ref`, `process_link` (a link to a tombstoned process, with the heir
 proposed), `process_node_gone` (a cited node removed from a live process), `row_gone`, `dump_missing`, `binding_gone`, `expr_missing`, `retired_row_live_edges`,
 `template_drift`, `reconciliation` (a table cell and the report constant differ by over 1 %),
-`component_sum`, `unconsumed_constant`, `no_consumer`, `quantity_off_enum`,
+`component_sum`, `unconsumed_constant`, `style`, `quantity_off_enum`,
 `note_targets_retired`, `import_unresolved`, `stale_prose`, `stale_stub`, `natural_key_dup`,
 `scope_shadow`, `unknown_role`. `check` adds `source_moved`, `estate_absent`, `uncited_workbook`
 and the readiness line.

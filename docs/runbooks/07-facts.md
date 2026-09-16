@@ -963,14 +963,17 @@ When a run's entry names a different table, the entry gains the issue `{"kind":
 disagreement is in the chat message, not only on the entry). An entry with no
 stored `home` simply adopts the run's.
 
-**The report reads by table.** After the lost-sources block, `report.md` prints
-one line per table — «فرم تبدیل آماده‌سازی برگر»: ۸ قاعده، ۳ اندازه‌گیری، ۱
-یادداشت — then «بدون جدول: …» when anything is unattached (the line is omitted
-when nothing is), then the lines above for what this run would have moved. No
-id, as everywhere in that file. The reviewer's digest gains a flag of its own,
-`homeless · <handle> · candidates: <handles>` — a rule or a measurement with no
-home standing beside a record whose title shares at least two of its words — and
-the reviewer may set `home` in a `keep` like any other field.
+**The report reads by table.** After the counts line, under the heading «زیر
+هر جدول چه ثبت شد:», `report.md` prints one line per table — «فرم تبدیل
+آماده‌سازی برگر»: ۸ قاعده، ۳ اندازه‌گیری، ۱ یادداشت — then «بدون جدول: …» when
+anything is unattached (the line is omitted when nothing is), then the lines
+above for what this run would have moved. The whole block is omitted when a run
+placed nothing. No
+id, as everywhere in that file. The reviewer's digest gains a flag of its own —
+`homeless · <kind> <key> · no home; these tables read like it: <key> «<title>»`
+— a rule or a measurement with no home standing beside a record of the same run
+whose title or aliases share at least two of its words; and the reviewer may set
+`home` in a `keep` like any other field.
 
 **Moving one entry.** `merge facts edit` (§13) takes `home` like any other
 envelope path: `{"op": "set", "path": "home", "value": {"ref": "F-00031"}}`
@@ -986,7 +989,9 @@ a record). The owner's side is the `edit-fact` playbook's two new cases —
 **In the panel.** The facts list pages are unchanged, and an unattached entry
 stays in them (owner decision 2); only the entry's own page says «بدون جدول».
 A record's page gains «قواعد این جدول», «اندازه‌گیری‌های این جدول» and
-«یادداشت‌های این جدول» — each row a title, its tick state and, when `home.field`
+«یادداشت‌های این جدول» — the entries whose `home` is this record, listed off
+`.index.json`'s `home` rows, plus the notes whose `about` names it and whose
+`home` is empty; each row a title, its tick state and, when `home.field`
 is set, the column the entry is tied to; the section header counts «۵ از ۸ تأیید
 شده»; a click opens the entry's page as before; and «تأیید همهٔ موارد این جدول»
 ticks each unconfirmed entry of those sections through the existing per-entry
