@@ -16,7 +16,7 @@ run directory, writes its `meta.json`, and shells `merge facts resolve`; the
 store change is the engine's, the run record is the same one a chat edit
 leaves, and `revert` can undo it. `test_the_service_never_writes_the_store_itself`
 is that rule as an assertion: with the engine stubbed out to do nothing, the
-five kind files come back byte-identical.
+four kind files come back byte-identical.
 
 **Nothing is ever rendered inline** (QF-39). Every source is a download, so
 `content-disposition: attachment` is asserted beside the status on every one
@@ -174,7 +174,7 @@ def _plant(data_root, entries=None):
 
 
 def _store(data_root) -> dict:
-    """The five kind files as text — for the "nothing here writes them" pin."""
+    """The four kind files as text — for the "nothing here writes them" pin."""
     return {name: (data_root / "facts" / name).read_text(encoding="utf-8")
             for name in _FILES.values()}
 

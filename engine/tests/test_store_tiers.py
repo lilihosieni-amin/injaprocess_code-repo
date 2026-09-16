@@ -2,7 +2,7 @@
 prerequisites P1–P3): `merge facts apply` writes every entry it can, holds back
 only the entry that would break the store, and marks what it stored uncertain.
 
-Every test that stores something also re-validates the five files against
+Every test that stores something also re-validates the four kind files against
 `facts.schema.json` (P1): a NOTE the store schema refused would only move the
 failure to `save_store`."""
 import copy

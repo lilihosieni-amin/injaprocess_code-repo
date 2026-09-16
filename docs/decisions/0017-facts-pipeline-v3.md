@@ -342,6 +342,6 @@ stays on the entry, and moving an entry does not reset it. Three decisions of th
 run's opinion becomes a note on the entry and is named in the owner's chat message; **(2)** there
 is no separate "no table" list — unattached entries stay in the facts list pages exactly as today,
 and only the entry's page says «بدون جدول»; **(3)** a note that names two tables is listed under
-the first it names. Spec:
+the first it names, unless the unit set `home`. Spec:
 `docs/superpowers/specs/2026-09-16-facts-tables-as-the-spine-design.md` (its §3 folds in
 `docs/superpowers/specs/2026-09-16-facts-no-items-design.md`).

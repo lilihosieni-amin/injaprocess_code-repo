@@ -16,7 +16,7 @@ these); kept in `code-repo` so runtime (INV-2) cannot weaken validation.
 | `run-meta.schema.json` | per-run metadata (ARD §2.2) | process-voice | audit |
 | `conflicts.schema.json` | per-run conflicts (ARD §2.2) | merge | Telegram report, UI inbox |
 | `consolidation.schema.json` | consolidation review suggestions (design §4.3) | consolidate agent | process-voice Stage 10 |
-| `facts.schema.json` | the facts store — envelope + five kinds (quantitative-facts design §6/§7) | merge facts | ui-backend, UI, later runs |
+| `facts.schema.json` | the facts store — envelope (`home`, `home_detached`) + four kinds (quantitative-facts design §6/§7; tables-as-the-spine 2026-09-16) | merge facts | ui-backend, UI, later runs |
 | `facts-delta.schema.json` | agent-proposed changes to the facts store (design §4) | facts extract agent | merge facts |
 | `facts-unit.schema.json` | one unit's decisions over its candidates (v3 design §2.5) | quantify agent (unit/review mode) | `validate facts-unit`, `facts-plan assemble` |
 | `facts-patch.schema.json` | one chat instruction's operations on one entry — v3.7 §2.2 | facts chat agent | `merge facts edit` |
@@ -49,7 +49,8 @@ upgraded. Bumping the constant is only done alongside an append-only
 migration note added here:
 
 - **v1** (2026-08-30, Task 1 of quantitative-facts) — initial version:
-  envelope + five kinds (`item`, `record`, `measurement`, `rule`, `note`).
+  envelope + five kinds (`item`, `record`, `measurement`, `rule`, `note`);
+  `item` and everything naming it left on 2026-09-16 (note below).
 - **v2** (2026-09-06, v3 design §3.3) — closed per-kind payloads
   (`additionalProperties: false`, the prose enums as schema enums),
   `record.instances[]` with `imports[]`, `fields[].columns`, `rule.applies_to[]`
@@ -82,7 +83,7 @@ migration note added here:
 **`conventions` (`manifest.schema.json`, v3.6 §3.1, I6).** The estate's own
 spellings are data, not engine constants: an optional top-level `conventions`
 object carries `branch_tokens[]` (the branch spellings a tab name is folded by),
-`code_namespaces` (`{"##": "ing", "#": "food"}` — the item-code prefix a sheet
+`code_namespaces` (`{"##": "ing", "#": "food"}` — the code prefix a sheet
 writes, mapped to the key prefix a store row is keyed by), `placeholder_header`
 (the regex an unnamed column's header matches, `^Column [0-9]+$` today),
 `month_names[]` and `table_prefix` (`Table_` today). Every member is optional
@@ -97,8 +98,7 @@ writes no `branch_tokens`: Stage 1 runs before Gate M declares a branch, so a
 written list would freeze today's two spellings into a new estate and every
 branch declared afterwards would fold nowhere. Declaring the member is the one
 way to override the derivation. A namespace has to be one to three non-Latin,
-non-digit characters (`propertyNames`), which is what the store schemas accept
-in `refItems.namespace`; an empty `table_prefix` means «this estate names no
+non-digit characters (`propertyNames`); an empty `table_prefix` means «this estate names no
 tables» and drops the table alternative from the three patterns built off it,
 and a `placeholder_header` that is no regex falls back to today's. One reader,
 `merge_facts.conventions.load(root)`, serves `facts_plan.build`,

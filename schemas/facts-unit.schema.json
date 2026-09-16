@@ -19,7 +19,7 @@
     "leaf": {},
     "mintedKey": { "type": "string",
       "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*(__[a-z][a-z0-9]*(_[a-z0-9]+)*)*$" },
-    "skeletonId": { "type": "string", "pattern": "^S-(rec|i|r|gs)-[0-9a-f]{12}$" },
+    "skeletonId": { "type": "string", "pattern": "^S-(rec|r|gs)-[0-9a-f]{12}$" },
     "homeRef": { "type": "object", "additionalProperties": false,
       "required": ["ref"],
       "properties": {
