@@ -2594,10 +2594,24 @@ def _wrap(line):
                          break_on_hyphens=False) or [""]
 
 
+#: Where `extract-attachment` caches the text of a `.docx`/`.pdf`/image — the
+#: one mark that tells a unit's photographed form from its meeting excerpt.
+SIDECAR_DIR = "/attachments/.text/"
+
+
 def _unit_text(root, unit):
     """The text a unit carries: its transcript chunk's lines or its attachments,
     wrapped and otherwise verbatim. A workbook unit's `inputs`
-    name `.xlsx` files, which are not text and are never read."""
+    name `.xlsx` files, which are not text and are never read.
+
+    Every `.text/` sidecar is headed like a talk passage — the file's own name
+    (`_input_label`) and the path a citation has to spell. Until 2026-09-16 a
+    unit's photos were concatenated nameless, so it could tell neither which
+    form it was reading nor which one an entry came off, and the assembly cited
+    all fourteen photos of the unit on each of its thirteen entries. A
+    transcript unit reads one excerpt whole and needs no heading to tell it
+    from another.
+    """
     root, parts = pathlib.Path(root), []
     for ref in unit["inputs"]:
         rel, _, span = ref.partition("#")
@@ -2608,7 +2622,9 @@ def _unit_text(root, unit):
         if span:
             first, last = (int(n[1:]) for n in span.split("-"))
             lines = lines[first - 1:last]
-        parts.append("\n".join(w for line in lines for w in _wrap(line)))
+        body = "\n".join(w for line in lines for w in _wrap(line))
+        parts.append(f"### {_input_label(rel)} · {rel}\n\n{body}"
+                     if SIDECAR_DIR in rel else body)
     return "\n\n".join(parts)
 
 

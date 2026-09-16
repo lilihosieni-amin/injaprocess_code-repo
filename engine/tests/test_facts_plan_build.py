@@ -572,3 +572,27 @@ def test_a_recorded_record_says_what_it_is_and_where_it_is_kept():
     assert lines[0].endswith("sheet · بازدهی تولید · ستون‌ها: vorudi (ورودی، kg)")
     assert lines[1] == ("N-u-att-1-0 · record · tahvil · فرم تحویل مرغ · "
                         "paper · آشپزخانه · سرآشپز شب")
+
+
+def test_each_attachment_text_is_headed_by_its_name_and_its_path(tmp_path):
+    """Task G 2026-09-16: a unit handed several photos has to tell them apart
+    and cite the one an entry was read off, so every `.text/` sidecar is headed
+    by the file's own name and by the path the citation must spell — in input
+    order, with a blank line between files. A transcript excerpt is the unit's
+    only text and carries no heading."""
+    from facts_plan.build import _unit_text
+    text_dir = tmp_path / "departments" / "cooking" / "attachments" / ".text"
+    text_dir.mkdir(parents=True)
+    (text_dir / "forms__tabdil.image.md").write_text("وزن مرغ\n", encoding="utf-8")
+    (text_dir / "forms__enbar.image.md").write_text("موجودی انبار\n", encoding="utf-8")
+    rels = ["departments/cooking/attachments/.text/forms__tabdil.image.md",
+            "departments/cooking/attachments/.text/forms__enbar.image.md"]
+    assert _unit_text(tmp_path, {"inputs": rels}) == (
+        f"### forms/tabdil.image · {rels[0]}\n\nوزن مرغ\n\n"
+        f"### forms/enbar.image · {rels[1]}\n\nموجودی انبار")
+
+    (tmp_path / "meetings" / "transcripts").mkdir(parents=True)
+    (tmp_path / "meetings" / "transcripts" / "m.txt").write_text(
+        "یک\nدو\nسه\n", encoding="utf-8")
+    assert _unit_text(tmp_path,
+                      {"inputs": ["meetings/transcripts/m.txt#L1-L2"]}) == "یک\nدو"

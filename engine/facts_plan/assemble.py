@@ -36,8 +36,9 @@ from merge_facts.preconditions import (REQUIRED_SLOTS, _ref_sites, _registered,
 from merge_facts.preconditions import _sever as _sever_member
 from merge_facts.tiers import note, refuse
 
-from facts_plan.build import (TRANSCRIPT_DIR, TRANSCRIPT_EXT, estimate_tokens,
-                              label_of, process_index, shape_section)
+from facts_plan.build import (SIDECAR_DIR, TRANSCRIPT_DIR, TRANSCRIPT_EXT,
+                              estimate_tokens, label_of, process_index,
+                              shape_section)
 
 def _refs(value):
     """Every `{ref, field?}` object in a decision, in document order."""
@@ -1508,7 +1509,7 @@ SIDECAR_TYPES = ((".pdf.md", "pdf"), (".image.md", "photo"), (".txt", "docx"))
 def _source_type(rel):
     """`voice` for a transcript, the extracted file's own kind for a sidecar.
     A photographed form is cited as a photo, not as the meeting's audio."""
-    if "/attachments/.text/" in rel:
+    if SIDECAR_DIR in rel:
         for suffix, kind in SIDECAR_TYPES:
             if rel.endswith(suffix):
                 return kind
@@ -2670,7 +2671,7 @@ def _lost_sources(root, skeleton, state):
             if any(ref in landed for ref in refs):
                 row["part"] = True
         for ref in refs:
-            if "/attachments/.text/" in ref:
+            if SIDECAR_DIR in ref:
                 lost.add(ref)
             elif unit.get("type") == "transcript" and ("recording", ref) not in rows:
                 # One row per meeting, however many of its chunks were lost; a
@@ -2686,7 +2687,7 @@ def _lost_sources(root, skeleton, state):
     placed = {ref.partition("#")[0] for u in units.values()
               for ref in u.get("inputs") or []}
     lost |= {rel for rel in state.get("hashes") or {}
-             if "/attachments/.text/" in rel and rel not in placed}
+             if SIDECAR_DIR in rel and rel not in placed}
     out += [{"kind": "attachment", "label": _attachment_name(root, rel),
              "tables": 0, "formulas": 0} for rel in sorted(lost)]
     return out
