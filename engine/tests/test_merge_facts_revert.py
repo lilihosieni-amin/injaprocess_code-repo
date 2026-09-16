@@ -57,10 +57,11 @@ def test_ids_never_reused_after_revert(tmp_path):
 def _workbook_stub_seed():
     src = {"type": "script", "ref": "attachments/sheets/G/G.gs", "function": "pull"}
     return {"schema_version": 2, "entries": [
-        {"id": "T-1", "kind": "item", "key": "ing_7", "title": "روغن",
+        {"id": "T-1", "kind": "record", "key": "roghan", "title": "دفتر روغن",
          "statement": "s", "scope": {"departments": [], "branches": []},
          "source": [dict(src)], "retired": False,
-         "data": {"category": "ingredient", "unit": "g"}},
+         "data": {"medium": "paper", "role": "log",
+                  "location": {"kept_at": "آشپزخانه", "holder": "سرآشپز"}}},
         {"id": "T-2", "kind": "record", "key": "ext_9f1c2d3e4a5b",
          "title": "کتاب ناشناخته", "statement": "s",
          "scope": {"departments": ["cooking"], "branches": []},

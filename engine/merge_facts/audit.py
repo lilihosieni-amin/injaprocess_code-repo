@@ -25,10 +25,8 @@ twice:
   1 ± 1 %, which is what catches a share appended by a later run — legal in
   its own delta, wrong beside the shares already there.
 - **`row_gone`** reads `attachments/sheets/.dump/{spreadsheetId}/rows.tsv`
-  (Appendix C). A `refItems` cell holds the item's *key* while the dump holds
-  what the tab printed, so a store row counts as present when the dump row
-  carries its key, its primaryKey values, or — for a `refItems` column — the
-  item's `code`, `title` or an alias. `dump-workbook` lands in a later task;
+  (Appendix C). A store row counts as present when the dump row carries its
+  key or its primaryKey values. `dump-workbook` lands in a later task;
   until it runs, every reference record's workbook reports `dump_missing`,
   which is the honest answer and not a row-by-row alarm.
 """
@@ -259,48 +257,6 @@ def _orphan_ref(walk):
     return items
 
 
-def _dangling_ref_items(walk):
-    """A `refItems` cell names an item by its **key** or by a **code** of the
-    column's namespace — the content pass admits both, and a sheet-derived
-    row holds what the sheet held («مکزیکانو #13»). The item it names must
-    still be open. Until 2026-09-09 this looked the cell up by key alone and
-    reported every code-bearing row of the cooking recipe tables as dangling."""
-    from merge_facts import conventions
-    from merge_facts.conventions import cell_pattern
-    entries = walk.store["item"]["entries"]
-    open_keys = {e["key"] for e in entries if is_open(e)}
-    known_keys = {e["key"] for e in entries}
-    open_codes = {str(_data(e).get("code")) for e in entries
-                  if is_open(e) and _data(e).get("code")}
-    known_codes = {str(_data(e).get("code")) for e in entries if _data(e).get("code")}
-    conv = conventions.load(walk.root)
-    items = []
-    for record in _records(walk):
-        columns = [(f["key"], (f["refItems"].get("namespace") or conv.item_namespace))
-                   for f in _data(record).get("fields") or []
-                   if isinstance(f, dict) and isinstance(f.get("refItems"), dict)
-                   and f.get("key")]
-        for row in _rows(record):
-            if not is_open(row):
-                continue
-            for column, namespace in columns:
-                cell = row.get(column)
-                if not isinstance(cell, str) or not cell or cell in open_keys:
-                    continue
-                pattern = conv.code_in_cell.get(namespace) or cell_pattern(
-                    namespace, set(conv.code_in_cell) | {namespace})
-                hit = pattern.search(cell)
-                code = hit.group(0) if hit else None
-                if code in open_codes:
-                    continue
-                why = ("is retired" if cell in known_keys or code in known_codes
-                       else "names no item")
-                items.append(_finding(
-                    "dangling_ref_items", record["id"],
-                    f"row {row.get('key')!r} column {column!r}: item {cell!r} {why}"))
-    return items
-
-
 def _process_doc(root, process_id):
     path = (root / "departments" / process_id.rsplit("-", 1)[0] / "processes"
             / f"{process_id}.json")
@@ -400,23 +356,8 @@ def _dump_rows(root, spreadsheet_id, sheet):
             for row in rows]
 
 
-def _item_labels(walk):
-    """Item key → every string the estate may have printed for it, so a
-    `refItems` cell can be matched against a dump that holds codes or titles."""
-    out = {}
-    for item in walk.store["item"]["entries"]:
-        labels = {item["key"], item.get("title") or ""}
-        labels |= set(item.get("aliases") or [])
-        code = _data(item).get("code")
-        if code:
-            labels.add(str(code))
-        out[item["key"]] = {_fold(v) for v in labels if v}
-    return out
-
-
-def _row_present(record, row, dump_rows, labels):
-    """Is this store row still in the dump? Its key, its primaryKey values or —
-    for a `refItems` column — the item's printed code or title."""
+def _row_present(record, row, dump_rows):
+    """Is this store row still in the dump? Its key, or its primaryKey values."""
     data = _data(record)
     primary = [k for k in data.get("primaryKey") or [] if isinstance(k, str)]
     key = row.get("key")
@@ -432,7 +373,7 @@ def _row_present(record, row, dump_rows, labels):
             if value is None:
                 matched = False
                 break
-            wanted = {_fold(value)} | labels.get(value, set())
+            wanted = {_fold(value)}
             cell = dump_row.get(column)
             found = {_fold(cell)} & wanted if cell else wanted & cells
             if not found:
@@ -466,7 +407,6 @@ def _row_gone(walk):
     instance) whose workbook has no `rows.tsv` at all, because that instance —
     not the record — is what nobody has dumped."""
     items = []
-    labels = _item_labels(walk)
     for record in _records(walk):
         rows = [r for r in _rows(record) if is_open(r)]
         places = _record_locations(record)
@@ -487,7 +427,7 @@ def _row_gone(walk):
         if not dumps:
             continue                       # nothing at all to compare against
         for row in rows:
-            if not _row_present(record, row, dumps, labels):
+            if not _row_present(record, row, dumps):
                 items.append(_finding(
                     "row_gone", record["id"],
                     f"row {row.get('key')!r} is in no row of the latest dump of "
@@ -750,24 +690,6 @@ def _equal_expr(walk):
     return items
 
 
-def _duplicate_code(walk):
-    """`#N` and `##N` are the estate's own identifiers (§2.3); two open items
-    answering to one of them is a merge the reviewer missed."""
-    groups = {}
-    for item in walk.open:
-        code = _data(item).get("code") if item["kind"] == "item" else None
-        if code:
-            groups.setdefault(str(code), []).append(item["id"])
-    items = []
-    for code, ids in groups.items():
-        if len(ids) < 2:
-            continue
-        items.append(_finding("duplicate_code", sorted(ids)[0],
-                              f"code {code} is carried by "
-                              f"{', '.join(sorted(ids))}"))
-    return items
-
-
 def _edge_disagreement(walk):
     """Two edge cases stating one input and expecting two different answers —
     within one rule, or between a rule and the template it declares. The ladder
@@ -792,32 +714,6 @@ def _edge_disagreement(walk):
             items.append(_finding(
                 "edge_disagreement", rule["id"],
                 f"edge case {shape!r} expects {' and '.join(sorted(expected))}"))
-    return items
-
-
-def _no_consumer(walk):
-    """§4: an item nothing references — no rule reads it, no measurement
-    measures it, no `refItems` cell resolves to it. Either the estate stopped
-    using it, or it is a code minted with no home."""
-    referenced = {obj["ref"] for entry in walk.open
-                  for obj in iter_ref_objects(entry)
-                  if isinstance(obj.get("ref"), str)}
-    keys = set()
-    for record in _records(walk):
-        columns = [f["key"] for f in _data(record).get("fields") or []
-                   if isinstance(f, dict) and f.get("refItems") and f.get("key")]
-        for row in _rows(record):
-            for column in columns:
-                if isinstance(row.get(column), str):
-                    keys.add(row[column])
-    items = []
-    for item in walk.open:
-        if item["kind"] != "item" or item["id"] in referenced \
-                or item["key"] in keys:
-            continue
-        items.append(_finding("no_consumer", item["id"],
-                              f"item {item['key']} is read by no rule, record "
-                              f"or measurement"))
     return items
 
 
@@ -1111,12 +1007,12 @@ def _unknown_role(walk):
     return items
 
 
-#: The six §2.6 step 7 flags — every one of them reads nothing off disk, so
+#: The five §2.6 step 7 flags — every one of them reads nothing off disk, so
 #: `assemble` can run them over the store plus the entries it is about to
 #: write. One implementation, one set of codes: the audit and the digest
 #: cannot drift.
 FLAG_CHECKS = (_duplicate_output, _lookalike_title, _recurring_note_shape,
-               _equal_expr, _duplicate_code, _edge_disagreement)
+               _equal_expr, _edge_disagreement)
 
 
 def _style(walk):
@@ -1137,15 +1033,15 @@ def _style(walk):
 
 
 AUDIT_CHECKS = FLAG_CHECKS + (
-    _orphan_ref, _dangling_ref_items, _process_link, _row_gone, _binding_gone,
+    _orphan_ref, _process_link, _row_gone, _binding_gone,
     _expr_missing, _retired_row_live_edges, _template_drift, _reconciliation,
-    _component_sum, _unconsumed_constant, _no_consumer, _quantity_off_enum,
+    _component_sum, _unconsumed_constant, _quantity_off_enum,
     _note_targets_retired, _import_unresolved, _stale_prose, _stale_stub,
     _natural_key_dup, _scope_shadow, _unknown_role, _style)
 
 
 def flags_over(root, entries):
-    """§2.6 step 7: the six disk-free checks over `load_store` plus the entries
+    """§2.6 step 7: the five disk-free checks over `load_store` plus the entries
     an assembly is about to write. `entries` must already carry ids (the
     assembly's temp ids are fine — that is why step 1 mints them first). The
     store is read and never written."""
@@ -1172,10 +1068,8 @@ PERSIAN = {
     "duplicate_title": "عنوان تکراری: «{title}»",
     "note_overlap": "یادداشت‌های هم‌شکل: «{title}»",
     "equal_expr": "دو قاعده یک محاسبه را می‌گویند: «{title}»",
-    "duplicate_code": "یک کد برای دو قلم: «{title}»",
     "edge_disagreement": "برای یک نمونه دو پاسخ آمده است: «{title}»",
     "orphan_ref": "ارجاع بی‌مقصد: «{title}»",
-    "dangling_ref_items": "ارجاع به قلمی که دیگر نیست: «{title}»",
     "process_link": "پیوند با فرایندی که تغییر کرده است: «{title}»",
     "process_node_gone": "گرهی که به آن استناد شده از فرایند برداشته شده است: «{title}»",
     "row_gone": "ردیفی که دیگر در فایل نیست: «{title}»",
@@ -1187,7 +1081,6 @@ PERSIAN = {
     "reconciliation": "عدد جدول با عدد قاعده نمی‌خواند: «{title}»",
     "component_sum": "جمع سهم‌ها یک نمی‌شود: «{title}»",
     "unconsumed_constant": "عددی که هیچ قاعده‌ای آن را نمی‌خواند: «{title}»",
-    "no_consumer": "قلمی که هیچ‌جا استفاده نشده است: «{title}»",
     "quantity_off_enum": "نوع کمیت شناخته نیست: «{title}»",
     "note_targets_retired": "یادداشتی دربارهٔ مورد بازنشسته: «{title}»",
     "import_unresolved": "ورودی از فایلی که هنوز خوانده نشده است: «{title}»",

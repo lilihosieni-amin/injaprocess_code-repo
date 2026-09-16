@@ -334,7 +334,7 @@
         "title": { "type": "string" },
         "aliases": { "type": "array", "items": { "type": "string" } },
         "statement": { "type": "string" },
-        "home": { "anyOf": [{ "$ref": "#/$defs/homeRef" }, { "type": "null" }] },
+        "home": { "oneOf": [{ "$ref": "#/$defs/homeRef" }, { "type": "null" }] },
         "scope": { "$ref": "#/$defs/scope" },
         "source": { "type": "array", "items": { "$ref": "#/$defs/source" } },
         "status": { "enum": ["confirmed", "inferred", "informal", "disputed", "unknown"] },

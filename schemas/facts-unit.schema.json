@@ -100,7 +100,7 @@
         "aliases": { "type": "array", "items": { "type": "string" } },
         "branches": { "type": "array", "items": { "type": "string", "pattern": "^[a-z]+$" } },
         "processes": { "type": "array", "items": { "$ref": "#/$defs/procCite" } },
-        "home": { "anyOf": [{ "$ref": "#/$defs/homeRef" }, { "type": "null" }] },
+        "home": { "oneOf": [{ "$ref": "#/$defs/homeRef" }, { "type": "null" }] },
         "data": { "$ref": "#/$defs/decisionData" },
         "into": { "oneOf": [
           { "$ref": "#/$defs/skeletonId" },
@@ -140,7 +140,7 @@
         "aliases": { "type": "array", "items": { "type": "string" } },
         "branches": { "type": "array", "items": { "type": "string", "pattern": "^[a-z]+$" } },
         "processes": { "type": "array", "items": { "$ref": "#/$defs/procCite" } },
-        "home": { "anyOf": [{ "$ref": "#/$defs/homeRef" }, { "type": "null" }] },
+        "home": { "oneOf": [{ "$ref": "#/$defs/homeRef" }, { "type": "null" }] },
         "data": { "type": "object" },
         "extra": { "type": "object" } } }
   }

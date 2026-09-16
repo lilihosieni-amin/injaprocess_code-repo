@@ -1,5 +1,5 @@
 import copy
-from merge_facts.ladder import merge_entry
+from merge_facts.ladder import PLACEMENT_FA, merge_entry, merge_home
 
 SRC_A = {"type": "sheet", "ref": "a.xlsx", "sheet": "پیتزا", "cell": "H6"}
 SRC_B = {"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "40"}
@@ -232,3 +232,47 @@ def test_an_incoming_null_never_challenges_a_known_value():
     changes = merge_entry(e, inc, SRC_B)
     assert e == before
     assert all(action == "noop" for _, action in changes)
+
+
+# --------------------------------------------------------------------------- #
+# `home` — placement, not a fact (owner decision 1, 2026-09-16)
+# --------------------------------------------------------------------------- #
+
+def _placed(ref):
+    e = _base()
+    e["home"] = {"ref": ref} if ref else None
+    return e
+
+
+def test_a_run_never_moves_an_entry_a_person_placed():
+    existing, incoming = _placed("F-00025"), _placed("F-00031")
+    assert merge_home(existing, incoming) == "F-00031"
+    assert existing["home"] == {"ref": "F-00025"}
+    assert {"kind": "placement", "description": PLACEMENT_FA,
+            "affects": []} in existing["issues"]
+
+
+def test_an_unplaced_entry_adopts_the_runs_home():
+    existing = _placed(None)
+    assert merge_home(existing, _placed("F-00031")) is None
+    assert existing["home"] == {"ref": "F-00031"}
+    assert existing["home"] is not _placed("F-00031")["home"]   # a copy, not the delta's
+
+
+def test_the_same_home_read_twice_is_not_a_disagreement():
+    existing = _placed("F-00025")
+    assert merge_home(existing, _placed("F-00025")) is None
+    assert merge_home(existing, _placed(None)) is None
+    assert "issues" not in existing
+
+
+def test_merge_entry_notes_the_placement_once_and_unions_an_adoption():
+    existing, incoming = _placed("F-00025"), _placed("F-00031")
+    assert ("home", "placement") in merge_entry(existing, incoming, SRC_B)
+    # a second run reading the same disagreement changes nothing: one issue,
+    # and a `noop` so the entry is not re-stamped
+    changes = merge_entry(existing, copy.deepcopy(incoming), SRC_B)
+    assert ("home", "noop") in changes and ("home", "placement") not in changes
+    assert len([i for i in existing["issues"] if i["kind"] == "placement"]) == 1
+    unplaced = _placed(None)
+    assert ("home", "union") in merge_entry(unplaced, incoming, SRC_B)

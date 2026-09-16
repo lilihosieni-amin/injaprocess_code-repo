@@ -152,14 +152,15 @@ def test_c7_a_single_member_is_wrapped_and_a_null_list_dropped(tmp_path):
 
 def test_c10_a_computable_required_member_is_filled(tmp_path):
     root = _root(tmp_path); _seed_units(root)
-    item = {"id": "T-3", "kind": "item", "key": "ing_1", "title": "پنیر",
-            "statement": "پنیر پیتزا.", "scope": {"departments": [], "branches": []},
-            "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt"}],
-            "data": {}}                                        # no retired, category, unit
-    _apply(root, _delta(item))
-    stored = _one(root, "item", "ing_1")
+    measurement = {"id": "T-3", "kind": "measurement", "key": "vazn_panir",
+                   "title": "وزن پنیر", "statement": "وزن هر پرس.",
+                   "scope": {"departments": [], "branches": []},
+                   "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt"}],
+                   "data": {}}                          # no retired, quantity, unit
+    _apply(root, _delta(measurement))
+    stored = _one(root, "measurement", "vazn_panir")
     assert stored["retired"] is False
-    assert stored["data"] == {"category": None, "unit": None}
+    assert stored["data"] == {"quantity": None, "unit": None}
     assert stored["status"] == "unknown"                       # QF-6: null is red
 
 
@@ -569,8 +570,7 @@ def test_save_store_accepts_every_shape_the_tiers_store(tmp_path):
         "valid_from": "sometime", "extra": {"data/x": [1]},
         "data": {"medium": None, "role": "ledger", "cadence": "hourly",
                  "location": {"kept_at": None, "holder": None, "spreadsheetId": "S"},
-                 "fields": [{"key": "f", "type": "decimal2",
-                             "refItems": {"namespace": "abc"}}]}})
+                 "fields": [{"key": "f", "type": "decimal2"}]}})
     save_store(root, store)
 
 
@@ -622,14 +622,16 @@ def test_a_null_a_repair_wrote_never_disputes_a_stored_value(tmp_path, row):
     moved to extra) keeps the stored value; no account, not disputed."""
     root = _root(tmp_path); _seed_units(root)
     if row == "c10":
-        item = {"id": "T-3", "kind": "item", "key": "ing_1", "title": "پنیر",
-                "statement": "پنیر پیتزا.", "scope": {"departments": [], "branches": []},
-                "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt"}],
-                "retired": False, "data": {"category": "raw", "unit": "g"}}
-        _apply(root, _delta(item), "1")
-        again = copy.deepcopy(item)
+        measurement = {"id": "T-3", "kind": "measurement", "key": "vazn_panir",
+                       "title": "وزن پنیر", "statement": "وزن هر پرس.",
+                       "scope": {"departments": [], "branches": []},
+                       "source": [{"type": "voice",
+                                   "ref": "meetings/transcripts/c.txt"}],
+                       "retired": False, "data": {"quantity": "mass", "unit": "g"}}
+        _apply(root, _delta(measurement), "1")
+        again = copy.deepcopy(measurement)
         del again["data"]["unit"]
-        kind, key, leaf = "item", "ing_1", lambda e: e["data"]["unit"]
+        kind, key, leaf = "measurement", "vazn_panir", lambda e: e["data"]["unit"]
         first = "g"
     else:
         _apply(root, _const_delta(), "1")
