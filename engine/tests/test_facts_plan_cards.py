@@ -96,10 +96,51 @@ def test_the_worked_examples_validate_against_the_store_contract():
                                          "rule"]
     assert EXAMPLES[0]["data"]["medium"] == "paper"
     assert set(EXAMPLES[0]["data"]["location"]) == {"kept_at", "holder"}
+    # `home` is written with the handle the unit was shown (`S-…`, `N-…`) and
+    # assembly rewrites it to the id the delta carries, so the store contract
+    # sees the examples without it and the unit contract sees them whole.
     validate("facts-delta.schema.json", {"schema_version": 2, "entries": [
-        dict(entry, scope={"departments": ["cooking"], "branches": []},
+        dict({k: v for k, v in entry.items() if k != "home"},
+             scope={"departments": ["cooking"], "branches": []},
              source=[{"type": "chat", "ref": None}], retired=False)
         for entry in EXAMPLES]})
+    validate("facts-unit.schema.json",
+             {"schema_version": 1, "unit": "u-wb-pitza", "attempt": 1,
+              "decisions": [], "new": EXAMPLES})
+
+
+def test_the_worked_examples_show_where_a_fact_lives():
+    """2026-09-16: the cards never named `home` and the run wrote none on 120
+    entries. An example without it teaches a fact with no table."""
+    from facts_plan.build import EXAMPLES
+    homes = {e["kind"]: e.get("home") for e in EXAMPLES}
+    assert homes["record"] is None                 # a table is a place, not on one
+    assert homes["measurement"] == {"ref": "N-…-0", "field": "meqdar"}
+    assert homes["rule"] == {"ref": "S-rec-…"}
+    assert all(e.get("home") for e in EXAMPLES if e["kind"] == "rule")
+
+
+def test_the_three_data_cards_open_with_the_home_line():
+    """The line is the whole fix: `home` is a sibling of `data`, so the block
+    rendered from the schema cannot show it and the card has to say it."""
+    from facts_plan.build import HOME_LINE, KIND_HOME, shape_card
+    schema = _schema()
+    for kind in ("rule", "measurement", "note"):
+        card = shape_card((kind,), schema)
+        assert HOME_LINE in card, kind
+        head = card.index(f"## {kind} — data")
+        assert head < card.index(HOME_LINE) < card.index(KIND_HOME[kind][-20:])
+        # the handles the unit can copy, and the one it mints itself
+        for token in ("`S-…`", "`F-…`", "`N-<این واحد>-<n>`", "«نامزدها»",
+                      "«آنچه تا کنون ثبت شده»", "`statement`"):
+            assert token in card, (kind, token)
+    record = shape_card(("record",), schema)
+    assert HOME_LINE not in record
+    # the two kind-specific halves the agent file states
+    measurement = shape_card(("measurement",), schema)
+    assert "یک اندازه‌گیری با `home.field` است، نه یک جدول تازه." in measurement
+    rule = shape_card(("rule",), schema)
+    assert "نخستین عضو `applies_to` آن نام می‌برد." in rule
 
 
 def test_the_shape_card_names_the_decision_table_shape():
@@ -135,11 +176,17 @@ def test_the_two_schemas_carry_the_same_payload_definitions():
 def test_the_shape_card_stays_inside_a_unit_s_budget():
     """It is appended to every `units/*/input.md`, so its size is a standing
     charge on the 20 K input budget (§2.3). This is the alarm, not a target:
-    when the schema grows past it, someone decides what the card drops."""
+    when the schema grows past it, someone decides what the card drops.
+
+    2026-09-16: the ceiling went 3500 → 4000 when the `home` line landed at the
+    head of the three homed cards. The line is repeated on purpose — the unit
+    reads the card of the kind it is writing — and 770 tokens buys the member
+    the last real run wrote on none of its 120 entries.
+    """
     from facts_plan.build import (MAX_LINE, WRITABLE_KINDS, estimate_tokens,
                                   shape_section)
     text = shape_section()
-    assert 1200 <= estimate_tokens(text) <= 3500
+    assert 1200 <= estimate_tokens(text) <= 4000
     assert max(len(line) for line in text.split("\n")) <= MAX_LINE
     assert shape_section() == text                       # deterministic
     assert "Shape card" in text and set(WRITABLE_KINDS)
