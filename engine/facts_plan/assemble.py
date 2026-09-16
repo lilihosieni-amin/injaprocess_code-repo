@@ -71,7 +71,7 @@ def validate_unit(root, run_dir, path):
 #: A7 — what a decision or a `new[]` entry may not write, because the engine
 #: builds it (INV-1, INV-3): the unit's copy is dropped, never merged or kept.
 ENGINE_OWNED = ("id", "source", "scope", "field_status", "accounts", "retired",
-                "voice")
+                "voice", "from")
 #: …and, under a decision's `data`, the candidate's own payload members.
 ENGINE_OWNED_DATA = ("code", "instances", "applies_to", "location")
 
@@ -370,12 +370,17 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
     candidates = {c["id"]: c for c in skeleton["candidates"]}
     nodes = process_index(root, skeleton["department"])
     plan = read_json(pathlib.Path(run_dir) / "plan.json")
+    unit = next((u for u in plan.get("units") or []
+                 if u.get("id") == doc["unit"]), None)
     ctx = {"candidates": candidates, "department": skeleton["department"],
            # INV-3 — the meeting passages this unit was shown, as `build`
            # recorded them: the only talk it may cite, never a path or a line
            # range it invented. A unit the plan does not name was shown none.
-           "talk": _shown(next((u for u in plan.get("units") or []
-                                if u.get("id") == doc["unit"]), None)),
+           "talk": _shown(unit),
+           # …and the same for files: the paths `build` printed to this unit,
+           # which are the only ones a `from` citation may name.
+           "inputs": {ref.partition("#")[0]
+                      for ref in (unit or {}).get("inputs") or []},
            "kinds": {cid: KIND_OF.get(c["kind"], c["kind"])
                      for cid, c in candidates.items()},
            "node_ids": {f'{n["process"]}::{n["node"]}' for n in nodes}
@@ -392,6 +397,7 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
             # is the engine's account, not the unit's copy of one.
             accounts = _unit_accounts(item, ctx["talk"])
             voices = _unit_voices(item, ctx["talk"])
+            froms = _unit_froms(item, ctx["inputs"])
             notes = _repair(item, where, ctx)
             label = _item_label(where, n, item)
             found += [note(label, m, path=p, mark=k, fa=fa) for m, p, k, fa in notes]
@@ -407,6 +413,8 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
                     item["accounts"] = accounts
                 if voices:
                     item["voice"] = voices
+                if froms:
+                    item["from"] = froms
     if semantics:
         found += _item_checks(root, doc, passed, ctx, skeleton)
     return doc, found, unshaped
@@ -941,6 +949,18 @@ def _unit_voices(node, passages):
             if isinstance(v, dict) and _cited(dict(v, type="voice"), passages)]
 
 
+def _unit_froms(node, inputs):
+    """Task G 2026-09-16: which of the files it was handed an entry was read
+    off, gated the way the talk citations are — a path `build` did not print to
+    this unit is dropped in silence (REPAIR, no note, INV-3 at file level).
+
+    A unit reading one photo needs none of this; one reading fourteen was
+    citing all fourteen on every entry, which is a citation nobody can check.
+    """
+    return [rel for rel in node.get("from") or []
+            if isinstance(rel, str) and rel in inputs]
+
+
 def _address(entry):
     """`(kind, key, canonical scope)` — how the review addresses an assembled
     entry, and how two units are found to have minted the same one (§2.6)."""
@@ -1080,7 +1100,8 @@ def _pseudo(entry, unit, n):
     decision = {"action": "keep", "unit": unit, "data": {},
                 **{k: v for k, v in entry.items()
                    if k in ("key", "title", "statement", "aliases", "branches",
-                            "processes", "accounts", "extra", "_notes")}}
+                            "processes", "accounts", "from", "extra",
+                            "_notes")}}
     return handle, candidate, decision
 
 
@@ -1657,8 +1678,16 @@ def _entry(candidate, decision, state, part=None):
                 if _source_of(i, state["paths"]) not in sources:
                     sources.append(_source_of(i, state["paths"]))
     if not sources:
-        sources = [s for s in _unit_sources(state["units"].get(decision["unit"]))
-                   if s["type"] != "chat"]
+        read = [s for s in _unit_sources(state["units"].get(decision["unit"]))
+                if s["type"] != "chat"]
+        # …and of those, the ones the unit says this entry came off (task G).
+        # A unit handed fourteen photos cited all fourteen on each of its
+        # thirteen entries until 2026-09-16 — a citation nobody could check.
+        # `from` is already gated to the unit's own inputs, so this only
+        # narrows; an entry that names none of them keeps all of them, because
+        # citing too much is a smaller loss than citing nothing.
+        cited = set(written.get("from") or ())
+        sources = [s for s in read if s["ref"] in cited] or read
     # §3 phase 1: what the meeting filled in that the form does not state is
     # cited as the meeting — after the sheet or the photo, so `READ_OFF_A_FORM`
     # and the "form wins a merge" rule both keep reading the first source, and

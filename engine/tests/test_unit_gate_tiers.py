@@ -17,6 +17,7 @@ from facts_plan.assemble import _judge, assemble, materialise, report, validate_
 from facts_plan.cli import unit_states
 from merge_facts import tiers
 from test_facts_plan_assemble import _plan as _a_plan
+from test_facts_plan_assemble import FORM, PHOTO, _two_unit_run
 from test_facts_plan_assemble import _record_out, _rule_out, _second_record
 from test_facts_plan_assemble import _root as _a_root
 from test_facts_plan_assemble import _run as _a_run
@@ -798,3 +799,43 @@ def test_a_form_unit_is_bound_by_its_passages_and_not_by_its_files(tmp_path):
     assert _shown({"inputs": ["departments/x/attachments/.text/p.image.md"]}) == []
     assert _shown({"inputs": [f"{TR_SPAN[0]}#L1-L117"]}) == \
         [{"rel": TR_SPAN[0], "first": 1, "last": 117}]
+
+
+# --------------------------------------------------------------------------
+# Task G (2026-09-16): an entry cites the photo it was read off, not every
+# photo its unit was handed.
+
+PHOTO_2 = "departments/cooking/attachments/.text/photo-2.image.md"
+UNGIVEN = "departments/cooking/attachments/.text/photo-9.image.md"
+
+
+def _photo_run(tmp_path, entry):
+    """The two-photo phase-1 unit writing `entry` as its only `new[]` record —
+    `(the entry as it is stored, the findings)`."""
+    root, run = _two_unit_run(tmp_path, att_new=[entry], tr_new=[],
+                              photos=(PHOTO, PHOTO_2))
+    path = run / "units" / "u-att-1" / "out.1.json"
+    return _built(root, run, path)[0], _judge(root, run, path)[1]
+
+
+def test_an_entry_read_off_one_photo_cites_that_photo(tmp_path):
+    entry, findings = _photo_run(tmp_path, {**FORM, "from": [PHOTO_2]})
+    assert entry["source"] == [{"type": "photo", "ref": PHOTO_2}]
+    assert not _refused(findings) and not _noted(findings)
+
+
+def test_a_from_the_unit_was_never_given_is_dropped_and_every_photo_is_cited(tmp_path):
+    """INV-3 at file level, at the A7 tier: a path the unit was not handed is
+    a path nobody read, so it is dropped in silence and the entry falls back to
+    the unit's own inputs rather than losing its evidence."""
+    entry, findings = _photo_run(tmp_path, {**FORM, "from": [UNGIVEN]})
+    assert entry["source"] == [{"type": "photo", "ref": PHOTO},
+                               {"type": "photo", "ref": PHOTO_2}]
+    assert not _refused(findings) and not _noted(findings)
+    assert "from" not in entry and UNGIVEN not in json.dumps(entry)
+
+
+def test_an_entry_with_no_from_still_cites_every_photo_of_its_unit(tmp_path):
+    entry, _findings = _photo_run(tmp_path, FORM)
+    assert entry["source"] == [{"type": "photo", "ref": PHOTO},
+                               {"type": "photo", "ref": PHOTO_2}]

@@ -1985,19 +1985,22 @@ PHOTO = "departments/cooking/attachments/.text/photo-1.image.md"
 TALK = "meetings/transcripts/m.txt"
 
 
-def _two_unit_run(tmp_path, att_new, tr_new):
+def _two_unit_run(tmp_path, att_new, tr_new, photos=(PHOTO,)):
     """A run of the two phases: `u-att-1` (a photographed form, phase 1) and
     `u-tr-m-l1` (a three-line transcript, phase 2), neither holding a candidate
-    of the sheets — everything either writes is a `new[]` entry."""
+    of the sheets — everything either writes is a `new[]` entry. `photos` hands
+    the phase-1 unit more than one form, which is what a `from` citation is
+    for."""
     root = _root(tmp_path)
-    (root / PHOTO).parent.mkdir(parents=True)
-    (root / PHOTO).write_text("فرم تحویل\n", encoding="utf-8")
+    for rel in photos:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text("فرم تحویل\n", encoding="utf-8")
     (root / TALK).write_text("یک\nدو\nسه\n", encoding="utf-8")
     skeleton = dict(_skeleton(), candidates=[], issues=[], unit_symbols=[])
     plan = {"schema_version": 1, "department": "cooking",
-            "hashes": {PHOTO: "a", TALK: "b"},
+            "hashes": {**{rel: "a" for rel in photos}, TALK: "b"},
             "units": [{"id": "u-att-1", "type": "attachment", "phase": 1,
-                       "inputs": [PHOTO], "nodes": [], "candidates": [],
+                       "inputs": list(photos), "nodes": [], "candidates": [],
                        "est_tokens_in": 1, "est_tokens_out": 1},
                       {"id": "u-tr-m-l1", "type": "transcript", "phase": 2,
                        "inputs": [f"{TALK}#L1-L3"], "nodes": [], "candidates": [],
