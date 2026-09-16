@@ -245,16 +245,6 @@ def test_b5_an_output_per_off_the_grammar_is_a_note_with_no_mark():
     _assert_note(found, "per", None, NO_MARK)
 
 
-def test_b7_a_refitems_cell_off_the_namespace_is_a_note_on_the_column():
-    record = _record({"primaryKey": ["nam"],
-                      "fields": [{"key": "nam", "title": "n", "type": "string",
-                                  "refItems": {"namespace": "##"}}],
-                      "rows": [{"key": "r1", "nam": "پنیر پیتزا"}]}, role="reference")
-    found = _check(record)
-    _assert_note(found, "refItems cell", "data/fields/nam/refItems", "inferred")
-    _no_refusal(found)
-
-
 def test_b8_a_process_ref_off_the_grammar_is_removed_with_an_issue():
     rule = _rule(_computed(), processes=[{"ref": "Not A Process"},
                                          {"ref": "cooking-001"}],

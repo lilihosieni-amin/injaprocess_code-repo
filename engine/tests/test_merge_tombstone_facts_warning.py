@@ -43,7 +43,7 @@ def _write_proc(root, pid):
 
 
 def _row(fid, title, processes):
-    return {"id": fid, "kind": "item", "key": "some_key", "title": title,
+    return {"id": fid, "kind": "rule", "key": "some_key", "title": title,
             "scope": {}, "status": "confirmed", "retired": False,
             "processes": processes, "updated_at": "2026-08-01T00:00:00Z"}
 

@@ -94,8 +94,8 @@ def check_document(doc, kind_of_file, store=None, unit_symbols=None,
     (`skeleton.json`'s `unit_symbols[]`), exempted from the §5.2 lint's Latin
     rule — every other caller passes none and gets the bare rule.
 
-    `conventions` is the estate's own (§3.1): the item-code namespaces a
-    `refItems` cell may spell, and the table prefix §5.2 reads as an artefact.
+    `conventions` is the estate's own (§3.1): the table prefix §5.2 reads as
+    an artefact.
     Every caller that holds a root passes `conventions.load(root)`; the
     standalone `validate` CLI holds none and gets today's."""
     entries = doc.get("entries") or []
@@ -113,7 +113,7 @@ def check_document(doc, kind_of_file, store=None, unit_symbols=None,
             or entry.get("key") or "?"
         _check_expr(entry, combined_by_id, messages, label)
         _check_unit_edges(entry, doc_by_id, messages, label)
-        _check_keys(entry, messages, label, conventions)
+        _check_keys(entry, messages, label)
         _check_process_grammar(entry, messages, label)
         _check_record_shape(entry, messages, label)
         _check_shares(entry, messages, label)
@@ -317,7 +317,7 @@ def _check_unit_edges(entry, by_id, messages, label):
 
 
 # --------------------------------------------------------------------------- #
-# 3. key patterns + __ reservation; refItems cell values
+# 3. key patterns + __ reservation
 # --------------------------------------------------------------------------- #
 
 def _fix_segment(key):
@@ -365,7 +365,7 @@ def _check_key_list(members, messages, label, what):
                   what + " key {key} is not a minted segment")
 
 
-def _check_keys(entry, messages, label, conventions=DEFAULT_CONVENTIONS):
+def _check_keys(entry, messages, label):
     data = entry.get("data") or {}
     _check_key_list(data.get("fields"), messages, label, "field")
     _check_key_list(data.get("header_fields"), messages, label, "header field")
@@ -379,28 +379,6 @@ def _check_keys(entry, messages, label, conventions=DEFAULT_CONVENTIONS):
                                              f"a minted segment"))
     _key_findings(_list(data.get("rows")), KEY_RE, _fix_row_key, messages,
                   label, "row key {key} is not a minted key")
-    default_namespace = conventions.item_namespace
-    refitem_fields = {f["key"]: (f["refItems"].get("namespace")
-                                 or default_namespace)
-                      for f in data.get("fields") or []
-                      if isinstance(f, dict) and isinstance(f.get("refItems"), dict)
-                      and f.get("key")}
-    for row in data.get("rows") or []:
-        if not isinstance(row, dict):
-            continue
-        for name, namespace in refitem_fields.items():
-            value = row.get(name)
-            # A cell names an item either by its key or by the code the
-            # sheets write into the text («پنیر پیتزا ##1», «اینجا پیتزا #61»)
-            # — the same code `reference_rows` keys the row by. A column of
-            # such cells is exactly what `refItems` is for; refusing the code
-            # form made a unit that followed its card fail at the cap.
-            if isinstance(value, str) and not SEGMENT_RE.fullmatch(value) \
-                    and not conventions.matches_code(namespace, value):
-                messages.append(_inferred(
-                    entry, label, f"refItems cell {name}={value!r} on row "
-                    f"{row.get('key')!r} is neither an item key nor a "
-                    f"{namespace} code", f"data/fields/{name}/refItems"))
 
 
 # --------------------------------------------------------------------------- #

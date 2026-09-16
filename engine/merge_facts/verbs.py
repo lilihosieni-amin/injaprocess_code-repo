@@ -20,7 +20,7 @@ set/remove/unset/append ops to one entry, gated by the store's own gate.
 Every *writing* verb (`resolve`, `retire`, `promote`, `edit` and
 `repair-source-refs`) shares one shape:
 `load_store`, find the entry, mutate it, `entry["status"] = derive_status
-(entry)`, stamp `updated_at` on the touched entry only, snapshot the five
+(entry)`, stamp `updated_at` on the touched entry only, snapshot the four
 files to `{run_dir}/facts-before/` (`apply`'s own `_snapshot`, Task 5 — taken
 right before the write, same as `apply`'s), `save_store` (which rebuilds
 `.index.json`), and append `{"verb": ..., "args": {...}}` to
@@ -64,7 +64,7 @@ from merge_facts import (
     unset_path,
 )
 from merge_facts import conventions
-# `_snapshot` is `apply`'s own (Task 5): the five files as they stand right
+# `_snapshot` is `apply`'s own (Task 5): the four files as they stand right
 # before a write, kept at `{run_dir}/facts-before/` so `revert` (Task 7) can
 # restore an entry wholesale. Every *writing* verb here needs the same
 # snapshot for the same reason — its run directory is just as revertible as
@@ -93,17 +93,16 @@ _KIND_DATA_STUBS = {
     # Neutral containers `promote` may inject — empty, so nothing is
     # fabricated: `rule`'s `inputs`/`outputs` start as empty lists (a later
     # apply or edit fills them), and `note`'s own `data` needs nothing extra.
-    # item/record/measurement are deliberately absent: their schema-required
+    # record and measurement are deliberately absent: their schema-required
     # keys (`_KIND_REQUIRED_KEYS` below) are facts about the world — category,
-    # unit, medium, role, location, quantity — and `promote` must never guess
-    # at one. A note promoted to one of those three kinds is only accepted
+    # medium, role, location, quantity — and `promote` must never guess
+    # at one. A note promoted to one of those two kinds is only accepted
     # when its own `data` already carries them.
     "rule": {"inputs": [], "outputs": []},
     "note": {},
 }
 
 _KIND_REQUIRED_KEYS = {
-    "item": ("category", "unit"),
     "record": ("medium", "role", "location"),
     "measurement": ("quantity", "unit"),
 }
@@ -224,7 +223,7 @@ def retire(root, fact_id, heir, run_dir, date=None):
 def promote(root, fact_id, kind, key, run_dir):
     """Move a note into a real kind, in place: the id stays, the kind and key
     change. `data` gets only neutral, empty containers a promote may add
-    without inventing a fact (see `_KIND_DATA_STUBS`) — for item/record/
+    without inventing a fact (see `_KIND_DATA_STUBS`) — for record and
     measurement, the note's own `data` must already carry the target kind's
     schema-required keys, or promotion is refused. Only a note is promotable,
     and its hash key never carries over — `key` is always required."""
@@ -267,7 +266,7 @@ def promote(root, fact_id, kind, key, run_dir):
     # Belt: every precondition above is checked before this point, but a
     # residual schema failure (a shape `_KIND_REQUIRED_KEYS` doesn't cover)
     # must still exit clean rather than traceback. `save_store` validates
-    # all five files before writing any, so the store is untouched either way.
+    # all four files before writing any, so the store is untouched either way.
     try:
         _snapshot(root, pathlib.Path(run_dir))
         save_store(root, store)
@@ -345,6 +344,24 @@ def _apply_op(entry, op):
         raise KeyError(path)
     (remove_path if verb == "remove" else unset_path)(entry, path)
     return before, None
+
+
+def _home_problems(store, entry):
+    """R3 (2026-09-16): a `home` an instruction names must be a table that is
+    there. A run's dangling home is severed with a note (C29) because nobody is
+    at the keyboard to ask; an owner moving an entry by hand is told instead,
+    in one line, and nothing is written."""
+    if entry["kind"] == "record":
+        return ["home: a table has no home"]
+    ref = (entry.get("home") or {}).get("ref")
+    if ref is None:
+        return []
+    kind, target = _find(store, ref)
+    if target is None:
+        return [f"home: {ref} names no entry"]
+    if kind != "record":
+        return [f"home: {ref} is not a record"]
+    return []
 
 
 def _settle(entry, path, value, chat_src):
@@ -453,6 +470,8 @@ def edit(root, fact_id, patch_path, run_dir, preview=False):
         except (AttributeError, TypeError, ValueError) as exc:
             problems.append(f"op {i} {op['op']} {op['path']}: {exc}")
             break
+    if not problems and any(o["path"].split("/", 1)[0] == "home" for o in ops):
+        problems += _home_problems(store, work)
     found = []
     if not problems:
         # Spec 2026-09-13: the store's own repairs, on the store's contract —

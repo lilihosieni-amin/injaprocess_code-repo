@@ -55,7 +55,7 @@ from merge_facts import (KIND_FILES, KIND_ORDER, STORE_SCHEMA_VERSION, find_matc
 
 
 def _load_snapshot_store(run_dir):
-    """The five files as `facts-before/` holds them — the store as it stood
+    """The four files as `facts-before/` holds them — the store as it stood
     right before this run wrote. A kind absent from the snapshot means the
     run's own apply was the first-ever write to it: defaulting to an empty
     entries list (like `load_store`'s own default) invents nothing — there

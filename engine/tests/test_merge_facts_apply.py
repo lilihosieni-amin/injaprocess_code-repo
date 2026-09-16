@@ -104,7 +104,7 @@ def test_original_moves_to_originals(tmp_path):
     assert entry["data"]["original_ref"] == f"facts/originals/{fid}.txt"
     assert "original" not in entry["data"]
 
-def test_dependency_order_item_record_measurement_in_one_delta(tmp_path):
+def test_dependency_order_record_before_measurement_in_one_delta(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     delta = {"schema_version": 2, "entries": [
         {"id": "T-3", "kind": "measurement", "key": "advisory",
@@ -114,10 +114,12 @@ def test_dependency_order_item_record_measurement_in_one_delta(tmp_path):
          "retired": False,
          "data": {"of": {"ref": "T-1"}, "quantity": "mass", "unit": "g",
                   "writes_to": {"ref": "T-2", "field": "end_stock"}}},
-        {"id": "T-1", "kind": "item", "key": "ing_15", "title": "بیکن",
+        {"id": "T-1", "kind": "record", "key": "daftar_bikon", "title": "دفتر بیکن",
          "statement": "s", "scope": {"departments": [], "branches": []},
          "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "2"}],
-         "retired": False, "data": {"category": "ingredient", "unit": "g"}},
+         "retired": False,
+         "data": {"medium": "paper", "role": "log",
+                  "location": {"kept_at": "آشپزخانه", "holder": "سرآشپز"}}},
         {"id": "T-2", "kind": "record", "key": "mande_shab", "title": "مانده شب",
          "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
          "source": [{"type": "photo", "ref": "departments/cooking/attachments/p.jpg"}],
@@ -129,21 +131,13 @@ def test_dependency_order_item_record_measurement_in_one_delta(tmp_path):
     report = apply(root, _write(root, "d1.json", delta), _run_dir(root, "1"))
     store = load_store(root)
     m = store["measurement"]["entries"][0]
-    assert m["key"] == "ing_15__mande_shab__end_stock"     # derived by merge
+    assert m["key"] == "daftar_bikon__mande_shab__end_stock"   # derived by merge
     assert m["data"]["of"]["ref"] == report["id_map"]["T-1"]
     assert m["data"]["writes_to"]["ref"] == report["id_map"]["T-2"]
 
 def test_row_keys_derived_on_reference_record(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     delta = {"schema_version": 2, "entries": [
-        {"id": "T-1", "kind": "item", "key": "prod_61", "title": "پیتزا",
-         "statement": "s", "scope": {"departments": [], "branches": []},
-         "source": [{"type": "sheet", "ref": "attachments/sheets/M/M.xlsx"}],
-         "retired": False, "data": {"category": "product", "unit": "pcs"}},
-        {"id": "T-2", "kind": "item", "key": "ing_1", "title": "پنیر",
-         "statement": "s", "scope": {"departments": [], "branches": []},
-         "source": [{"type": "sheet", "ref": "attachments/sheets/M/M.xlsx"}],
-         "retired": False, "data": {"category": "ingredient", "unit": "g"}},
         {"id": "T-4", "kind": "record", "key": "mavad__pizza", "title": "BOM",
          "statement": "s", "scope": {"departments": [], "branches": []},
          "source": [{"type": "sheet", "ref": "attachments/sheets/M/M.xlsx"}],
@@ -153,10 +147,8 @@ def test_row_keys_derived_on_reference_record(tmp_path):
                                "hidden": False},
                   "primaryKey": ["product", "ingredient"],
                   "fields": [
-                      {"key": "product", "title": "محصول", "type": "string",
-                       "refItems": {"namespace": "#", "resolved_by": "code"}},
-                      {"key": "ingredient", "title": "ماده", "type": "string",
-                       "refItems": {"namespace": "##", "resolved_by": "code"}},
+                      {"key": "product", "title": "محصول", "type": "string"},
+                      {"key": "ingredient", "title": "ماده", "type": "string"},
                       {"key": "grams", "title": "گرم", "type": "number", "unit": "g"}],
                   "rows": [{"key": "r1", "product": "prod_61",
                             "ingredient": "ing_1", "grams": 250}]}}]}
@@ -211,8 +203,7 @@ def test_run_directory_keeps_the_delta_the_id_map_and_a_before_snapshot(tmp_path
         {"T-1": "F-00002"}
     before = run / "facts-before"                      # Task 7's revert reads it
     assert sorted(p.name for p in before.glob("*.json")) == [
-        "items.json", "measurements.json", "notes.json", "records.json",
-        "rules.json"]
+        "measurements.json", "notes.json", "records.json", "rules.json"]
     # the snapshot is the store as it stood BEFORE this run
     assert json.loads((before / "rules.json").read_text(encoding="utf-8"))["entries"] == []
 
@@ -382,10 +373,11 @@ def test_record_stub_is_created_once_and_filled_once_with_no_key_change(tmp_path
 def _workbook_stub_seed():
     src = {"type": "script", "ref": "attachments/sheets/G/G.gs", "function": "pull"}
     return {"schema_version": 2, "entries": [
-        {"id": "T-1", "kind": "item", "key": "ing_7", "title": "روغن",
+        {"id": "T-1", "kind": "record", "key": "roghan", "title": "دفتر روغن",
          "statement": "s", "scope": {"departments": [], "branches": []},
          "source": [dict(src)], "retired": False,
-         "data": {"category": "ingredient", "unit": "g"}},
+         "data": {"medium": "paper", "role": "log",
+                  "location": {"kept_at": "آشپزخانه", "holder": "سرآشپز"}}},
         {"id": "T-2", "kind": "record", "key": "ext_9f1c2d3e4a5b",
          "title": "کتاب ناشناخته", "statement": "s",
          "scope": {"departments": ["cooking"], "branches": []},
@@ -419,19 +411,19 @@ def test_workbook_stub_is_adopted_and_measurement_keys_are_rederived(tmp_path):
     stub_id, measurement_id = seed["id_map"]["T-2"], seed["id_map"]["T-3"]
     store = load_store(root)
     assert store["measurement"]["entries"][0]["key"] == \
-        "ing_7__ext_9f1c2d3e4a5b__masraf"
+        "roghan__ext_9f1c2d3e4a5b__masraf"
     report = apply(root, _write(root, "d2.json", _real_record_delta()),
                    _run_dir(root, "2"))
     assert report["id_map"] == {}                        # the stub's id is reused
     assert set(report["updated"]) == {stub_id, measurement_id}
     store = load_store(root)
     records = [e for e in store["record"]["entries"] if e["id"] == stub_id]
-    assert len(records) == 1 and len(store["record"]["entries"]) == 2   # units + it
+    assert len(records) == 1 and len(store["record"]["entries"]) == 3   # units, روغن, it
     rec = records[0]
     assert rec["key"] == "w__ruzane"                     # QF-34's other key change
     assert "stub" not in rec["data"] and "grain" not in rec["data"]
     assert rec["data"]["fields"][0]["key"] == "masraf"
-    assert store["measurement"]["entries"][0]["key"] == "ing_7__w__ruzane__masraf"
+    assert store["measurement"]["entries"][0]["key"] == "roghan__w__ruzane__masraf"
 
 
 def test_duplicate_natural_key_in_one_delta_is_folded_into_one_entry(tmp_path):
@@ -1028,3 +1020,162 @@ def test_apply_accepts_the_v3_rule_members_and_checks_their_field_refs(tmp_path)
             if e["key"] == "enheraf_ba_tolerance"][0]
     assert rule["extra"] == {
         "data/applies_to/pz__s11__l__r6/params/ref_1/field": "nadarad"}
+
+
+# --------------------------------------------------------------------------- #
+# `home` — the run reports the placement it did not change (2026-09-16)
+# --------------------------------------------------------------------------- #
+
+def _record_delta(key="mande_shab", title="مانده شب", tid="T-9"):
+    """A paper log — a table something else can be placed under."""
+    return {"schema_version": 2, "entries": [{
+        "id": tid, "kind": "record", "key": key, "title": title,
+        "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+        "source": [{"type": "photo", "ref": "departments/cooking/attachments/p.jpg"}],
+        "retired": False,
+        "data": {"medium": "paper", "role": "log",
+                 "location": {"kept_at": "زونکن دفتر", "holder": "سرآشپز"},
+                 "fields": [{"key": "vazn", "title": "وزن", "type": "number",
+                             "unit": "g"}]}}]}
+
+
+def _placed_delta(home, value=5, key="tol"):
+    d = _const_delta(value, key=key)
+    d["entries"][0]["title"] = "سقف ضایعات"
+    d["entries"][0]["home"] = {"ref": home} if home else None
+    return d
+
+
+def _two_tables(root):
+    """Two stored records, `(first, second)` by id."""
+    a = apply(root, _write(root, "ra.json", _record_delta()), _run_dir(root, "ra"))
+    b = apply(root, _write(root, "rb.json",
+                           _record_delta("mande_sobh", "مانده صبح")), _run_dir(root, "rb"))
+    return a["id_map"]["T-9"], b["id_map"]["T-9"]
+
+
+def test_apply_records_the_homes_it_did_not_move(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    first, second = _two_tables(root)
+    run1 = _run_dir(root, "p1")
+    apply(root, _write(root, "d1.json", _placed_delta(first)), run1)
+    assert read_json(run1 / "moved-home.json") == []       # always written
+    rule = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol"][0]
+    assert rule["home"] == {"ref": first}
+    run2 = _run_dir(root, "p2")
+    apply(root, _write(root, "d2.json", _placed_delta(second)), run2)
+    assert read_json(run2 / "moved-home.json") == [
+        {"id": rule["id"], "title": "سقف ضایعات", "stored": first, "seen": second}]
+    moved = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol"][0]
+    assert moved["home"] == {"ref": first}                 # the person's placement stands
+    assert [i["kind"] for i in moved["issues"]] == ["placement"]
+
+
+def test_a_second_run_seeing_the_same_other_table_writes_nothing_new(tmp_path):
+    """§17: the disagreement is reported every run — it is what the report
+    tells the owner — but the entry itself is not re-stamped."""
+    root = _root(tmp_path); _seed_units(root)
+    first, second = _two_tables(root)
+    apply(root, _write(root, "d1.json", _placed_delta(first)), _run_dir(root, "p1"))
+    apply(root, _write(root, "d2.json", _placed_delta(second)), _run_dir(root, "p2"))
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    run3 = _run_dir(root, "p3")
+    apply(root, _write(root, "d3.json", _placed_delta(second)), run3)
+    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
+    assert len(read_json(run3 / "moved-home.json")) == 1
+
+
+def test_a_home_that_names_no_record_is_severed_with_a_note(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    first, _second = _two_tables(root)
+    apply(root, _write(root, "d1.json", _placed_delta("T-99")), _run_dir(root, "p1"))
+    rule = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol"][0]
+    assert rule.get("home") is None
+    assert any(i["kind"] == "shape" for i in rule["issues"])
+    # and the temp id itself is not kept in `extra`: it names nothing once the
+    # delta is written (`_stash`, INV-1)
+    assert "home" not in (rule.get("extra") or {})
+
+
+def test_a_home_on_something_that_is_not_a_table_is_severed_too(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5, key="digar")), _run_dir(root, "o"))
+    other = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "digar"][0]
+    apply(root, _write(root, "d2.json", _placed_delta(other["id"])), _run_dir(root, "p1"))
+    rule = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol"][0]
+    assert rule.get("home") is None
+    assert any(i["kind"] == "shape" for i in rule["issues"])
+
+
+def test_a_delta_that_still_carries_an_item_is_refused_with_one_line(tmp_path, capsys):
+    root = _root(tmp_path); _seed_units(root)
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    delta = {"schema_version": 2, "entries": [
+        {"id": "T-1", "kind": "item", "key": "kahu", "title": "کاهو",
+         "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+         "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt",
+                     "lines": "3"}],
+         "retired": False, "data": {"category": "ingredient", "unit": "kg"}}]}
+    run = _run_dir(root, "i1")
+    with pytest.raises(SystemExit) as exc:
+        apply(root, _write(root, "d1.json", delta), run)
+    assert exc.value.code == 2
+    assert capsys.readouterr().err.splitlines()[-1] == \
+        "facts: kind item is no longer stored (spec 2026-09-16)"
+    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
+    assert not (run / "facts-before").exists()
+
+
+# --------------------------------------------------------------------------- #
+# what a measurement is `of`: a record, or words (§3.2, 2026-09-16)
+# --------------------------------------------------------------------------- #
+
+def _measurement_delta(of, writes_to=None, key="vazn_kahu"):
+    data = {"quantity": "mass", "unit": "g", "of": of}
+    if writes_to:
+        data["writes_to"] = writes_to
+    return {"schema_version": 2, "entries": [{
+        "id": "T-1", "kind": "measurement", "key": key, "title": "وزن کاهو",
+        "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+        "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt",
+                    "lines": "7"}],
+        "retired": False, "data": data}]}
+
+
+def _measurement(root):
+    return load_store(root)["measurement"]["entries"][0]
+
+
+def test_a_measurement_of_something_with_no_table_keeps_the_words(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _measurement_delta("کاهو")),
+          _run_dir(root, "m1"))
+    stored = _measurement(root)
+    assert stored["data"]["of"] == "کاهو"          # stored as written, no ref
+    assert "issues" not in stored and "extra" not in stored
+    assert stored["key"] == "vazn_kahu"            # nothing to derive a key from
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    apply(root, _write(root, "d2.json", _measurement_delta("کاهو")),
+          _run_dir(root, "m2"))
+    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
+
+
+def test_a_measurement_of_a_table_still_resolves_and_keys_itself(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    first, _second = _two_tables(root)
+    apply(root, _write(root, "d1.json", _measurement_delta(
+        {"ref": first, "field": "vazn"},
+        writes_to={"ref": first, "field": "vazn"})), _run_dir(root, "m1"))
+    stored = _measurement(root)
+    assert stored["data"]["of"] == {"ref": first, "field": "vazn"}
+    assert stored["key"] == "mande_shab__mande_shab__vazn"     # derived by merge
+
+
+def test_a_measurement_of_a_table_that_is_not_there_is_severed_with_a_note(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _measurement_delta({"ref": "F-09999"})),
+          _run_dir(root, "m1"))
+    stored = _measurement(root)
+    assert "of" not in stored["data"]
+    assert stored["extra"] == {"data/of": '{"ref": "F-09999"}'}
+    assert any(i["kind"] == "shape" for i in stored["issues"])

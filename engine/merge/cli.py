@@ -71,7 +71,7 @@ def _require(cond, msg):
 def _facts_referencing(root, pid):
     """QF-8 "At the tombstone": index rows in facts/.index.json whose
     `processes` names `pid` — read-only (never written here; the merge-only
-    rule binds the five facts store files, not this lookup) and empty when
+    rule binds the facts store files, not this lookup) and empty when
     the index file is absent, so a fresh/facts-less data root stays silent.
 
     A present-but-corrupt index must not make the tombstone fatal — same
