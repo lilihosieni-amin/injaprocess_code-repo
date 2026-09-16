@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pathLabel, redPath, refTitle, resolvedTitle, rowCount, rowTitle } from './bundle'
+import { pathLabel, redPath, refOrText, refTitle, resolvedTitle, rowCount, rowTitle } from './bundle'
 import { bundleOf } from './cards/fixture'
 
 const B = bundleOf('record', { medium: 'sheet', role: 'reference', location: {} }, {
@@ -54,6 +54,15 @@ describe('reading the bundle’s name maps', () => {
     // A masked neighbour has no label to read a column out of.
     expect(refTitle(B, { ref: 'hidden', field: 'grams' })!.text)
       .toBe('خارج از دسترسی شما')
+  })
+
+  it('reads an edge that carries words as those words, with nothing to open', () => {
+    // `of` is `refOrText` (spec 2026-09-16 §3.2) — words are a value, not a
+    // reference: drawn as written, never resolved, never a link.
+    expect(refOrText(B, 'وزن مرغ')).toEqual({ text: 'وزن مرغ', restricted: false })
+    expect(refOrText(B, { ref: 'F-00016' })!.text).toBe('گزارش مرکزی')
+    expect(refOrText(B, '')).toBeUndefined()
+    expect(refOrText(B, null)).toBeUndefined()
   })
 
   it('reads red out of `red_paths` and out of nothing else', () => {

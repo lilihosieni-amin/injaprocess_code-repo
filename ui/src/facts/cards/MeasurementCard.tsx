@@ -3,7 +3,7 @@ import {
   PAYLOAD_FIELD_LABELS, QUANTITY_LABELS, SCREEN_LABELS, label,
 } from '../../lib/factsLabels'
 import { isMeasurement, type FactBundle, type MeasurementData } from '../../api/types'
-import { refTitle } from '../bundle'
+import { refOrText, refTitle } from '../bundle'
 import { DetailCard, Mono, PX, RefLink, Unit, none } from './parts'
 
 /**
@@ -26,7 +26,7 @@ export function MeasurementCard({ bundle, onOpen }: {
   const { entry } = bundle
   if (!isMeasurement(entry)) return null
   const d: MeasurementData = entry.data
-  const of = refTitle(bundle, d.of)
+  const of = refOrText(bundle, d.of)
   const writes = refTitle(bundle, d.writes_to)
   return (
     <DetailCard className="mt-s10">

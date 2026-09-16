@@ -372,7 +372,9 @@ export interface RecordData {
 export interface MeasurementData {
   quantity: 'mass' | 'count' | 'volume' | 'duration' | 'money' | 'ratio' | 'other'
   unit: string
-  of?: FactRef
+  /** What is measured: a `{ref}`, or the **words** for it when no table names
+   *  it (`refOrText`, spec 2026-09-16 §3.2). Read it with `refOrText`. */
+  of?: FactRef | string | null
   writes_to?: FactRef
   when?: string
   by?: string
@@ -404,7 +406,8 @@ export interface RuleOutput {
   nature?: 'standard' | 'target' | 'observed' | 'limit'
   per?: string
   share?: number
-  of?: FactRef
+  /** As a measurement's — a `{ref}` or the words for it (`refOrText`). */
+  of?: FactRef | string | null
   writes_to?: FactRef
 }
 

@@ -83,6 +83,23 @@ export function refTitle(
 }
 
 /**
+ * The same, for an edge that may carry **words instead of a ref** — a
+ * measurement's and a rule output's `of` (`refOrText`, spec 2026-09-16 §3.2).
+ *
+ * Words are what the unit heard and nothing resolves them: they are drawn as
+ * they were written, with no id, so `RefLink` prints them and offers no press.
+ * An empty string is no answer at all and reads as absent.
+ */
+export function refOrText(
+  bundle: FactBundle, value: FactRef | string | undefined | null,
+): Named | undefined {
+  if (typeof value === 'string') {
+    return value === '' ? undefined : { text: value, restricted: false }
+  }
+  return refTitle(bundle, value)
+}
+
+/**
  * A row key → the row's Persian title (§17). Every row key is in the map, so a
  * miss means the row is not the entry's — never that it has no name.
  */

@@ -105,6 +105,35 @@ def test_scope_merges_leaf_by_leaf_not_as_whole_dict_blob():
     accounts = e.get("accounts") or []
     assert all("{'" not in a["statement"] for a in accounts)  # not a dict repr
 
+def test_an_object_field_over_words_disputes_instead_of_recursing():
+    """`of` is a ref **or the words** for what is measured (spec 2026-09-16
+    §3.2). A run that names a table for what the store holds as words offers
+    one value against another — not a member merge to walk into, which is where
+    the ladder used to die on `'str' object has no attribute 'get'`."""
+    e = _base()
+    e["kind"] = "measurement"
+    e["data"] = {"quantity": "mass", "unit": "kg", "of": "وزن مرغ"}
+    inc = copy.deepcopy(e)
+    inc["data"]["of"] = {"ref": "F-00002"}
+    changes = merge_entry(e, inc, SRC_B)
+    assert e["data"]["of"] == "وزن مرغ"                 # NEVER overwrite
+    assert ("data/of", "dispute") in changes
+    assert [a["value"] for a in e["accounts"]] == ["وزن مرغ", {"ref": "F-00002"}]
+
+
+def test_an_object_field_over_a_null_fills_it():
+    """The same guard's other half: a `null` is unknown (C10), so the object
+    that arrives fills it rather than being merged into nothing."""
+    e = _base()
+    e["kind"] = "measurement"
+    e["data"] = {"quantity": "mass", "unit": "kg", "of": None}
+    inc = copy.deepcopy(e)
+    inc["data"]["of"] = {"ref": "F-00002"}
+    changes = merge_entry(e, inc, SRC_B)
+    assert e["data"]["of"] == {"ref": "F-00002"}
+    assert ("data/of", "fill") in changes
+
+
 def test_prose_leaf_nested_in_object_field_is_never_disputed():
     # F2: PROSE_LEAVES applies by leaf name at any depth, including inside
     # object fields (e.g. data.movement.reason), not just at top level/data.

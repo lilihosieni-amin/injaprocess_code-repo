@@ -247,7 +247,13 @@ def _merge_member(entry, current, incoming, path, source, changes, skip=frozense
         if _is_keyed_list(v, k):
             current.setdefault(k, [])
             _merge_collection(entry, current[k], v, k, p, source, changes)
-        elif isinstance(v, dict) and (k in OBJECT_FIELDS or isinstance(current.get(k), dict)):
+        elif isinstance(v, dict) and isinstance(current.get(k, {}), dict) \
+                and (k in OBJECT_FIELDS or isinstance(current.get(k), dict)):
+            # `current.get(k, {})`: an object field standing on something that
+            # is no object — words where `of` may carry either (`refOrText`,
+            # spec 2026-09-16 §3.2), or the `null` a REPAIR wrote — is not a
+            # member merge. It is one value against another, which §11 already
+            # knows how to fill or dispute.
             current.setdefault(k, {})
             _merge_member(entry, current[k], v, p, source, changes)
         else:

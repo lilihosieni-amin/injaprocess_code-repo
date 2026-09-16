@@ -9,7 +9,7 @@ import {
   isRule, type FactBundle, type FactRef, type RuleBinding, type RuleData, type RuleInput,
   type RuleOutput,
 } from '../../api/types'
-import { refTitle } from '../bundle'
+import { refOrText, refTitle } from '../bundle'
 import {
   CountBand, DetailCard, Eyebrow, FactGrid, FieldName, HeadBand, LabelRow, Mono, PX, Pill,
   RefLink, Tag, Unit, none, unanswered, type GridCell,
@@ -82,7 +82,7 @@ function ConstantCard({ bundle, outputs, onOpen }: {
     <DetailCard clip={false} style={PX.card24} className="mt-s10">
       {outputs.map((o) => {
         const value = valueText(o)
-        const of = refTitle(bundle, o.of)
+        const of = refOrText(bundle, o.of)
         const writes = refTitle(bundle, o.writes_to)
         return (
           <div key={o.key}>
@@ -531,7 +531,7 @@ function InputRow({ bundle, input, params, onOpen }: {
 function OutputRow({ bundle, output, onOpen }: {
   bundle: FactBundle; output: RuleOutput; onOpen: (id: string) => void
 }) {
-  const of = refTitle(bundle, output.of)
+  const of = refOrText(bundle, output.of)
   const writes = refTitle(bundle, output.writes_to)
   // B22/P4(a) — a threshold on a rule with inputs («حد شروع پخت») is stored as
   // written, so it is drawn here as the constant card draws it.

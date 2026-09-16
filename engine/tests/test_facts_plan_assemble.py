@@ -606,6 +606,27 @@ def test_a_new_entry_attached_to_nothing_is_department_wide(tmp_path):
     assert measurement["scope"] == {"departments": ["cooking"], "branches": []}
 
 
+def test_a_measurement_of_words_lands_as_words(tmp_path):
+    """What a measurement is `of` may be a ref **or the words** for what it
+    measures (spec 2026-09-16 §3.2, `refOrText`). Words are no attachment and
+    no table derives from them — but they must survive the walk and reach the
+    delta as written, which is what the real cooking run fell over."""
+    root = _root(tmp_path)
+    rule = _rule_out()
+    rule["new"] = [{"kind": "measurement", "key": "vazn_morgh",
+                    "title": "وزن مرغ", "statement": "مرغ را انباردار می‌کشد.",
+                    "data": {"quantity": "mass", "unit": "kg", "of": "وزن مرغ",
+                             "by": "انباردار", "when": "هر شب"}}]
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule})
+    assert "vazn_morgh" in digest(root, run_dir).read_text(encoding="utf-8")
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    measurement = next(e for e in delta["entries"] if e["kind"] == "measurement")
+    assert measurement["data"]["of"] == "وزن مرغ"
+    assert measurement.get("home") is None
+    assert measurement["scope"] == {"departments": ["cooking"], "branches": []}
+
+
 def test_a_review_drop_removes_a_new_entry(tmp_path):
     """Step 0 — a `new[]` entry is addressed exactly like a candidate, so the
     reviewer's four actions reach the notes and measurements too."""

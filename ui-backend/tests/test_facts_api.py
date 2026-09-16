@@ -811,6 +811,22 @@ def test_the_bundle_carries_every_map_a_screen_needs(data_root, tmp_path):
     assert [c["id"] for c in shared["consumers"]] == [RULE, DINING_RULE, BOM]
 
 
+def test_the_bundle_serves_a_measurement_of_words_as_words(data_root, tmp_path):
+    """What a measurement is `of` may be a ref **or the words** for what it
+    measures (spec 2026-09-16 §3.2, `refOrText`). Words are served as written
+    and resolve to nothing — the panel draws the text itself, and `resolved`
+    has no row to draw a link from."""
+    entries = json.loads(json.dumps(ENTRIES))
+    measurement = next(e for e in entries if e["id"] == MEASUREMENT)
+    measurement["data"]["of"] = "وزن مرغ"
+    _plant(data_root, entries)
+    client = _client_as(data_root, tmp_path, "editor", "*")
+    body = client.get(f"/api/facts/{MEASUREMENT}").json()
+    assert body["entry"]["data"]["of"] == "وزن مرغ"
+    assert body["resolved"] == {}
+    assert body["path_labels"] == {}
+
+
 def test_a_red_entry_is_confirmable_and_still_reports_its_red(data_root, tmp_path):
     """**Owner ruling, 2026-09-06**, overturning QF-25's red-over-green: «each
     of the quantitative items should be confirmable, regardless of whether it

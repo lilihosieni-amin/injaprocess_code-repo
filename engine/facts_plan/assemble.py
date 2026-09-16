@@ -1657,14 +1657,24 @@ def _scope_of(candidate, department, decision, by_id):
                                or set(decision.get("branches") or []))}
 
 
+def _ref_id(value):
+    """The id a `{ref}` edge names — `None` when the field carries the **words**
+    for what it means instead (`refOrText`: a measurement's and a rule output's
+    `of`, spec 2026-09-16 §3.2), or nothing at all. Words are a value, never an
+    attachment: nothing resolves them, no table is derived from them, and they
+    travel to the store as written."""
+    ref = value.get("ref") if isinstance(value, dict) else None
+    return ref if isinstance(ref, str) else None
+
+
 def _attachment_refs(data):
     """The four edges §3.2 calls an attachment, in one generator."""
-    yield (data.get("of") or {}).get("ref")
-    yield (data.get("writes_to") or {}).get("ref")
+    yield _ref_id(data.get("of"))
+    yield _ref_id(data.get("writes_to"))
     for member in data.get("about") or []:
-        yield (member or {}).get("ref")
+        yield _ref_id(member)
     for member in data.get("tracked") or []:
-        yield ((member or {}).get("record") or {}).get("ref")
+        yield _ref_id(member.get("record") if isinstance(member, dict) else None)
 
 
 def _attach_scopes(entries, state, by_temp):
@@ -1727,9 +1737,9 @@ def derive_home(entry, kind_of=None):
     data = entry.get("data") or {}
 
     def a_table(member):
-        if not (isinstance(member, dict) and isinstance(member.get("ref"), str)):
-            return False
-        return kind_of is None or kind_of(member["ref"]) in (None, "record")
+        ref = _ref_id(member)                 # words, not a ref: no table to sit on
+        return ref is not None and (kind_of is None
+                                    or kind_of(ref) in (None, "record"))
 
     if entry["kind"] == "rule":
         # Spec §4.1: "a rule with bindings on exactly one RECORD". A binding

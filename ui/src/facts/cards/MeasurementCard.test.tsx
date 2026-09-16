@@ -44,6 +44,17 @@ describe('the measurement card', () => {
     expect(screen.getByText('end_stock')).toBeInTheDocument()
   })
 
+  it('draws «برای» as the words themselves when `of` is text, not a ref', () => {
+    // `of` is `refOrText` (spec 2026-09-16 §3.2): a unit that heard what is
+    // weighed but found no table for it writes the words. They resolve to
+    // nothing, so a reader of `resolved` alone drew an empty pane.
+    render(<MeasurementCard bundle={bundleOf('measurement', {
+      quantity: 'mass', unit: 'kg', of: 'وزن مرغ خام',
+    })} onOpen={vi.fn()} />)
+    expect(screen.getByText('وزن مرغ خام')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'وزن مرغ خام' })).toBeNull()
+  })
+
   it('draws the method and the exceptions', () => {
     render(<MeasurementCard bundle={WEIGHING} onOpen={vi.fn()} />)
     expect(screen.getByText('ترازوی دیجیتال کنار یخچال')).toBeInTheDocument()
