@@ -1973,6 +1973,29 @@ KIND_NOTE = {
             "`nature: standard` یعنی عدد ثابت و `value` یا `range` می‌خواهد."}
 
 
+#: A fact lives on a table (agent §«A fact lives on a table»). `home` is a
+#: sibling of `data`, so the generated block below never showed it, and the
+#: 2026-09-16 run wrote it on 0 of 120 new rules, measurements and notes — the
+#: unit writes what its card prints. One line per homed kind, at the head of
+#: the kind's own card.
+HOME_LINE = (
+    '`home` کنار `data` می‌آید: `{"ref": "<handle>", "field"?: "<column key>"}` '
+    "— جدولی که این نوشته دربارهٔ آن یا روی آن است، با شناسه‌ای که همین ورودی "
+    "چاپ کرده: `S-…` از «نامزدها» یا «آنچه تا کنون ثبت شده»، `F-…` از همان "
+    "فهرست، یا `N-<این واحد>-<n>` برای جدولی که همین واحد در `new[]` می‌سازد "
+    "(`n` از صفر). `field` فقط برای یک ستون آن جدول، با کلید چاپ‌شده. اگر هیچ "
+    "جدول فهرست‌شده‌ای جا نبود، `home` را ننویس و در یک عبارت از `statement` "
+    "بگو چرا. رکورد `home` ندارد.")
+
+KIND_HOME = {
+    "measurement": HOME_LINE + " اندازه‌گیری‌ای که در واقع یک ستون از یک فرم "
+                   "فهرست‌شده است، یک اندازه‌گیری با `home.field` است، نه یک "
+                   "جدول تازه.",
+    "rule": HOME_LINE + " `home` یک فرمول، جدولی است که نخستین عضو "
+            "`applies_to` آن نام می‌برد.",
+    "note": HOME_LINE}
+
+
 #: Four `new[]` entries a unit can copy — a paper form (the case the first run
 #: had no shape for), a measurement, a rule reading its parameters, and a
 #: decision table (whose row shape the schema cannot state, §4/I8). A test
@@ -2000,7 +2023,7 @@ EXAMPLES = [
                              {"role": "سرپرست آشپزخانه"}],
               "primaryKey": ["tarikh", "qalam"]}},
     {"kind": "measurement", "key": "vazn_morgh_vorudi",
-     "title": "وزن مرغ ورودی",
+     "title": "وزن مرغ ورودی", "home": {"ref": "N-…-0", "field": "meqdar"},
      "statement": "وزن هر محموله مرغ هنگام تحویل با ترازوی انبار اندازه گرفته "
                   "می‌شود و در فرم تحویل ثبت می‌شود.",
      "data": {"quantity": "mass", "unit": "kg",
@@ -2009,7 +2032,7 @@ EXAMPLES = [
               "exceptions": "محموله‌های بسته‌بندی‌شده با وزن چاپی دوباره وزن "
                             "نمی‌شوند."}},
     {"kind": "rule", "key": "enheraf_ba_tolerance",
-     "title": "انحراف مصرف با تلورانس",
+     "title": "انحراف مصرف با تلورانس", "home": {"ref": "S-rec-…"},
      "statement": "انحراف مصرف هر ماده اولیه پس از کسر تلورانس مجاز به دست "
                   "می‌آید؛ مقدار مثبت یعنی مصرف بیش از انتظار بوده است.",
      "data": {"lang": "feel",
@@ -2024,7 +2047,7 @@ EXAMPLES = [
                            "title": "انحراف با تلورانس", "unit": "kg",
                            "nature": "observed"}]}},
     {"kind": "rule", "key": "mabnaye_sabt_mande",
-     "title": "مبنای ثبت ماندهٔ پایان شب",
+     "title": "مبنای ثبت ماندهٔ پایان شب", "home": {"ref": "S-rec-…"},
      "statement": "مبنای ثبت ماندهٔ پایان شب برای هر گروه از اقلام متفاوت است: "
                   "گروهی با وزن و گروهی با تعداد ثبت می‌شوند.",
      "data": {"lang": "table", "expr": None,
@@ -2061,6 +2084,8 @@ def shape_card(kinds, schema, conventions=DEFAULT_CONVENTIONS):
             continue
         data = defs[data_def]
         out += [f"## {kind} — data ({KIND_FA[kind]})", ""]
+        if kind in KIND_HOME:
+            out += [KIND_HOME[kind], ""]
         out += _block(data, defs, "", {data_def})
         if kind == "record":
             out += [""] + _location_lines(data, "")

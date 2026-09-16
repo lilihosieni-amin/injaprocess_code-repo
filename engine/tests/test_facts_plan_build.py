@@ -532,8 +532,10 @@ def test_each_part_of_a_split_form_unit_gets_its_own_talk(tmp_path, monkeypatch)
     (root / "meetings" / "transcripts" / "prep-1405-06-01.txt").write_text(
         "\n".join(["شمارش موجودی پیتزا و پنیر را در جدول مغایرت می‌نویسیم"] * 20),
         encoding="utf-8")
-    # just under the pizza book's own core, so that book — and only it — splits
-    monkeypatch.setattr(B, "IN_BUDGET", 5100)
+    # just under the pizza book's own core, so that book — and only it —
+    # splits. It tracks the shape card: 5100 before the `home` line grew the
+    # card by ~770 tokens on 2026-09-16.
+    monkeypatch.setattr(B, "IN_BUDGET", 5870)
     run = tmp_path / "run"
     build(root, "cooking", run, ["prep-1405-06-01"])
     plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))

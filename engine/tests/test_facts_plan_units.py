@@ -309,6 +309,15 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
         # §3.3: and the run's own unit symbols, so no unit invents one.
         assert "## واحدهای مجاز" in text
         assert "`g`" in text and "`kg`" in text
+        # 2026-09-16: every rule, measurement and note names the table it
+        # lives on, so all three cards and the worked examples say `home`.
+        for kind in ("rule", "measurement", "note"):
+            head = text.index(f"## {kind} — data")
+            assert text.index("`home` کنار `data`", head) - head < 200, kind
+        examples = text[text.index("## نمونه‌های کامل `new[]`"):]
+        assert examples.count('"home"') == 3       # not the record example
+        assert '"home": {\n    "ref": "S-rec-…"\n  }' in examples
+        assert '"field": "meqdar"' in examples
     chunk = next(u for u in plan["units"] if u["type"] == "transcript")
     assert chunk["inputs"] == ["meetings/transcripts/cooking-1405-05-26.txt#L1-L39"]
     # a line under the cap is quoted byte for byte, trailing spaces included

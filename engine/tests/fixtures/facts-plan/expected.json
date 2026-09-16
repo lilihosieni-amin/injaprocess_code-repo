@@ -30,56 +30,56 @@
    "id": "u-wb-ashpazkhne_chalebagh",
    "type": "workbook",
    "candidates": 6,
-   "est_tokens_in": 5543,
+   "est_tokens_in": 6349,
    "est_tokens_out": 2080
   },
   {
    "id": "u-wb-amar_farangi",
    "type": "workbook",
    "candidates": 2,
-   "est_tokens_in": 5112,
+   "est_tokens_in": 5919,
    "est_tokens_out": 2100
   },
   {
    "id": "u-wb-fried",
    "type": "workbook",
    "candidates": 2,
-   "est_tokens_in": 5024,
+   "est_tokens_in": 5830,
    "est_tokens_out": 1560
   },
   {
    "id": "u-wb-amar_kanter",
    "type": "workbook",
    "candidates": 2,
-   "est_tokens_in": 5266,
+   "est_tokens_in": 6073,
    "est_tokens_out": 2520
   },
   {
    "id": "u-wb-amar_pitza",
    "type": "workbook",
    "candidates": 2,
-   "est_tokens_in": 5051,
+   "est_tokens_in": 5857,
    "est_tokens_out": 1980
   },
   {
    "id": "u-wb-gozaresh_markazi",
    "type": "workbook",
    "candidates": 16,
-   "est_tokens_in": 12541,
+   "est_tokens_in": 13348,
    "est_tokens_out": 5720
   },
   {
    "id": "u-wb-mavade_avalie",
    "type": "workbook",
    "candidates": 12,
-   "est_tokens_in": 7344,
+   "est_tokens_in": 8151,
    "est_tokens_out": 10020
   },
   {
    "id": "u-tr-transcript-l1",
    "type": "transcript",
    "candidates": 0,
-   "est_tokens_in": 13185,
+   "est_tokens_in": 13992,
    "est_tokens_out": 3412
   }
  ],
