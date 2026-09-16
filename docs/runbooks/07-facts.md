@@ -23,7 +23,7 @@ data-repo/
   facts/
     .id-seq.json       the global F- ledger (QF-21)
     .index.json         one row per entry, rebuilt on every write
-    items.json  records.json  measurements.json  rules.json  notes.json
+    records.json  measurements.json  rules.json  notes.json
     originals/{id}.txt  verbatim formula/script bodies, out of line
   attachments/sheets/
     manifest.json        the one description of the estate (Appendix B)
@@ -36,7 +36,7 @@ data-repo/
                                   id-map.json, validate output
 ```
 
-`facts/` is written **only** by `merge facts` — never hand-edit those five
+`facts/` is written **only** by `merge facts` — never hand-edit those four
 files or `.index.json`. `attachments/sheets/**/*.xlsx` is in `.gitignore`:
 the workbooks are deployment assets placed by hand and carry daily values and,
 in places, named staff, on the same precedent as `meetings/audio/`. Everything
@@ -130,7 +130,7 @@ other fact:
 
 The complete units-record delta (design §10, QF-40 — `g, kg` mass; `ml, l`
 volume; `pcs, slice, portion` count; `carton, pack` pack-level, whose
-`factor_to_base` is `null` because it is per item; `min, hour, day`
+`factor_to_base` is `null` because it depends on what is packed; `min, hour, day`
 duration; `irr` money; `percent, ratio` dimensionless):
 
 ```json
@@ -279,8 +279,9 @@ nothing cites is still *reported*, as an `uncited_workbook` finding — a line t
 read, never a denominator to close.)
 
 `merge facts repair-foreign-keys` is retired with the same change: `foreignKeys`
-is gone from the payload vocabulary, replaced by `imports[]` and
-`fields[].refItems`, so there is no collection left for it to repair.
+is gone from the payload vocabulary, replaced by `imports[]` (and, until
+2026-09-16, `fields[].refItems`), so there is no collection left for it to
+repair.
 
 Every `check`/`audit` line is a finding for a human, not a failure — both verbs
 exit 0 whatever they found.
@@ -546,7 +547,7 @@ table gains a row.
 
 ### The estate's own spellings — `conventions` in the manifest (I6, added 2026-09-08)
 
-Nothing in the engine knows this estate's branch names, its `##`/`#` item-code
+Nothing in the engine knows this estate's branch names, its `##`/`#` code
 namespaces, its `Column N` placeholder headers, its month names or its `Table_`
 prefix any more. They are one optional object in
 `attachments/sheets/manifest.json`:
@@ -599,7 +600,7 @@ either file.
 | file | written by | sent at | carries |
 |---|---|---|---|
 | `{run_dir}/gate-b.md` | `facts-plan assemble` | **not sent** since 2026-09-09 — kept on disk as the run's record | counts per kind; the first three rules in one sentence each; how many were dropped and the commonest reasons; how many went unexamined; the disputes numbered with lettered options; how many issues were found in the files, three of them named; how many cells are unanswered; and the one question «تأیید می‌کنید؟» |
-| `{run_dir}/report.md` | `facts-plan report` | after the apply and the commit | first, since 2026-09-13, every lost source (below); then what was recorded, dropped and left unexamined; the open disputes numbered with lettered options; the unanswered cells grouped per entry; the dropped list by reason in the owner's own words; whether a part was left unfinished (the engine's file findings are **not** here since 2026-09-09 — they are on the entry in the panel and counted in `gate-b.md`); and how the review went — applied whole, or applied with the decisions that were set aside named one per line |
+| `{run_dir}/report.md` | `facts-plan report` | after the apply and the commit | first, since 2026-09-13, every lost source (below); then, since 2026-09-16, one line per table with its counts, the «بدون جدول» line and any entry whose recorded table this run disagreed with; then what was recorded, dropped and left unexamined; the open disputes numbered with lettered options; the unanswered cells grouped per entry; the dropped list by reason in the owner's own words; whether a part was left unfinished (the engine's file findings are **not** here since 2026-09-09 — they are on the entry in the panel and counted in `gate-b.md`); and how the review went — applied whole, or applied with the decisions that were set aside named one per line |
 
 A third line runs through both files: **a file this run could not read is named
 once.** An extension `extract-attachment` has no converter for, or a supported
@@ -816,14 +817,13 @@ by title.
 
 A run has **two phases** now, and `plan.json` carries a `phase` on every unit:
 
-- **Phase 1 — the forms** (`phase: 1`: the workbook, attachment and items
-  units). Each unit's input gains one section after «## متن»,
-  «گفت‌وگوهای مرتبط» — the passages of the run's chosen transcripts that talk
+- **Phase 1 — the forms** (`phase: 1`: the workbook and attachment units). Each
+  unit's input gains one section after «## متن», «گفت‌وگوهای مرتبط» — the passages of the run's chosen transcripts that talk
   about *this* unit's tables. The planner scans each transcript in windows of 40
   lines stepping 20, scores a window by the tokens it shares with the unit's own
-  candidates (titles, aliases, column titles, row labels, item codes), takes
-  them best-first up to 80K tokens, merges windows that touch, never takes a
-  window that scores 0, and prints what is left in transcript order under the
+  candidates (titles, aliases, column titles, row labels, the codes printed on
+  a sheet), takes them best-first up to 80K tokens, merges windows that touch,
+  never takes a window that scores 0, and prints what is left in transcript order under the
   meeting's date, line range and transcript path
   («### ۱۴۰۵/۰۶/۰۱ · L213–L252 · meetings/transcripts/preparation-1405-06-01.txt»)
   so a citation to it can be checked — and the engine does check it: an account
@@ -834,12 +834,14 @@ A run has **two phases** now, and `plan.json` carries a `phase` on every unit:
   recorded. Their «ورودی‌های قابل استفادهٔ مجدد» section is replaced by
   «آنچه تا کنون ثبت شده»: every record phase 1 kept with its columns and where
   it lives (its medium, and the tab or the cupboard and holder), every rule by
-  key, title and statement, every item by code and
-  title — each with the handle a phase-2 unit may address (the candidate's
-  `S-…`, or a run-wide `N-…` for an entry phase 1 minted) — up to 20K, and
+  key, title and statement — each with the handle a phase-2 unit may address
+  (the candidate's `S-…`, or a run-wide `N-…` for an entry phase 1 minted) — up
+  to 20K, and
   then, as before, the store's open entries of the department. A spoken number
   about a listed table goes *to* that table; a new table is described only when
-  none of the listed ones fits, and it is still marked «استنباطی» (F6). Nothing
+  none of the listed ones fits, and it is still marked «استنباطی» (F6). Since
+  2026-09-16 that same list is where a unit picks the table each rule,
+  measurement and note it writes is listed under (`home`, below). Nothing
   spoken is skipped: every chosen line is still read by exactly one phase-2
   unit.
 
@@ -910,6 +912,96 @@ talk, appended after the core fit check, neither causes a split nor prevents
 one. 130K of input sits well inside the runtime's million-token window, which is
 also why §10's `[1m]` suffix matters more than it did: the 200K a missing suffix
 silently gives no longer has room for a form unit with a full talk section.
+
+### Tables as the spine — the home link, and no items (added 2026-09-16)
+
+`docs/superpowers/specs/2026-09-16-facts-tables-as-the-spine-design.md` is the
+design, agreed with the owner on 2026-09-16 (ADR 0017's ruling of that date);
+its §3 is the folded `2026-09-16-facts-no-items-design.md`. The process engineer
+who tested the system reported that the quantitative data is too much to check
+and that the relationships between the entries are not clear enough — where a
+measurement is written, which table a rule belongs to. Two changes answer it.
+
+**Four kinds.** `record`, `measurement`, `rule`, `note`. The `item` kind, its
+`itemData` payload and the file `facts/items.json` are gone, and so is the
+column type `refItems`: a cell that names an ingredient is **text**, and a code
+printed on a sheet (`##1`, `#61`) is text in a cell, not a reference target. A
+measurement's `of` and a rule's `per` name a record — with a field or a row of
+it — or are text. The coded raw-materials tabs are read as any reference tab is:
+one record with rows. On an existing store `facts/items.json` is deleted and the
+item ids leave `.index.json`, one commit per store made on the owner's word; the
+`F-` ledger is **not** rewound, so those numbers stay used. Runs already on disk
+are history and are not rewritten — a delta that still carries an `item` is
+refused by `apply` with one line, `facts: kind item is no longer stored (spec
+2026-09-16)`, exit 2.
+
+**`home` — the table an entry is listed under.** A rule, a measurement and a
+note carry one more envelope member, `home`: `{"ref": "F-00025"}` with an
+optional `"field"` (a column key of that record), or `null`/absent for an entry
+no table fits. A record never carries one. `.index.json` rows carry `home` too
+(the record id, or `null`), so the panel lists a table's entries without opening
+the kind files. `home` replaces nothing — a rule's `applies_to`, a measurement's
+`of` and a note's `about` keep their meanings; `home` answers one question only:
+*under which table is this listed*. A unit writes it, and when a unit wrote none
+the assembly derives it: a rule whose `applies_to` binds exactly one record
+takes that record, a measurement whose `of` names a record takes that record
+and its field, a note takes the first record its `about` names (owner decision
+3), and anything else stays unattached. A `home` that names no record is
+**severed with a note**, as any dangling reference is (the NOTE tier of the
+table above), never a refusal; and
+`retire` of a record leaves its dependants' `home` pointing at the tombstone,
+which the panel shows as «جدول بازنشسته» (no cascade, INV-4).
+
+**A run never moves what a person placed.** `home` is placement, not a fact, so
+the write ladder has one rule of its own: a stored `home` is never overwritten.
+When a run's entry names a different table, the entry gains the issue `{"kind":
+"placement", "description": "این اجرا این مورد را زیر جدول دیگری می‌دید؛ جای
+ثبت‌شده تغییر نکرد.", "affects": []}`, `apply` writes the list to
+`{run_dir}/moved-home.json` — `[{"id", "title", "stored", "seen"}]`, record ids
+— and `report.md` says it in the owner's own words: «جای «سقف ضایعات» تغییر
+نکرد؛ این اجرا آن را زیر «فرم تولید نیمه‌ساخته» می‌دید.» (owner decision 1: the
+disagreement is in the chat message, not only on the entry). An entry with no
+stored `home` simply adopts the run's.
+
+**The report reads by table.** After the lost-sources block, `report.md` prints
+one line per table — «فرم تبدیل آماده‌سازی برگر»: ۸ قاعده، ۳ اندازه‌گیری، ۱
+یادداشت — then «بدون جدول: …» when anything is unattached (the line is omitted
+when nothing is), then the lines above for what this run would have moved. No
+id, as everywhere in that file. The reviewer's digest gains a flag of its own,
+`homeless · <handle> · candidates: <handles>` — a rule or a measurement with no
+home standing beside a record whose title shares at least two of its words — and
+the reviewer may set `home` in a `keep` like any other field.
+
+**Moving one entry.** `merge facts edit` (§13) takes `home` like any other
+envelope path: `{"op": "set", "path": "home", "value": {"ref": "F-00031"}}`
+moves an entry, `{"op": "unset", "path": "home"}` detaches it. The move keeps
+the entry's id, its confirm tick and its history, and stamps `updated_at`. Three
+refusals, one line each, exit 2, nothing written: `home: F-00116 is not a
+record`, `home: F-09999 names no entry`, `home: a table has no home` (a `set` on
+a record). The owner's side is the `edit-fact` playbook's two new cases —
+«قاعدهٔ «سقف ضایعات» را زیر «فرم تبدیل آماده‌سازی برگر» ببر» and «… را از جدولش
+جدا کن» — each resolved against the index, shown as one Persian line («قاعدهٔ
+«…» زیر «…» می‌رود.») and applied on «بله».
+
+**In the panel.** The facts list pages are unchanged, and an unattached entry
+stays in them (owner decision 2); only the entry's own page says «بدون جدول».
+A record's page gains «قواعد این جدول», «اندازه‌گیری‌های این جدول» and
+«یادداشت‌های این جدول» — each row a title, its tick state and, when `home.field`
+is set, the column the entry is tied to; the section header counts «۵ از ۸ تأیید
+شده»; a click opens the entry's page as before; and «تأیید همهٔ موارد این جدول»
+ticks each unconfirmed entry of those sections through the existing per-entry
+confirm endpoint, one audit row each, leaving the record's own tick alone. The
+«استفاده‌کنندگان» card stays for the links that are not homes. There is no move
+action in the panel — moving is the bot's.
+
+**One tick per entry, and a record's covers the record only.** Grouping changed
+where a thing is found, not who vouches for it: a record's tick says its own
+columns, rows, medium and location have been read and are right, and says
+nothing about the rules, measurements and notes listed under it — each of those
+carries its own tick, set by a person on its own page or by the batch button
+above. So «۵ از ۸ تأیید شده» on a section is the honest count, and a table is
+finished only when the record and every entry under it are ticked. Moving an
+entry between tables does not reset any of them.
 
 ### Running the playbook headless
 
@@ -999,7 +1091,7 @@ docker compose exec control-bot sh -c \
 - **Undo** is `merge facts revert --run <run_dir>` as for any other run (§6):
   the entry comes back wholesale from `{run_dir}/facts-before/`.
 
-**What is committed.** The five store files and the run directory, as for every
+**What is committed.** The four store files and the run directory, as for every
 other verb. Nothing else: the edit writes no sidecar of its own.
 
 ## Next

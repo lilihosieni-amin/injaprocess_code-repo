@@ -189,7 +189,7 @@ XML, and the program reads it with the standard library only. For each workbook 
 
 | dump file | what it holds |
 |---|---|
-| `sheets.json` | every tab: name, id, hidden flag, size, the first nine rows (the "head"), which row is the header, the item codes printed in the head, the row labels down the side of small tables |
+| `sheets.json` | every tab: name, id, hidden flag, size, the first nine rows (the "head"), which row is the header, the codes printed in the head, the row labels down the side of small tables |
 | `formulas.tsv` | one line per formula group: tab, range, the formula text, how many cells share it, the cached result, any error |
 | `names.tsv` | the workbook's named ranges |
 | `validations.tsv` | drop-down lists (data validation) per range |
@@ -207,9 +207,9 @@ a pizza — whose cells are the fact.
 with mechanical columns (id, directory, file, scripts, a short name) and three **judgement
 columns** the owner must answer: which departments the workbook belongs to, which branch it is for,
 and which tabs are reference tables. The program proposes answers where it can (a branch from the
-folder name; reference tabs from "has item codes in the header and computes nothing"). A row with
+folder name; reference tabs from "has codes in the header and computes nothing"). A row with
 an unanswered column is marked `unresolved`, and `confirmed` is derived: true only when nothing is
-unresolved. The `conventions` block (which characters mark an item code, what a placeholder header
+unresolved. The `conventions` block (which characters mark a code, what a placeholder header
 looks like, the month names, the `Table_` prefix) is written once and never rewritten.
 
 If any row is unresolved, the coordinator dispatches the **quantify agent in `manifest` mode**,
@@ -268,17 +268,15 @@ existing store (the index, and the units record's symbols). It writes nothing ow
 produces:
 
 **Candidates** — everything mechanical that *might* become a fact, with a provisional id like
-`S-rec-3f9a…` (`S-` for skeleton). Four kinds of candidate:
+`S-rec-3f9a…` (`S-` for skeleton). Three kinds of candidate:
 
 - **Record templates.** Every tab that can carry a record (not empty, has a header row, not the
-  ids tab, not a mirror tab, more than one cell). Tabs with the same folded name and the same item
-  codes across two branches' workbooks are grouped into *one* template with several **instances**
+  ids tab, not a mirror tab, more than one cell). Tabs with the same folded name and the same codes
+  across two branches' workbooks are grouped into *one* template with several **instances**
   (one per physical tab, keyed `<short>__s<sheetId>`). Each template gets its fields: one per header
   cell, matched across instances by header text, with a provisional key `c_<column letter>`, a
   guessed type (`number` if every sampled cell parses), and enum constraints from the drop-down
-  lists. A reference tab also gets its rows, keyed by item code.
-- **Items.** One per distinct item code (`#61`, `##1`) found in headers, row labels and reference
-  tables, with the labels the estate uses for it.
+  lists. A reference tab also gets its rows, keyed by the sheet's own key column.
 - **Rule columns.** One per *output header* across the department's tabs. The engine normalises
   every formula in that column: strips whitespace, renames `LET` locals, turns cell references
   into `@` slots, table names into `$T` slots, numbers into `#` slots. Formulas with the same
@@ -301,15 +299,15 @@ lines of at most 1 900 characters, and — the number that has *not* moved — 2
 tokens, because the output limit is the one that crashed agents on the first run. A transcript is
 chunked at 42 000 tokens, which leaves the cards their room under the input budget and still
 estimates to 20 000 of output. Grouping is fixed, not clever: one unit per workbook group
-(`u-wb-<short>`), one per transcript chunk (`u-tr-<recording>-l<first line>`), one for the items
-(`u-items-…`), and **attachment units** (`u-att-1`, `u-att-2`, … in input order) holding the attached files' text,
-packed to the same budget — one file too big for any unit goes alone with an `oversized` issue.
+(`u-wb-<short>`), one per transcript chunk (`u-tr-<recording>-l<first line>`), and **attachment
+units** (`u-att-1`, `u-att-2`, … in input order) holding the attached files' text, packed to the
+same budget — one file too big for any unit goes alone with an `oversized` issue.
 Until 2026-09-13 the attachments rode on the last transcript unit, and when that unit split on its
 line range every one of them was dropped: 13 form photos of the preparation run reached no unit
 and nothing said so. Now every chosen transcript line and every attachment must be read by exactly
 one unit, or `build` exits 2 naming the file. A unit that does
-not fit is split along its natural axis (a workbook by tab, items by code range, a transcript by
-line range). A unit that still cannot fit has its largest candidates **set aside** as `oversized`
+not fit is split along its natural axis (a workbook by tab, a transcript by line range). A unit that
+still cannot fit has its largest candidates **set aside** as `oversized`
 issues rather than stopping the run — the owner is told which table was too big.
 
 **The unit's input.** Each unit gets one Markdown file, `units/<u>/input.md`, and that file is
@@ -344,7 +342,7 @@ photographed forms, and the old order let a transcript unit invent a table the w
 held: on the preparation run of 2026-09-14, 19 of 37 tables came from speech alone and the reviewer
 merged eight of them into forms by title similarity.
 
-- **Phase 1** is the workbook, attachment and items units. Their input gains one section,
+- **Phase 1** is the workbook and attachment units. Their input gains one section,
   «گفت‌وگوهای مرتبط» (*related talk*): the planner scans each chosen transcript in windows of 40
   lines stepping 20, scores each window by the words it shares with this unit's own candidates,
   takes the best windows up to 80 000 tokens, merges the ones that touch and prints them in
@@ -353,13 +351,18 @@ merged eight of them into forms by title similarity.
   section is appended *after* the unit's fit check, so it never causes a split. The columns and the
   values still come from the file or the photo; the talk supplies what the file does not say —
   titles, units, cadence, who holds the form, thresholds, aliases — cited as a `voice` source.
+  Every rule and measurement such a unit writes for its own table also names that table as its
+  **home** (section 7.2).
 - **Phase 2** is the transcript units, and they now know what phase 1 recorded. Their *reuse slice*
   is replaced by «آنچه تا کنون ثبت شده» (*what is recorded so far*): every record phase 1 kept with
-  its columns and location, every rule, every item, each with a handle the unit may address (the
+  its columns and location, every rule, each with a handle the unit may address (the
   candidate's `S-…`, or a run-wide `N-…` for something phase 1 minted), up to 20 000 tokens — and
   then, as before, the department's open store entries. A spoken number about a listed table is
   written *to* that table; a new table is described only when none of the listed ones fits. Every
   chosen transcript line is still read by exactly one phase-2 unit: nothing spoken is skipped.
+  Since 2026-09-16 that listing is also where a unit picks each rule's, measurement's and note's
+  **home** — the table it is listed under — by the handle printed beside it; it leaves `home` empty
+  only when no listed table fits, and says why in the entry's statement.
 
 `build` writes `plan.json` (unit ids, their inputs and candidates, and the SHA-256 hashes of every
 file it read — so `status` can report `plan_stale` if a dump changes), `skeleton.json` (the only
@@ -404,7 +407,7 @@ engine, and an account whose shape is wrong is dropped silently, the way any eng
 the agent writes is dropped.)
 
 The division of labour is strict (rule QF-46): the engine has already written every location,
-instance, column letter, enum constraint, reference row, item code, original formula text and
+instance, column letter, enum constraint, reference row, original formula text and
 binding. The agent writes what needs judgement: keys, titles, statements, units nobody wrote down,
 the business meaning of a formula in the expression language, the role of a record, whether to keep
 or drop. A rule names a record's column by its *provisional* key (`c_h`); the record's own decision
@@ -459,7 +462,9 @@ facts-plan digest --run <run_dir>
 per assembled entry (kind, key, scope, title, statement, the kinds of source behind it —
 `sheet · voice`, `voice` — and the formula or the columns), the
 engine's **flags** (things it noticed across units — a title used twice, two units disagreeing
-about a leaf, one tab claimed by two keys, variants that differ only by a wrapper function), the
+about a leaf, one tab claimed by two keys, variants that differ only by a wrapper function, and
+since 2026-09-16 `homeless`: a rule or measurement with no table beside a record whose title
+shares at least two of its words, with the candidates named), the
 dropped candidates, and the same shape section. It also writes `review/input.sha256`, a hash of
 the digest, so a review written against an older digest is detected — and detected means *redone*:
 `assemble --review` refuses a stale review («the digest changed since this review was written»),
@@ -496,7 +501,7 @@ validate facts-delta <run_dir>/facts-delta.json --store --run <run_dir>
 ```
 
 `assemble` is deterministic and runs in a fixed order: ascending unit id, ascending candidate id,
-ids minted in kind order (item → record → measurement → rule → note).
+ids minted in kind order (record → measurement → rule → note).
 
 1. It takes each unit's latest attempt (a unit with an invalid latest attempt *and an attempt
    left* is a stop — the coordinator re-dispatches it and runs `assemble` again; a unit that spent
@@ -522,7 +527,12 @@ ids minted in kind order (item → record → measurement → rule → note).
    reference to an `F-` id not in the store is a hold-back (`unknown_ref`). Holding back
    cascades to a fixpoint (anything that points at a held-back entry is held back too), except
    that a `derived` pointer on a record column is severed instead of taking the whole table with
-   it.
+   it. An entry's `home` resolves here with every other reference — through temp ids and through a
+   column's rename — and a rule, measurement or note that wrote none gets one **derived**: a rule
+   whose bindings sit on exactly one record takes that record, a measurement whose `of` names a
+   record takes that record and its field, a note takes the first record its `about` names, and
+   anything else stays unattached. A `home` that names no record is severed with a note, never a
+   refusal.
 7. Scopes are attached (an entry with no tabs of its own takes the branches of what it attaches
    to). Notes get their deterministic keys.
 8. **The lint.** Every finished entry goes through the same content checks and style lint as at
@@ -584,9 +594,8 @@ merge facts apply --delta <run_dir>/facts-delta.json --run <run_dir>
    deterministic **repairs** (a synonym to its symbol, a scalar wrapped in its list, an
    engine-owned member dropped, an unknown member moved to the entry's `extra`); validate each
    entry against `facts-delta.schema.json` **on its own**; canonicalise scope (sorted, unique).
-3. **Derive keys.** A `refItems` cell that holds a temp id is replaced by the target's key; a
-   reference record's row keys are re-derived from its primary key; a measurement's key becomes
-   `<item>__<record>__<column>`.
+3. **Derive keys.** A reference record's row keys are re-derived from its primary key; a
+   measurement's key becomes the `__`-join of what it is of, the record and the column.
 4. **Preconditions** — every one is checked before the first byte is written, **per entry**. An
    entry that fails a refusal-tier rule is **held back**: `precondition failed: held back: <label>:
    <message>` on stderr and a `{label, lines}` row in `held.json`; every other entry goes on, and
@@ -608,19 +617,23 @@ merge facts apply --delta <run_dir>/facts-delta.json --run <run_dir>
    the old one gets `valid_to` and `superseded_by`. A workbook stub (a placeholder record minted
    earlier for a workbook not yet read) → `adopt`, keeping the stub's id.
 6. **The write ladder** (section 10.2) merges each matched pair leaf by leaf. It never overwrites.
+   `home` has a rule of its own: placement is not a fact, so a stored one is never replaced. When
+   this run's entry names another table, the entry gets a `placement` issue in Persian («این اجرا
+   این مورد را زیر جدول دیگری می‌دید؛ جای ثبت‌شده تغییر نکرد.»), the pair is listed in
+   `moved-home.json`, and the report names it. An entry with no stored `home` adopts this run's.
 7. Every touched entry gets its derived `status` and, if anything changed, a new `updated_at`.
    Every citation gets a `hash` of the file it cites and the run that cited it. Formula bodies
    are moved out of line into `facts/originals/<id>.txt` and the entry carries `original_ref`.
-8. **Snapshot.** `facts-before/` gets a copy of the five store files as they were — this is what
+8. **Snapshot.** `facts-before/` gets a copy of the four store files as they were — this is what
    `revert` restores from.
-9. **Save.** All five files are validated against `facts.schema.json` *before* any is written;
+9. **Save.** All four files are validated against `facts.schema.json` *before* any is written;
    then they are written atomically (temp file + rename) and `.index.json` is rebuilt.
 10. The run directory gets `id-map.json` (temp id → minted id, *minted ids only*), `touched.json`
     (every open entry the run changed), `adopted.json` (stub adoptions), `held.json` (what the gate
     held back, `[]` when nothing), and a copy of the delta.
 
 `apply` prints `created F-…` / `updated F-…` per entry. Re-applying the same material yields only
-no-ops and leaves the five files byte-identical — this is what makes re-reading a workbook safe.
+no-ops and leaves the four files byte-identical — this is what makes re-reading a workbook safe.
 
 ### Stage 6 — Finish and commit
 
@@ -637,9 +650,12 @@ git add departments runs facts attachments && git commit -m "quantify(cooking): 
 
 The coordinator reads `report.md` and sends it verbatim: first, since 2026-09-13, every **lost
 source** in plain Persian with the owner's file names («فایل اکسل «آماده‌سازی» ثبت نشد: ۷ جدول و ۳
-فرمول آن بررسی نشد.», «۱۳ عکس فرم بررسی نشد.»); then the open disputes numbered with lettered
-options, the unanswered cells per entry, the dropped candidates counted by reason, the
-unread/unplaced list, what was held back and why, and
+فرمول آن بررسی نشد.», «۱۳ عکس فرم بررسی نشد.»); then, since 2026-09-16, one line per table with
+what it now holds («فرم تبدیل آماده‌سازی برگر»: ۸ قاعده، ۳ اندازه‌گیری، ۱ یادداشت), a «بدون جدول»
+line when anything is unattached, and one line per entry whose recorded table this run disagreed
+with («جای «سقف ضایعات» تغییر نکرد؛ این اجرا آن را زیر «فرم تولید نیمه‌ساخته» می‌دید.»); then the
+open disputes numbered with lettered options, the unanswered cells per entry, the dropped candidates
+counted by reason, the unread/unplaced list, what was held back and why, and
 the review's closing block. What the message deliberately leaves out, since the owner's ruling of 2026-09-09, is the engine's own findings inside the files — a broken formula's cell range, a column that moved between two copies of a tab, a cell that only mirrors another. Nobody can act on those from a chat message, and forty such lines buried the three things the owner can act on. Each finding stays attached to the entry it concerns, where the panel draws it, and `gate-b.md` still counts them as the run's record. That block is one line — «بازبینی انجام شد.» — when every decision was
 applied; when some were held back it reads «بازبینی انجام شد؛ ۲ تصمیم آن کنار گذاشته شد:» followed
 by one line per held decision, «  • «عنوان» — نشانی به هیچ موردی نمی‌رسید», the entry by its
@@ -653,13 +669,12 @@ label.
 ### No Stage C — the run ends with the report
 
 Until 2026-09-09 the run ended with an audit review: the coordinator ran the store-wide audit,
-presented its findings as numbered items and asked the owner which to act on, one turn per item.
+presented its findings one by one, numbered, and asked the owner which to act on, one turn each.
 The owner ruled it out after the cooking run: of its 246 findings, 69 were a false positive in the
-audit itself (recipe cells naming an item by its code, which the audit did not resolve), 13
+audit itself (recipe cells naming an ingredient by its code, which the audit did not resolve), 13
 described a removed process node as a changed process with a successor that did not exist, and
-the rest were information (menu items no rule reads yet, constants no rule reads yet, roles no
-process names). The reviewer already sees the audit's cross-entry checks for this run's own
-entries in its digest, and the remaining checks matter *between* runs, when something else moved.
+the rest were information (constants no rule reads yet, roles no process names). The reviewer
+already sees the audit's cross-entry checks for this run's own entries in its digest, and the remaining checks matter *between* runs, when something else moved.
 So the run now ends after the report. `merge facts audit` and `merge facts check` remain
 operator commands (runbook 07 §5 and §10.4 below), and the two defects were fixed the same day.
 
@@ -701,7 +716,14 @@ universal entry.
 | **adds** something: a new entry from scratch, a dated successor, a fill of an empty leaf, a new source, account or alias | `facts-delta.json` → `merge facts apply` | the quantify agent in `targeted` mode, `form: delta` |
 | **changes or removes** something and **names the value** (a word, a sentence, a number, a member to drop, a department to add) | `facts-patch.json` → `merge facts edit` | **the playbook itself** — nothing to compose |
 | **changes** something and the wording must be **composed** (reword a statement, invent a title) | `facts-patch.json` → `merge facts edit` | the quantify agent in `targeted` mode, `form: patch` |
+| **moves** an entry under another table, or **detaches** it from the one it is under | `facts-patch.json` → `merge facts edit` | **the playbook itself** — both names resolve against the index |
 | **retires** or **merges** | `merge facts retire [--heir]` | — |
+
+The move and the detach are the two cases added on 2026-09-16, when the table became the spine
+(section 7.2): «قاعدهٔ «سقف ضایعات» را زیر «فرم تبدیل آماده‌سازی برگر» ببر» resolves both names
+against `.index.json` and is shown as one line, «قاعدهٔ «…» زیر «…» می‌رود.»; «… را از جدولش جدا
+کن» is shown as «… از جدولش جدا می‌شود.». A name that matches two entries is asked back with
+lettered choices, exactly as any other ambiguous name is.
 
 A **patch** is a small JSON file: a list of operations over field paths.
 
@@ -710,6 +732,7 @@ A **patch** is a small JSON file: a list of operations over field paths.
  "ops": [
    {"op": "set",    "path": "statement",                       "value": "برگهٔ روزانهٔ …"},
    {"op": "set",    "path": "data/outputs/vazn/value",         "value": 285},
+   {"op": "set",    "path": "home",                            "value": {"ref": "F-00031"}},
    {"op": "remove", "path": "data/applies_to/pitza__s0__j__r6"},
    {"op": "unset",  "path": "data/pack"},
    {"op": "append", "path": "aliases",                         "value": "برگه روزانه"}
@@ -753,7 +776,9 @@ What the verb does, in order:
    renamed, a kind change is `promote`'s job); `set retired` with anything but `false` (retiring is `retire`'s job, so the entry
    gets a date and possibly an heir; *un*-retiring a mistake is allowed); a path that names
    nothing; an `append` of a member whose key is already there; a `set` that changes a member's
-   key.
+   key; and, on `home`, a value that is not a record (`home: F-00116 is not a record`), one that
+   names no entry at all (`home: F-09999 names no entry`), or a `set` on a record itself (`home: a
+   table has no home`) — a person's explicit edit is refused rather than severed.
 3. **Disputes settle.** A `set` on a field that has open accounts marks the account holding the
    new value `chosen` and every other `rejected`; if none holds it, a `chosen` chat account is
    added. A `remove`/`unset` rejects them all. Nothing is left for the panel to ask.
@@ -786,7 +811,8 @@ in the panel's own database when a reviewer confirms. Any change to the entry mo
 the tick silently disappears — that is the point of hashing instead of a boolean. A bot edit is
 such a change: it rewrites content and stamps a new `updated_at`, so the entry reads «تأییدنشده»
 again the moment the edit lands, and a person re-confirms it in the panel when they have read it
-there.
+there. Moving an entry to another table is the one edit that is *not* such a change: `home` is
+placement, not content, so the tick — and the entry's history — survive the move.
 
 v3.7 briefly shipped a second channel — `facts/.confirmations.json`, a file the engine wrote on a
 chat-origin run and the panel counted as a confirmation, so that a bot edit left nothing to accept.
@@ -826,7 +852,10 @@ key, title, scope, status, `retired`, `stub`, `red_counts` (how many unanswered 
 disputes), the current fingerprint and whether it is confirmed. Filtering (kind, department,
 branch, confirmation, free text over title/id/aliases) happens in the browser over that one
 response; the server has already applied scope and visibility. The UI deliberately does **not**
-draw the served `coverage` number (workbooks read / total) — the owner refused it.
+draw the served `coverage` number (workbooks read / total) — the owner refused it. These lists did
+not change when the table became the spine (2026-09-16): an entry that belongs under no table is
+listed here like any other, and there is no separate "no table" list — only the entry's own page
+says «بدون جدول» (owner decision 2).
 
 ### 6.3 The detail bundle
 
@@ -838,7 +867,7 @@ in Persian without ever computing a name of its own:
 | `entry` | the fact document, whole for an editor of every department it names, kind-switched and source-stripped otherwise |
 | `confirmation` | `{fingerprint, confirmed, can_confirm}` — the current hash (what a confirm must echo), whether the stored database mark equals it, and whether this caller may confirm |
 | `red_paths` | `{unknown: [...], disputed: [...]}` — every `null` leaf and every open-account field, as paths |
-| `resolved` | every id, item key and process id the entry references → `{kind, title, code?, fields?}`, or `{restricted: true}` for a neighbour this caller may not open (the row stays so counts are honest; the name goes) |
+| `resolved` | every id and process id the entry references → `{kind, title, code?, fields?}`, or `{restricted: true}` for a neighbour this caller may not open (the row stays so counts are honest; the name goes) |
 | `row_titles` | reference-table row key → composed Persian title |
 | `path_labels` | every red path → a Persian «column — row» label |
 | `workbook_titles` | spreadsheet id → the workbook's title |
@@ -852,7 +881,9 @@ in Persian without ever computing a name of its own:
 
 Header chips (kind · shape · medium; confirmed or not; scope; a «باید عیناً در ERP پیاده شود» pill
 for a rule marked `port`; retired). The title with the **confirm tick**. The statement, with
-aliases. Then the cards, by kind:
+aliases. On a rule, a measurement or a note, the table it is listed under, as a link — «جدول: فرم
+تبدیل آماده‌سازی برگر», or «بدون جدول» when it has none, or «جدول بازنشسته» when that table has
+been retired. Then the cards, by kind:
 
 - **Rule** — a *constant* draws one big number with its unit and nature («استاندارد», «هدف», «حد
   مجاز»); a *formula* draws the expression as a left-to-right island; a *decision table* draws
@@ -866,11 +897,20 @@ aliases. Then the cards, by kind:
   or disputed) or a *columns table* (title, unit badge, key, type, notes) plus *printed rows* (a
   paper form's fixed lines); then «ساختار و مکان جدول» with «نسخه‌ها» (the instances: workbook,
   sheet, branch, hidden) and «ورودی از» (imports), the grain, cadence, day boundary, primary key,
-  who fills and who approves.
-- **Item** — code, category, base unit, pack, group, grade, state, packaging units with their
-  factors, tracked-in rows.
-- **Measurement** — quantity and unit, «برای» (of which item), «زمان · توسط» (when, by whom),
-  «ثبت در» (which record column), method, exceptions.
+  who fills and who approves; and then, since 2026-09-16, the three subset sections — «قواعد این
+  جدول», «اندازه‌گیری‌های این جدول», «یادداشت‌های این جدول» — the entries whose `home` is this
+  record, found from the index rows without opening a kind file, each row showing the title, the
+  tick state and the column when `home.field` names one, each section headed by its count («۵ از ۸
+  تأیید شده»), and a click opening the entry's own page as always. Above them one button, «تأیید
+  همهٔ موارد این جدول», confirms every still-unconfirmed entry of those sections through the same
+  per-entry endpoint a person's own tick uses — one call and one audit row each; the record's own
+  tick is not touched. A record's tick vouches for the record itself — its columns, rows, medium
+  and location — and never for the rules, measurements and notes listed under it: each of those
+  carries its own tick, which is why the section headers count them separately and why moving an
+  entry between tables resets nothing. There is no *move* in the panel: moving an entry is the
+  bot's (section 5).
+- **Measurement** — quantity and unit, «برای» (what is measured — a table's column, or plain
+  text), «زمان · توسط» (when, by whom), «ثبت در» (which record column), method, exceptions.
 - **Disputes** («روایت‌های متعارض») — open accounts grouped by field, each with its value, the
   speaker's role, the source, the verbatim statement, and a button «انتخاب این روایت» that calls
   `POST /api/facts/{id}/resolve` — the panel's *only* write, and it too goes through the engine
@@ -907,25 +947,28 @@ the caller may not open appears as `{restricted: true}` — «خارج از دس
 
 | file | holds |
 |---|---|
-| `items.json`, `records.json`, `measurements.json`, `rules.json`, `notes.json` | `{"schema_version": 2, "entries": [...]}` — one file per kind, the whole store (global; a department is a *scope tag*, not a partition) |
-| `.index.json` | one flat row per entry (id, kind, key, title, aliases, scope, status, retired, valid_to, stub, processes, field-status counts, updated_at) — what the bot, the audit and the panel list against without loading payloads; rebuilt on every save |
-| `.id-seq.json` | `{"fact": 233}` — the global id counter; ids are `F-` plus five digits, one namespace for all five kinds, never reused |
+| `records.json`, `measurements.json`, `rules.json`, `notes.json` | `{"schema_version": 2, "entries": [...]}` — one file per kind, the whole store (global; a department is a *scope tag*, not a partition) |
+| `.index.json` | one flat row per entry (id, kind, key, title, aliases, scope, status, retired, valid_to, stub, processes, field-status counts, updated_at, and since 2026-09-16 `home`, the id of the table the entry is listed under or `null`) — what the bot, the audit and the panel list against without loading payloads; rebuilt on every save |
+| `.id-seq.json` | `{"fact": 233}` — the global id counter; ids are `F-` plus five digits, one namespace for all four kinds, never reused |
 | `originals/F-xxxxx.txt` | the verbatim formula or script body of a rule, out of line |
 
-Today's live store: 137 items, 43 records, 5 measurements, 40 rules, 8 notes — 233 entries, matching
-the counter exactly.
+There were five files until 2026-09-16: `items.json` held an `item` kind — a thing counted,
+weighed or priced — that nothing else ever referenced, and the owner had it removed whole. The
+file is deleted and the item ids leave `.index.json`, one commit per store; the counter is **not**
+rewound, so the `F-` numbers those entries used stay used and are never minted again.
 
 ### 7.2 The envelope — fields every entry has
 
 | field | meaning |
 |---|---|
 | `id` | `F-00150`. Minted only by `allocate-id` (INV-1). |
-| `kind` | `item`, `record`, `measurement`, `rule` or `note`. |
+| `kind` | `record`, `measurement`, `rule` or `note`. |
 | `key` | An ASCII handle: lowercase segments joined by `_`; `__` is reserved as the *join* operator for composed keys (`gozaresh_markazi__s4`). Persian never appears in a key (QF-32). Immutable once written. |
 | `title` | The Persian display name (at most 60 characters, a noun phrase). |
 | `aliases[]` | Other names, for search only — never for identity. |
 | `statement` | One to three Persian sentences saying what it means: what is measured or computed, in what unit, by whom, when. A *prose leaf*: filled once, never disputed, changed only through an edit. |
 | `scope` | `{departments: [...], branches: [...]}`, both sorted and unique. Empty means universal. |
+| `home` | **The table this entry is listed under** — `{ref: "F-00025"}`, optionally with a `field` naming one of that record's columns; `null` or absent means no table fits it. On a rule, a measurement and a note only; a record never has one. It answers one question — *where is this listed* — and replaces nothing: a rule's `applies_to`, a measurement's `of` and a note's `about` keep their own meanings. Written by the unit, derived by the assembly when the unit wrote none, changed afterwards only by a person's edit. |
 | `source[]` | Where it came from (7.3). |
 | `field_status` | `{path: "inferred" \| "informal"}` — leaves the agent inferred or that were stated as a habit rather than a standard. |
 | `accounts[]` | Disputes (7.4). |
@@ -987,15 +1030,7 @@ function or a mid-import export, not a defect), `leading_offset`, `unused_mirror
 are anchored to *dates*, not rows, because rows move. `fix` is `{op: multiply|divide|shift_columns|
 ignore, factor?}`.
 
-### 7.6 The five kinds
-
-**item** — a thing counted, weighed or priced. `code` (`#780` a product, `##1` an ingredient,
-kept verbatim), `code_absent`, `category` (`ingredient`, `product`, `packaging`, `consumable`,
-`place`, `other` — a *place* is an item so a transfer can name it), `unit` (a key of the units
-record), `unit_raw` (the estate's own spelling), `pack` (`{size, unit}`), `units[]` (other pack
-levels: `{pack_unit, factor_to_base}`, the factor a number or a `{min, max}` range), `group`,
-`state` (`raw`, `cooked`, `frozen`, `prepared`), `grade`, `tracked[]` (`{record, value, reason}` —
-"we do not count X, because …" as data).
+### 7.6 The four kinds
 
 **record** — a persistent place numbers are written, or a table of definitions. Modelled on
 Frictionless Table Schema. `medium` (`sheet`, `paper`, `external`, `native`), `role` (`log`,
@@ -1004,9 +1039,9 @@ id, tab name, hidden; paper has `kept_at` and `holder`; external has `system` an
 native has `kept_at`), `grain` (what one row is), `cadence` (`nightly`, `shift`, `daily`,
 `weekly`, `monthly`, `ad_hoc`), `day_boundary`, `filled_by`, `approved_by`, `blank_master`,
 `fields[]` (each: `key`, `title`, `type` string/number/integer/boolean/date, `unit`, `unit_raw`,
-`description`, `constraints` {enum, readOnly, required, minimum, maximum}, `refItems`
-{namespace, resolved_by} — "cells in this column name an item", `derived` {ref} — "this column is
-computed by that rule", `filled_by`, `group`, `columns` {instance: letter}), `header_fields[]`
+`description`, `constraints` {enum, readOnly, required, minimum, maximum}, `derived` {ref} —
+"this column is computed by that rule", `filled_by`, `group`, `columns` {instance: letter}),
+`header_fields[]`
 (captured once per sheet), `sections[]`, `rows[]` (a log's fixed printed lines or a reference
 table's data rows; reserved member names `key title unit unit_raw section when open retired
 valid_to supersedes`; a reference row's key is the `__`-join of its primary-key values), `signatures[]`
@@ -1016,7 +1051,8 @@ named_range} — a mirror tab's pull), `movement` ({from, to} places), `reconcil
 `template_of`, `divergence`, `stub`. `location` is *derived* from the first instance and recomputed
 on every write.
 
-**measurement** — what is captured, by whom, into which field. `of` {ref item}, `quantity`
+**measurement** — what is captured, by whom, into which field. `of` (a `{ref}` to a record, with
+a `field` or a `row` of it, or plain text — never an id of the removed item kind), `quantity`
 (`mass`, `count`, `volume`, `duration`, `money`, `ratio`, `other`), `unit`, `method`, `when`, `by`,
 `writes_to` {ref, field}, `exceptions`.
 
@@ -1041,10 +1077,9 @@ promote` turns a note into a real kind on approval.
 A sheet-derived rule gets a *concept* key from the agent (`masraf_elami`); the workbook and column
 live in `applies_to[]`, never in the key. A record template gets a concept key; its instances are
 `<short>__s<sheetId>`; a binding is `<instance>__<column letter>__r<first row>`; a binding's row is
-`r<row>`. An item from a code is `ing_1` or `food_61` (the namespace comes from the manifest's
-`conventions`). A measurement is `<item>__<record>__<column>`. A note is `note_` plus twelve hex
-characters. Read-before-mint is the rule: the unit's input carries a reuse slice so an existing
-key is reused rather than reinvented.
+`r<row>`. A measurement's key is the `__`-join of what it is of, the record and the column. A note
+is `note_` plus twelve hex characters. Read-before-mint is the rule: the unit's input carries a reuse
+slice so an existing key is reused rather than reinvented.
 
 ### 7.8 The units record
 
@@ -1073,11 +1108,12 @@ the store must name one of its open rows (QF-40); the panel's Persian unit words
 | `facts-delta.json` | `facts-plan assemble` (pipeline) **or** the verbs (a growing list of `{verb, args}`) | the proposed changes, or the record of what the verbs did |
 | `assembly.json` | `facts-plan assemble` | dropped, undecided (with reasons, a refused decision's lines), provenance, review status, the review's held-back decisions, the lost sources |
 | `gate-b.md` | `facts-plan assemble` | the run's record of what it proposed (no longer sent) |
-| `facts-before/` | `apply` and every writing verb | the five store files before the write — what `revert` restores |
+| `facts-before/` | `apply` and every writing verb | the four store files before the write — what `revert` restores |
 | `id-map.json` | `apply` | temp id → minted id |
 | `touched.json` | `apply` | every open entry the run changed |
 | `adopted.json` | `apply` | stub adoptions (always written, `[]` when none) |
 | `held.json` | `apply` | the entries the store gate held back, `{label, lines}` each |
+| `moved-home.json` | `apply` | `{id, title, stored, seen}` per entry whose recorded table this run disagreed with — the run's opinion, never applied |
 | `facts-patch.json` | the edit-fact playbook (or the agent) | the patch an edit applied |
 | `manifest-proposal.json` | the quantify agent, manifest mode | Gate M's proposals |
 | `report.md` | `facts-plan report` | the owner's closing report |
@@ -1093,7 +1129,7 @@ them. The engine loads them from `SCHEMA_DIR` and caches the compiled validator.
 
 | schema | governs | who validates against it, when |
 |---|---|---|
-| `facts.schema.json` | the five store files | `save_store` before every write; `validate facts`; the edit verb's gate |
+| `facts.schema.json` | the four store files | `save_store` before every write; `validate facts`; the edit verb's gate |
 | `facts-delta.schema.json` | a proposed change set | the unit gate (materialised entries), `assemble`'s output, `apply`'s first step, `validate facts-delta` |
 | `facts-unit.schema.json` | a unit's or the review's decisions | `validate facts-unit` |
 | `facts-patch.schema.json` | an edit's operations | `merge facts edit` |
@@ -1156,9 +1192,8 @@ entry is created, the predecessor closed.
 
 Thirteen numbered checks per entry, in one shared function so no two gates can word the same
 rule differently: the expression grammar (only declared identifiers, the one aggregate form); unit
-edges (an input's unit equals its source column's unit or names a `via` conversion); key grammar
-and the `refItems` cell rule (a cell is an item key or a code of the column's namespace); process
-id grammar; record shape (reserved row names, primary key members declared, every row member
+edges (an input's unit equals its source column's unit or names a `via` conversion); key grammar;
+process id grammar; record shape (reserved row names, primary key members declared, every row member
 declared, a typed reference table's rows complete); shares in (0, 1] summing to one; constant shape
 (no inputs ⇒ no formula, every output a value or range; inputs ⇒ a language and a body); the
 decision-table shape (I8); field-status paths exist; reconciled cells declared; Jalali issue
@@ -1175,9 +1210,9 @@ relayed 2 068 one-per-cell errors taught everyone that nobody reads them.
 
 ### 10.4 The audit (`merge facts audit`)
 
-Read-only, always exit 0, twenty-six checks, each `{code, id, message, proposal}`: `two_writers`,
-`duplicate_title`, `note_overlap`, `equal_expr`, `duplicate_code`, `edge_disagreement`,
-`orphan_ref`, `dangling_ref_items`, `process_link` (a link to a tombstoned process, with the heir
+Read-only, always exit 0, one check per code, each `{code, id, message, proposal}`: `two_writers`,
+`duplicate_title`, `note_overlap`, `equal_expr`, `edge_disagreement`,
+`orphan_ref`, `process_link` (a link to a tombstoned process, with the heir
 proposed), `process_node_gone` (a cited node removed from a live process), `row_gone`, `dump_missing`, `binding_gone`, `expr_missing`, `retired_row_live_edges`,
 `template_drift`, `reconciliation` (a table cell and the report constant differ by over 1 %),
 `component_sum`, `unconsumed_constant`, `no_consumer`, `quantity_off_enum`,
@@ -1300,6 +1335,8 @@ own misunderstanding.
   fingerprint, so any change silently un-confirms.
 - **hold-back** — a decision or entry the engine could not land, kept with a reason instead of
   stopping the run: in `undecided[]` at the assembly, in `held.json` at the apply.
+- **home** — the table (a record) a rule, a measurement or a note is listed under; `null` when
+  none fits. Placement, not content: a run never changes one a person set.
 - **instance** — one physical copy of a record template (one tab in one workbook).
 - **invariant** — a rule that must always hold; INV-n from the standing orders, I-n from the
   facts design.
