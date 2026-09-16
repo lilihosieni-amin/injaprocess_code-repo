@@ -2358,3 +2358,54 @@ def test_the_digest_flags_a_homeless_rule_beside_a_matching_table(tmp_path):
     text = digest(root, run).read_text(encoding="utf-8")
     assert "homeless · " in text
     assert "form_burger" in text.split("homeless")[1][:120]
+
+
+# --------------------------------------------------------------------------
+# Runs on disk are history (spec 2026-09-16 §3.6): a run whose units wrote
+# items re-assembles — the items are read away, never refused.
+
+#: What a unit wrote before `item` left the contract.
+ITEM = {"kind": "item", "key": "bargar", "title": "برگر ۱۵۰ گرمی",
+        "statement": "برگر آمادهٔ ۱۵۰ گرمی.",
+        "data": {"category": "product", "unit": "pcs"}}
+
+
+def test_an_old_runs_item_outputs_are_ignored_with_one_line_not_refused(
+        tmp_path, capsys):
+    """Before this, every one of them became an `undecided[]` row telling the
+    owner «در اجرای بعدی تکمیل می‌شود» about a kind no run will ever mint."""
+    root, run = _two_unit_run(tmp_path, att_new=[FORM, ITEM],
+                              tr_new=[dict(ITEM, key="mini_bargar"),
+                                      RULE])
+    result = assemble(root, run)
+    err = capsys.readouterr().err
+    assert "ignored 2 output(s) of the retired kind 'item'" in err
+    assert result["undecided"] == 0 and result["dropped"] == 0
+    delta = json.loads((run / "facts-delta.json").read_text(encoding="utf-8"))
+    kinds = {e["kind"] for e in delta["entries"]}
+    assert kinds == {"record", "rule"} and len(delta["entries"]) == 2
+    # …and the emptied `new[]` slot keeps every later handle where it was:
+    # the rule is the transcript unit's second entry, and nothing points at
+    # the first any more.
+    assert [e["key"] for e in delta["entries"]] == ["form_tahvil", "saqf"]
+
+
+def test_a_decision_about_an_item_candidate_goes_the_same_way(tmp_path):
+    """An old skeleton still offers item candidates; the decisions about them
+    are read away with them, while an unknown skeleton is still held back."""
+    root, run = _two_unit_run(tmp_path, att_new=[FORM], tr_new=[RULE])
+    skeleton = json.loads((run / "skeleton.json").read_text(encoding="utf-8"))
+    skeleton["candidates"] = [{"id": "S-it-1", "kind": "item",
+                               "unit": "u-att-1", "payload": {}}]
+    (run / "skeleton.json").write_text(
+        json.dumps(skeleton, ensure_ascii=False), encoding="utf-8")
+    out = json.loads((run / "units" / "u-att-1" / "out.1.json")
+                     .read_text(encoding="utf-8"))
+    out["decisions"] = [{"skeleton": "S-it-1", "action": "drop",
+                         "reason_code": "other", "reason": "قلم است."}]
+    (run / "units" / "u-att-1" / "out.1.json").write_text(
+        json.dumps(out, ensure_ascii=False), encoding="utf-8")
+    result = assemble(root, run)
+    assert result["undecided"] == 0
+    delta = json.loads((run / "facts-delta.json").read_text(encoding="utf-8"))
+    assert {e["kind"] for e in delta["entries"]} == {"record", "rule"}

@@ -336,6 +336,46 @@ def _sever(item, label, known):
     return out
 
 
+def _drop_items(doc, items):
+    """Runs on disk are history (spec 2026-09-16 §3.6): a document written
+    before `item` left the contract is read, not refused. Its item entries and
+    the decisions addressing them are dropped here, before the schema gate
+    sees a kind it no longer knows — otherwise every one of them became an
+    `undecided[]` row promising the owner a next run that will never mint it.
+
+    `items` is the skeleton's own item candidates, so a decision about one of
+    those goes the same way as one about an item entry. A decision naming any
+    other unknown skeleton is left alone — that is the `unknown_skeleton`
+    hold-back, and it is still a thing the reviewer has to hear about.
+
+    Returns how many were dropped, for the one line `assemble` and `digest`
+    print on stderr.
+    """
+    def about_an_item(row):
+        if "item" in (row.get("kind"),
+                      (row.get("entry") or {}).get("kind"),
+                      (row.get("into") or {}).get("kind")
+                      if isinstance(row.get("into"), dict) else None):
+            return True
+        return row.get("skeleton") in items
+
+    out = 0
+    for where in ("decisions", "new"):
+        kept = []
+        for row in doc[where]:
+            if isinstance(row, dict) and about_an_item(row):
+                out += 1
+                # A `new[]` slot is emptied rather than removed: every later
+                # `N-<unit>-<n>` handle is its index, and closing the gap
+                # would move entries the same document points at.
+                if where == "new":
+                    kept.append(None)
+                continue
+            kept.append(row)
+        doc[where] = kept
+    return out
+
+
 def _judge_doc(root, run_dir, path, doc, semantics=True):
     """`(doc, findings, unshaped)` — rows A3–A28 over a parsed document, in
     place. `doc` is None when a finding refuses the whole of it; otherwise it is
@@ -367,7 +407,11 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
     for key in sorted(set(doc) - _allowed("root")):
         doc.pop(key)
     skeleton = read_json(pathlib.Path(run_dir) / "skeleton.json")
-    candidates = {c["id"]: c for c in skeleton["candidates"]}
+    items = {c["id"] for c in skeleton["candidates"]
+             if c.get("kind") == "item"}
+    candidates = {c["id"]: c for c in skeleton["candidates"]
+                  if c["id"] not in items}
+    doc["_items_ignored"] = _drop_items(doc, items)
     nodes = process_index(root, skeleton["department"])
     plan = read_json(pathlib.Path(run_dir) / "plan.json")
     unit = next((u for u in plan.get("units") or []
@@ -983,14 +1027,16 @@ def _outputs(root, run_dir, plan):
     out, problems = [], []
     for unit in sorted(plan["units"], key=lambda u: u["id"]):
         attempts = sorted((run_dir / "units" / unit["id"]).glob("out.*.json"))
-        merged, whole = None, []
+        merged, whole, ignored = None, [], 0
         for path in attempts:
             doc, found = _judge(root, run_dir, path)
             whole = [f.line() for f in tiers.refusals(found)
                      if tiers.item_of(f) is None]
             if doc is not None and not whole:
+                ignored += doc.get("_items_ignored") or 0
                 merged = _overlay(merged, _folded(doc, found), unit["id"])
         if merged is not None:
+            merged["_items_ignored"] = ignored
             out.append((unit, attempts[-1], merged))
         elif attempts and len(attempts) < ATTEMPTS:
             problems += [f'{unit["id"]}: {message}' for message in whole]
@@ -1118,7 +1164,10 @@ def _collect(root, run_dir, plan, skeleton):
              # `--review` writes `review_held: []` rather than nothing, and the
              # fold loop may read `reviewed_by` before any review is folded.
              "review_held": [], "reviewed_by": {},
-             "provenance": {}, "flags": [], "refused": {}, "refused_new": []}
+             "provenance": {}, "flags": [], "refused": {}, "refused_new": [],
+             # Entries of the retired `item` kind an old run's units wrote
+             # (`_drop_items`), for `assemble`/`digest`'s one stderr line.
+             "items_ignored": 0}
     returned = set()
     for unit, _path, doc in _outputs(root, run_dir, plan):
         returned.add(unit["id"])
@@ -1131,6 +1180,7 @@ def _collect(root, run_dir, plan, skeleton):
             handle, candidate, decision = _pseudo(entry, unit["id"], n)
             state["new"].append(candidate)
             state["by_skeleton"][handle] = decision
+        state["items_ignored"] += doc.get("_items_ignored") or 0
         state["refused"].update(doc["refused"])
         state["refused_new"] += [dict(row, unit=unit["id"])
                                  for _n, row in sorted(doc["refused_new"].items())]
@@ -1315,6 +1365,8 @@ def _fold_review(root, run_dir, state, draft, scratch, exclude=frozenset(),
         doc, found, _unshaped = _judge_doc(root, run_dir, path, doc)
         if doc is None:
             raise ValueError("; ".join(tiers.lines(found)))
+        state["items_ignored"] = (state.get("items_ignored") or 0) \
+            + (doc.get("_items_ignored") or 0)
     except (OSError, ValueError) as exc:
         # R8 routes the reviewer's second failure straight here, so this is the
         # document the fold must survive, not the one it may assume away: every
@@ -2413,6 +2465,13 @@ def _prepare(root, run_dir, review, exclude=frozenset(), held=None, only=None):
     which is what `phase_entries` needs to fold one phase on its own."""
     run_dir = pathlib.Path(run_dir)
     skeleton = read_json(run_dir / "skeleton.json")
+    # A skeleton built before 2026-09-16 still offers item candidates; they are
+    # read away here for the same reason `_drop_items` reads away the units'
+    # item entries — a run on disk is history, not a refusal.
+    items = [c for c in skeleton["candidates"] if c.get("kind") == "item"]
+    if items:
+        skeleton = dict(skeleton, candidates=[c for c in skeleton["candidates"]
+                                              if c.get("kind") != "item"])
     plan = read_json(run_dir / "plan.json")
     if only is not None:
         plan = dict(plan, units=[u for u in plan["units"] if u["id"] in only])
@@ -2420,6 +2479,7 @@ def _prepare(root, run_dir, review, exclude=frozenset(), held=None, only=None):
                          "manifest.json")
     store = load_store(root)
     state = _collect(root, run_dir, plan, skeleton)
+    state["items_ignored"] += len(items)
     state.update({
         "department": skeleton["department"], "issues": skeleton["issues"],
         # The reviewer is held to the same closed unit list a unit is (§3.3),
@@ -2475,11 +2535,22 @@ def phase_entries(root, run_dir, unit_ids):
     return sorted(out, key=lambda e: (KIND_ORDER.index(e["kind"]), e["handle"]))
 
 
+def _say_items_ignored(state):
+    """One line, in English on stderr, when a run on disk carried entries of
+    the retired `item` kind (spec 2026-09-16 §3.6). The owner's `report.md`
+    says nothing about them: they are not a thing this run left undone."""
+    n = state.get("items_ignored") or 0
+    if n:
+        print(f"facts-plan: ignored {n} output(s) of the retired kind 'item' "
+              "from this run", file=sys.stderr)
+
+
 def digest(root, run_dir):
     """`review/input.md` + `review/input.sha256` — steps 1–7 in memory, the temp
     ids discarded. Over `DIGEST_CEILING` the run stops (R7) — nothing is
     written and the reviewer is never skipped."""
     run_dir, skeleton, state = _prepare(root, run_dir, False)
+    _say_items_ignored(state)
     entries = _build_entries(root, skeleton, state)
     _cross_unit(root, entries, state)
     text = _digest_text(state, entries)
@@ -2575,6 +2646,7 @@ def assemble(root, run_dir, *, review=False):
                   f'{(row.get("refused") or [row.get("reason")])[0]}',
                   file=sys.stderr)
         raise SystemExit(2)
+    _say_items_ignored(state)
     clean = [{k: v for k, v in e.items() if not k.startswith("_")}
              for e in entries]
     write_json_atomic(run_dir / "facts-delta.json",
