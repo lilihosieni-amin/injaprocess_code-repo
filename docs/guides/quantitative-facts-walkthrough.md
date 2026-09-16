@@ -904,7 +904,11 @@ been retired. Then the cards, by kind:
   تأیید شده»), and a click opening the entry's own page as always. Above them one button, «تأیید
   همهٔ موارد این جدول», confirms every still-unconfirmed entry of those sections through the same
   per-entry endpoint a person's own tick uses — one call and one audit row each; the record's own
-  tick is not touched. There is no *move* in the panel: moving an entry is the bot's (section 5).
+  tick is not touched. A record's tick vouches for the record itself — its columns, rows, medium
+  and location — and never for the rules, measurements and notes listed under it: each of those
+  carries its own tick, which is why the section headers count them separately and why moving an
+  entry between tables resets nothing. There is no *move* in the panel: moving an entry is the
+  bot's (section 5).
 - **Measurement** — quantity and unit, «برای» (what is measured — a table's column, or plain
   text), «زمان · توسط» (when, by whom), «ثبت در» (which record column), method, exceptions.
 - **Disputes** («روایت‌های متعارض») — open accounts grouped by field, each with its value, the

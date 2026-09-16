@@ -994,6 +994,15 @@ confirm endpoint, one audit row each, leaving the record's own tick alone. The
 «استفاده‌کنندگان» card stays for the links that are not homes. There is no move
 action in the panel — moving is the bot's.
 
+**One tick per entry, and a record's covers the record only.** Grouping changed
+where a thing is found, not who vouches for it: a record's tick says its own
+columns, rows, medium and location have been read and are right, and says
+nothing about the rules, measurements and notes listed under it — each of those
+carries its own tick, set by a person on its own page or by the batch button
+above. So «۵ از ۸ تأیید شده» on a section is the honest count, and a table is
+finished only when the record and every entry under it are ticked. Moving an
+entry between tables does not reset any of them.
+
 ### Running the playbook headless
 
 The playbook can be driven without Telegram, one turn per `docker exec`, which is
