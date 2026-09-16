@@ -16,6 +16,7 @@ import pytest
 from facts_helpers import _seed_units
 from facts_plan.assemble import (_resolve_refs, assemble, derive_home,
                                  digest, phase_entries, validate_unit)
+from facts_plan.build import PLAN_CONTRACT
 from merge_facts import tiers
 from merge_facts.apply import simulate
 
@@ -1797,7 +1798,7 @@ def _dangling_of_keep():
     keep["entry"] = {"kind": "rule", "key": "enheraf"}
     keep["data"] = {"outputs": [{"key": "enheraf", "title": "انحراف", "unit": "kg",
                                  "nature": "observed",
-                                 "of": {"ref": "S-i-999999999999"}}]}
+                                 "of": {"ref": "S-rec-999999999999"}}]}
     return keep
 
 
@@ -2242,6 +2243,21 @@ def test_a_notes_home_is_the_first_table_it_names_not_the_first_ref():
                        KIND_OF_REF) == {"ref": "F-09999"}
 
 
+def test_a_rule_bound_to_something_that_is_not_a_table_has_no_home():
+    """The rule branch reads `kind_of` too: a binding whose `record.ref` names
+    a rule is no table, so it derives nothing — rather than a home the store
+    then severs with a note the owner has to read for no reason."""
+    def bound(*refs):
+        return {"kind": "rule", "data": {"applies_to": [
+            {"record": {"ref": r}} for r in refs]}}
+    assert derive_home(bound("T-3"), KIND_OF_REF) == {"ref": "T-3"}
+    assert derive_home(bound("T-5"), KIND_OF_REF) is None
+    # spec §4.1 reads «bindings on exactly one RECORD»: the rule binding is
+    # not a second table, so the one table still wins
+    assert derive_home(bound("T-5", "T-3"), KIND_OF_REF) == {"ref": "T-3"}
+    assert derive_home(bound("T-3", "T-4"), KIND_OF_REF) is None
+
+
 def test_a_measurement_of_something_that_is_not_a_table_has_no_home():
     assert derive_home({"kind": "measurement", "data": {"of": {"ref": "T-3"}}},
                        KIND_OF_REF) == {"ref": "T-3"}
@@ -2388,6 +2404,27 @@ def test_an_old_runs_item_outputs_are_ignored_with_one_line_not_refused(
     # the rule is the transcript unit's second entry, and nothing points at
     # the first any more.
     assert [e["key"] for e in delta["entries"]] == ["form_tahvil", "saqf"]
+
+
+def test_a_stamped_plan_lets_the_gate_answer_for_an_item_it_never_swallows(
+        tmp_path, capsys):
+    """I1: the filter above is a tolerance for a run that was ALREADY on disk,
+    not a standing one. `build` stamps every plan it writes with `contract`,
+    and on a stamped plan `item` is an unknown kind like any other: the gate
+    refuses it and the owner is told in `undecided[]`. Without this gate the
+    filter ran on every future run too, and a unit that wrote `kind: "item"`
+    — the word is all over this estate — lost the fact in silence, with one
+    English stderr line as the only trace."""
+    root, run = _two_unit_run(tmp_path, att_new=[FORM, ITEM], tr_new=[RULE])
+    plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
+    plan["contract"] = PLAN_CONTRACT
+    (run / "plan.json").write_text(json.dumps(plan, ensure_ascii=False),
+                                   encoding="utf-8")
+    result = assemble(root, run)
+    assert "retired kind 'item'" not in capsys.readouterr().err
+    assert result["undecided"] == 1             # the owner hears about it
+    delta = json.loads((run / "facts-delta.json").read_text(encoding="utf-8"))
+    assert {e["kind"] for e in delta["entries"]} == {"record", "rule"}
 
 
 def test_a_decision_about_an_item_candidate_goes_the_same_way(tmp_path):

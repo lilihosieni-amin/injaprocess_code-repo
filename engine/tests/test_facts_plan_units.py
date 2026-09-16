@@ -267,7 +267,8 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
     skeleton = json.loads((run_dir / "skeleton.json").read_text(encoding="utf-8"))
     plan = json.loads((run_dir / "plan.json").read_text(encoding="utf-8"))
     assert (run_dir / "functions.md").read_text(encoding="utf-8").startswith("#")
-    assert set(plan) == {"schema_version", "department", "hashes", "units"}
+    assert set(plan) == {"schema_version", "contract", "department", "hashes",
+                         "units"}
     assert plan["schema_version"] == 1 and plan["department"] == "cooking"
     assert all(h.startswith("sha256:") for h in plan["hashes"].values())
     assert any(rel.endswith("cooking-1405-05-26.txt") for rel in plan["hashes"])

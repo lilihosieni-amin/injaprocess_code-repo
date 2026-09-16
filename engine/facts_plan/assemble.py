@@ -343,6 +343,12 @@ def _drop_items(doc, items):
     sees a kind it no longer knows — otherwise every one of them became an
     `undecided[]` row promising the owner a next run that will never mint it.
 
+    **Only for such a run** — `_judge_doc` calls this when the run's
+    `plan.json` carries no `contract` stamp (I1). A run this engine planned is
+    left alone: a unit that writes `kind: "item"` there has written an unknown
+    kind, and an unknown kind is the schema gate's to refuse out loud, not
+    this filter's to swallow.
+
     `items` is the skeleton's own item candidates, so a decision about one of
     those goes the same way as one about an item entry. A decision naming any
     other unknown skeleton is left alone — that is the `unknown_skeleton`
@@ -415,10 +421,17 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
              if c.get("kind") == "item"}
     candidates = {c["id"]: c for c in skeleton["candidates"]
                   if c["id"] not in items}
-    ignored = _drop_items(doc, items)
+    plan = read_json(pathlib.Path(run_dir) / "plan.json")
+    # I1: the item filter is a tolerance for runs that were ALREADY on disk
+    # when `item` left the contract, not a standing filter. `build` stamps
+    # every plan it writes with `contract`, so a plan without one is an old
+    # run and only that run is read through the filter. On a stamped plan a
+    # `kind: "item"` is off-contract like any other unknown kind: the schema
+    # gate refuses it, the owner sees it in `undecided[]` and in the gate's
+    # note, and nothing disappears in silence.
+    ignored = _drop_items(doc, items) if "contract" not in plan else set()
     doc["_items_ignored"] = len(ignored)
     nodes = process_index(root, skeleton["department"])
-    plan = read_json(pathlib.Path(run_dir) / "plan.json")
     unit = next((u for u in plan.get("units") or []
                  if u.get("id") == doc["unit"]), None)
     ctx = {"candidates": candidates, "department": skeleton["department"],
@@ -1712,16 +1725,19 @@ def derive_home(entry, kind_of=None):
     if isinstance(written, dict) and isinstance(written.get("ref"), str):
         return {k: written[k] for k in ("ref", "field") if written.get(k)}
     data = entry.get("data") or {}
-    if entry["kind"] == "rule":
-        refs = [(m.get("record") or {}).get("ref")
-                for m in data.get("applies_to") or [] if isinstance(m, dict)]
-        named = {r for r in refs if isinstance(r, str)}
-        return {"ref": named.pop()} if len(named) == 1 else None
 
     def a_table(member):
         if not (isinstance(member, dict) and isinstance(member.get("ref"), str)):
             return False
         return kind_of is None or kind_of(member["ref"]) in (None, "record")
+
+    if entry["kind"] == "rule":
+        # Spec §4.1: "a rule with bindings on exactly one RECORD". A binding
+        # whose `record.ref` names a rule is no table, so it derives nothing
+        # rather than a home the store then severs with a note the owner reads.
+        named = {m["record"]["ref"] for m in data.get("applies_to") or []
+                 if isinstance(m, dict) and a_table(m.get("record"))}
+        return {"ref": named.pop()} if len(named) == 1 else None
 
     source = data.get("of") if entry["kind"] == "measurement" \
         else next((m for m in data.get("about") or [] if a_table(m)), None)

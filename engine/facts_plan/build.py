@@ -1764,11 +1764,21 @@ def plan_units(skeleton, groups, chunks, attachments,
     return out
 
 
+#: The date of the contract this engine plans against. A constant, stamped
+#: into every `plan.json` it writes, so `assemble` can tell a run built by
+#: THIS engine from a run that was sitting on disk before the contract
+#: changed — the only question the tolerance for old runs has to answer
+#: (2026-09-16 I1). Deterministic: it moves when the contract moves, never
+#: with the clock.
+PLAN_CONTRACT = "2026-09-16"
+
+
 def write_plan(run_dir, department, hashes, units):
     """`plan.json` — immutable build output: ids, budgets, and the digests
     `status` re-checks to report `plan_stale`."""
     path = pathlib.Path(run_dir) / "plan.json"
-    write_json_atomic(path, {"schema_version": 1, "department": department,
+    write_json_atomic(path, {"schema_version": 1, "contract": PLAN_CONTRACT,
+                             "department": department,
                              "hashes": hashes, "units": units})
     return path
 
