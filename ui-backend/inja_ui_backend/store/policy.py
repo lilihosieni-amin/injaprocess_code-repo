@@ -49,12 +49,11 @@ PROCESS_FIELDS: tuple[str, ...] = (
     "node_icom",
 )
 
-#: QF-26's six, one per fact kind plus one for provenance. A kind whose switch
+#: QF-26's switches, one per fact kind plus one for provenance. A kind whose switch
 #: is off is withheld **whole** from a non-editor rather than blanked, because
 #: a fact is a claim and an emptied claim is a different claim; `fact_sources`
 #: strips `source[]` and `accounts[].source` from every kind at once.
 FACT_FIELDS: tuple[str, ...] = (
-    "fact_items",
     "fact_records",
     "fact_measurements",
     "fact_rules",
@@ -86,7 +85,6 @@ DEFAULTS: dict[str, bool] = {
     "node_description": True,
     "node_actor": True,
     "node_icom": False,
-    "fact_items": True,
     "fact_records": True,
     "fact_measurements": True,
     "fact_rules": True,

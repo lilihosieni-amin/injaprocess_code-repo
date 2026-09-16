@@ -989,8 +989,8 @@ def _bound_rule_delta():
                       "variant": 1, "range": "L6:L15",
                       "params": {"tolerancePerFoodGr": 5,
                                  "ref_1": {"ref": "T-1", "field": "masraf_elami"}},
-                      "rows": [{"key": "r6", "row": 6, "label": "پنیر پیتزا",
-                                "item": "##1"}]}]}}]}
+                      "rows": [{"key": "r6", "row": 6,
+                                "label": "پنیر پیتزا"}]}]}}]}
 
 
 def test_apply_accepts_the_v3_rule_members_and_checks_their_field_refs(tmp_path):

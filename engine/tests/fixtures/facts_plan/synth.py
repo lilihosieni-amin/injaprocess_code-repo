@@ -36,6 +36,12 @@ BRANCHES = [("chalebagh", "چاله‌باغ"), ("naharkhoran", "ناهارخو�
 DEPARTMENTS = [("cooking", "آشپزخانه"), ("bar", "بار"), ("store", "انبار"),
                ("service", "سالن"), ("bakery", "نانوایی"), ("grill", "کباب‌پز")]
 
+def _longest_namespace(conv):
+    """The coded-list namespace this synthetic estate writes into its reference
+    tabs — the longest the manifest declares (`##` over `#`)."""
+    return max(conv.code_namespaces, key=len) if conv.code_namespaces else ""
+
+
 #: `code_namespaces` a manifest may declare — cooking's, and four estates that
 #: never heard of `#`.
 NAMESPACES = [{"##": "ing", "#": "food"}, {"@": "sku"},
@@ -111,7 +117,7 @@ def _head(rnd, conv, *, persian, codes, placeholder):
         if index > 3:
             grid[index - 3] = (["", "29", rnd.choice(conv.month_names)]
                                + [""] * width)[:width]
-    namespace = conv.item_namespace
+    namespace = _longest_namespace(conv)
     others = sorted(set(conv.code_namespaces) - {namespace}) or [namespace]
     header = ["نام" if persian else "Name"]
     for col in range(2, width + 1):
@@ -328,11 +334,11 @@ def synth_estate(root, seed, *, departments=1, workbooks=3, conventions=None):
                 titles = [t for t in header if t]
                 if titles:
                     reference_tabs = [tab["name"]]
-                    coded = rnd.random() < 0.5 and conv.item_namespace
+                    coded = rnd.random() < 0.5 and _longest_namespace(conv)
                     for r in range(2, rnd.randint(3, 5)):
                         cells = {titles[0]: (
                             f"{rnd.choice(FA_ITEMS)} "
-                            f"{conv.item_namespace}{r * 7}" if coded
+                            f"{_longest_namespace(conv)}{r * 7}" if coded
                             else rnd.choice(FA_ITEMS))}
                         for title in titles[1:]:
                             cells[title] = str(rnd.randint(1, 400))

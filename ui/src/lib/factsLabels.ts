@@ -39,18 +39,8 @@
  * from Appendix D and §7 and are guarded by review, not by the test.
  */
 
-/**
- * The kinds (§7) — **four since 2026-09-16**, plus the word `item` used to
- * carry.
- *
- * «آیتم» is kept for one reader: the `fact_items` disclosure switch on the
- * policy screen, which still exists in `store/policy.py` and must be called
- * what it was called. Nothing else reads it — the list's kind filter offers
- * `api/types.FACT_KINDS`, which is the four — and it goes the day that switch
- * does.
- */
+/** The kinds (§7) — **four since 2026-09-16** («tables as the spine»). */
 export const KIND_LABELS: Record<string, string> = {
-  item: 'آیتم',
   record: 'جدول',
   measurement: 'اندازه‌گیری',
   rule: 'قاعده',
@@ -259,6 +249,9 @@ export const ISSUE_KIND_LABELS: Record<string, string> = {
   binding_gone: 'محل اجرا دیگر وجود ندارد',
   unread_attachment: 'فایل خوانده‌نشده',
   oversized: 'بزرگ‌تر از یک واحد',
+  // A run put this entry under another table; the stored home stayed
+  // (`merge_facts.ladder.PLACEMENT_ISSUE`, owner decision 1 of 2026-09-16).
+  placement: 'اختلاف در جدولِ این مورد',
 }
 
 /** `issues[].fix.op` — the repair the issue proposes. */
@@ -407,7 +400,6 @@ export const PAYLOAD_FIELD_LABELS: Record<string, string> = {
   derived: 'محاسبه‌شده با',
   group: 'گروه',
   filled_by: 'تکمیل‌کننده',
-  refItems: 'ارجاع به آیتم',
   enum: 'مقادیر مجاز',
   readOnly: 'فقط‌خواندنی',
   required: 'اجباری',

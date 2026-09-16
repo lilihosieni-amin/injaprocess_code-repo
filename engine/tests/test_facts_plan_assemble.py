@@ -2199,23 +2199,6 @@ def test_the_phase_two_input_prints_a_phase_one_entry_by_handle_and_location(
 # belongs to — the unit writes it, or it is derived from the entry's own refs.
 
 
-def _schema_knows_home():
-    """Does the landed contract carry `home` yet?
-
-    `home` is Track S's (the three schemas); the two end-to-end tests below
-    write one through a unit document and read it back off the delta, so they
-    can only run once that contract has landed. Task I deletes this guard with
-    the tracks' merge — every other test here runs on either contract.
-    """
-    from engine_common import read_json, schema_dir
-    unit = read_json(schema_dir() / "facts-unit.schema.json")
-    return "home" in (unit["$defs"]["newEntry"].get("properties") or {})
-
-
-needs_home_schema = pytest.mark.skipif(
-    not _schema_knows_home(), reason="`home` is Track S's schema change")
-
-
 def test_home_is_derived_from_bindings_of_and_about():
     assert derive_home({"kind": "rule", "data": {"applies_to": [
         {"key": "a", "record": {"ref": "T-3"}}]}}) == {"ref": "T-3"}
@@ -2272,7 +2255,6 @@ def _homes_run(tmp_path, home):
     return _two_unit_run(tmp_path, att_new=[FORM], tr_new=[dict(RULE, home=home)])
 
 
-@needs_home_schema
 def test_a_units_home_resolves_through_temp_ids_and_renamed_fields(tmp_path):
     root, run = _homes_run(tmp_path, {"ref": "N-u-att-1-0", "field": "vazn"})
     assemble(root, run)
@@ -2282,7 +2264,6 @@ def test_a_units_home_resolves_through_temp_ids_and_renamed_fields(tmp_path):
                                       "field": "vazn"}
 
 
-@needs_home_schema
 def test_a_home_naming_a_dropped_candidate_is_cleared_with_a_note_not_held(tmp_path):
     """C29 at the assembly, and never the hold-back: a table this run did not
     keep costs the entry its place, not its landing."""

@@ -18,7 +18,7 @@ def test_the_defaults_are_exactly_d17s_table(tmp_path):
     **The two halves default in opposite directions, deliberately** (QF-26).
     D17's "nothing becomes visible at migration" guards the *reader* view,
     which is what the six process switches govern; facts never reach the reader
-    view (QF-23, §18), so the six fact switches govern what an **admin** sees
+    view (QF-23, §18), so the fact switches govern what an **admin** sees
     and the user's decision is that admins see facts. Harmonising the two
     columns would be reversing a decision, not tidying a table.
     """
@@ -29,7 +29,6 @@ def test_the_defaults_are_exactly_d17s_table(tmp_path):
         "process_idef0": False,
         "process_kpis": False,
         "node_icom": False,
-        "fact_items": True,
         "fact_records": True,
         "fact_measurements": True,
         "fact_rules": True,
@@ -37,7 +36,7 @@ def test_the_defaults_are_exactly_d17s_table(tmp_path):
         "fact_sources": True,
     }
     assert set(policy.FIELDS) == set(policy.DEFAULTS)
-    assert len(policy.FIELDS) == 12
+    assert len(policy.FIELDS) == 11
     # The two groups partition the table: a switch in neither, or in both, is a
     # switch no test above can attribute to a rule.
     assert policy.FIELDS == policy.PROCESS_FIELDS + policy.FACT_FIELDS

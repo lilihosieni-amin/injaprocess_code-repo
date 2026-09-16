@@ -71,7 +71,7 @@ _LEAF_LABELS: dict[str, str] = {
     "sections": "بخش‌ها", "signatures": "امضاها",
     "title": "عنوان", "key": "کلید", "type": "نوع",
     "constraints": "محدودیت‌ها", "derived": "محاسبه‌شده با", "group": "گروه",
-    "filled_by": "تکمیل‌کننده", "refItems": "ارجاع به آیتم",
+    "filled_by": "تکمیل‌کننده",
     "enum": "مقادیر مجاز", "readOnly": "فقط‌خواندنی", "required": "اجباری",
     "minimum": "کمینه", "maximum": "بیشینه",
     "section": "بخش", "when": "زمان", "open": "ردیف باز",

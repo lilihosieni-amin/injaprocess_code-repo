@@ -107,20 +107,12 @@ PUBLIC_NODE_KEYS: tuple[str, ...] = (
 #: Which of QF-26's switches governs which fact kind. The kinds of the facts
 #: store, and nothing else is a fact.
 #:
-#: **`item` is a retired kind kept here on purpose.** The store has held none
-#: since 2026-09-16 (`facts_store._FILES` opens four files, so `load_all` can
-#: never hand one back) — but `store/policy.py` still declares `fact_items`,
-#: and a declared switch with no kind behind it would be drawn on the policy
-#: screen under its raw key. The two go together, in the round that drops
-#: `item` from `schemas/facts.schema.json`.
-#:
 #: Public, because the switch a kind answers to is one table read from two
 #: places — this module's own fact branch, and `routers/facts`' list, which has
 #: to omit an off kind's rows without building a second body for each one. Two
 #: copies of this mapping is how the list and the detail would come to disagree
 #: about which entries exist.
 FACT_SWITCH: dict[str, str] = {
-    "item": "fact_items",
     "record": "fact_records",
     "measurement": "fact_measurements",
     "rule": "fact_rules",

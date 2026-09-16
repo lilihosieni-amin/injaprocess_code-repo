@@ -142,10 +142,6 @@ function FactsBody({ entries }: { entries: FactListRow[] }) {
         <Dropdown label={label(SCREEN_LABELS, 'filter_kind')} hideLabel
           placeholder={label(SCREEN_LABELS, 'filter_kind')}
           value={filters.kind ?? undefined} onChange={(v) => set('kind', v || null)}
-          // `FACT_KINDS`, not `Object.keys(KIND_LABELS)`: that map still carries
-          // the word `item` for the `fact_items` disclosure switch, and a filter
-          // built out of it would offer a kind the store has held none of since
-          // 2026-09-16.
           options={blankFirst('filter_kind', FACT_KINDS
             .map((value) => ({ value, label: label(KIND_LABELS, value) })))} />
         <Dropdown label={label(SCREEN_LABELS, 'filter_scope')} hideLabel

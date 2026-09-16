@@ -152,14 +152,14 @@ export interface ExportResult { url: string; pdf_url?: string; generated_at: str
 /** The switchable fields, in the order `store/policy.py` lists them.
  *
  *  D17's six first: a node has no KPIs — `process_kpis` is `process.kpis[]`,
- *  and what a node carries is ICOM. Then QF-26's six, one per fact kind plus
- *  `fact_sources` for provenance; a kind whose switch is off is withheld whole
- *  rather than blanked, and `fact_sources` strips `source[]` from all five at
- *  once. */
+ *  and what a node carries is ICOM. Then QF-26's fact switches, one per fact
+ *  kind plus `fact_sources` for provenance; a kind whose switch is off is
+ *  withheld whole rather than blanked, and `fact_sources` strips `source[]`
+ *  from all four at once. */
 export type PolicyField =
   | 'process_summary' | 'process_idef0' | 'process_kpis'
   | 'node_description' | 'node_actor' | 'node_icom'
-  | 'fact_items' | 'fact_records' | 'fact_measurements'
+  | 'fact_records' | 'fact_measurements'
   | 'fact_rules' | 'fact_notes' | 'fact_sources'
 
 /** `version` is a digest of the policy, not a counter: it is what D27 keys the
@@ -189,9 +189,7 @@ export interface VisibilityPolicy {
 export type FactKind = 'record' | 'measurement' | 'rule' | 'note'
 
 /** The same four, as a list — what the kind filter offers, in the order the
- *  list screen draws them. A list rather than `Object.keys(KIND_LABELS)`: that
- *  map still carries the retired `item` word for the `fact_items` disclosure
- *  switch, which outlives the kind. */
+ *  list screen draws them. */
 export const FACT_KINDS: FactKind[] = ['record', 'measurement', 'rule', 'note']
 
 /** Where a rule, a measurement or a note lives — the record it is about or
