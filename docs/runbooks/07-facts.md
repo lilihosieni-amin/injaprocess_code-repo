@@ -440,6 +440,11 @@ grep -n 'model:' ../data-repo/.claude/agents/quantify.md
 #   model: claude-opus-5[1m]
 ```
 
+Since 2026-09-15 (c) is the item that bites first: a form unit's input reaches
+130K with its related talk (§12, "Forms first, then the transcripts"), so the
+200K a missing suffix silently gives is no longer merely wasteful — it is a
+ceiling the run walks into.
+
 (d) the playbook uses only `Read, Write, Edit, Bash, Glob, Grep, Task` — the
 bot's own allowlist — so nothing authored on the laptop breaks on the server.
 
@@ -797,6 +802,114 @@ with `--rebuild` (that one replaces the plan and renumbers unit directories), an
 a unit whose refreshed input no longer fits the budget is *reported* by id: the
 decision to split it is the plan author's. `review/input.md` is not this verb's
 business — `facts-plan digest` re-renders it.
+
+### Forms first, then the transcripts — the two phases (added 2026-09-15)
+
+`docs/superpowers/specs/2026-09-15-facts-form-anchored-units-design.md` is the
+design, agreed with the owner on 2026-09-15 (ADR 0017's ruling of that date).
+The preparation run of 2026-09-14 described **19 of its 37 tables from speech
+alone** — no sheet and no photo behind them — and the reviewer then merged eight
+of those into a form it had never seen, on title similarity alone. The cause was
+the split itself: one unit per workbook, one per photo batch, one per transcript
+chunk, and the transcript units working blind to the forms, which they knew only
+by title.
+
+A run has **two phases** now, and `plan.json` carries a `phase` on every unit:
+
+- **Phase 1 — the forms** (`phase: 1`: the workbook, attachment and items
+  units). Each unit's input gains one section after «## متن»,
+  «گفت‌وگوهای مرتبط» — the passages of the run's chosen transcripts that talk
+  about *this* unit's tables. The planner scans each transcript in windows of 40
+  lines stepping 20, scores a window by the tokens it shares with the unit's own
+  candidates (titles, aliases, column titles, row labels, item codes), takes
+  them best-first up to 80K tokens, merges windows that touch, never takes a
+  window that scores 0, and prints what is left in transcript order under the
+  meeting's date, line range and transcript path
+  («### ۱۴۰۵/۰۶/۰۱ · L213–L252 · meetings/transcripts/preparation-1405-06-01.txt»)
+  so a citation to it can be checked — and the engine does check it: an account
+  or a `voice` source citing a passage this unit was not shown is dropped. The columns and the values stay the file's or the photo's;
+  the talk fills in what the file does not say — titles, units, cadence,
+  holders, thresholds, aliases — and is cited as a `voice` source.
+- **Phase 2 — the transcripts** (`phase: 2`), which now know what phase 1
+  recorded. Their «ورودی‌های قابل استفادهٔ مجدد» section is replaced by
+  «آنچه تا کنون ثبت شده»: every record phase 1 kept with its columns and where
+  it lives (its medium, and the tab or the cupboard and holder), every rule by
+  key, title and statement, every item by code and
+  title — each with the handle a phase-2 unit may address (the candidate's
+  `S-…`, or a run-wide `N-…` for an entry phase 1 minted) — up to 20K, and
+  then, as before, the store's open entries of the department. A spoken number
+  about a listed table goes *to* that table; a new table is described only when
+  none of the listed ones fits, and it is still marked «استنباطی» (F6). Nothing
+  spoken is skipped: every chosen line is still read by exactly one phase-2
+  unit.
+
+**`waiting` is not a stall.** `facts-plan status` prints a phase-2 unit as
+`waiting` while any phase-1 unit is still unfinished; it turns `pending` once
+every phase-1 unit is `done` or `failed`, and `status` rewrites that unit's
+`input.md` at the moment it does — from the *gated* phase-1 result, not from raw
+outputs. Stage U is otherwise unchanged (≤4 units per message, validate on
+return, retry only the refused decisions); the one visible difference is a round
+of waiting between the last form unit and the first transcript unit.
+
+**A unit may write an account now.** When the talk gives a value the form
+contradicts, the form's value is written and the spoken one becomes an
+`account` on that same entry, with its `voice` source and its lines — one entry
+and one open dispute for the owner in `report.md`, never a second table.
+Accounts were assembly-made until now; `accounts[]` is admitted on a unit's
+decision and on a `new[]` entry, its id is minted by `merge facts apply` like
+every other id (INV-1), and its `source.ref` must be one of the run's chosen
+transcripts, never a path the unit invented (INV-3). A malformed one is
+**REPAIR**-dropped, exactly as an engine-owned member the AI wrote is dropped
+today (A7) — it never costs the decision. The reviewer sees the change too: the
+digest names each entry's source kinds (`sheet · voice`, `voice`), and when two
+entries merge the one read off a form is the keeper.
+
+**A photo unit cites the photo, not the batch (added 2026-09-16).** An
+attachment unit reads several files at once, and until now they reached it as
+one nameless block of text: the preparation run of 2026-09-15 put all fourteen
+photos of `u-att-1` on each of its thirteen records. Each `.text/` sidecar is
+now printed under a heading of its own — the file's own name and the path a
+citation has to spell («### forms/tabdil.image ·
+departments/preparation/attachments/.text/forms__tabdil.image.md»), in input
+order — and a decision or a `new[]` entry may answer with
+`from: ["<path exactly as printed>"]`, one path, or several when the entry
+really spans several files. The entry's evidence is then exactly those files,
+typed by their suffix (`photo`, `pdf`, `docx`) as before. The gate is the talk
+citations' gate: a path this unit was not handed is **REPAIR**-dropped in
+silence (INV-3 at file level), and an entry that names none of its inputs still
+cites all of them, so nothing is lost — citing too much is a smaller loss than
+citing nothing. A transcript unit reads one excerpt whole and is unaffected;
+sheet, voice and process citations keep their order. A photographed form's
+heading also names the photo itself («· عکس: departments/preparation/
+attachments/forms/tabdil.jpg», while the file is still in the estate), and the
+unit opens it to see the structure the extracted description cannot spell — a
+title spanning two cells, a group: the description stays the source of the
+columns, units and titles, and what only the photo shows becomes a `new[]` note
+on that form rather than a different reading of it.
+
+**The budgets (design §4).** The input budgets rose with the phases; the output
+estimate did not.
+
+| per unit | until 2026-09-15 | now |
+|---|---|---|
+| core input — candidates, text, cards | 20K | **50K** (owner) |
+| lines (`MAX_LINES`) | 1,800 | **4,500** |
+| longest line (`MAX_LINE`) | 1,900 | 1,900 |
+| related talk, a form unit | — | up to **80K** |
+| «آنچه تا کنون ثبت شده», a transcript unit | ≈40 lines | up to **20K** |
+| total input | 20K | **≤130K** |
+| a transcript chunk | — | **42K** (leaves the cards their room under 50K) |
+| **estimated output** | **20K** | **20K — unchanged** |
+
+The output number is the binding one, and that is why it did not move: ADR
+0017's cap of 20K exists because the first cooking run (2026-09-02) handed one
+agent a whole department and **crashed three agents on the model's output
+limit**. A unit reads far more now and still never answers more than the model
+can write — the splitter splits on the output estimate alone, and the related
+talk, appended after the core fit check, neither causes a split nor prevents
+one. 130K of input sits well inside the runtime's million-token window, which is
+also why §10's `[1m]` suffix matters more than it did: the 200K a missing suffix
+silently gives no longer has room for a form unit with a full talk section.
 
 ### Running the playbook headless
 

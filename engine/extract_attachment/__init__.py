@@ -64,6 +64,25 @@ def cache_path(adir, src):
                + CONVERTERS[rel.suffix.lower()]))
 
 
+def owner_rel(root, sidecar_rel):
+    """`cache_path` read backwards — the path, relative to `root`, of the file
+    a `.text/` sidecar was extracted from, or None when that file is gone.
+    `…/attachments/.text/forms__tahvil.txt` → `…/attachments/forms/tahvil.docx`.
+
+    One sidecar suffix serves several source suffixes (`.image.md` is every
+    image), so the file on disk decides which; the extensions are tried in
+    sorted order, so an estate holding two of them always picks the same one.
+    """
+    sidecar = pathlib.PurePosixPath(sidecar_rel)
+    for ext, suffix in sorted(CONVERTERS.items()):
+        if sidecar.name.endswith(suffix):
+            rel = sidecar.parent.parent / (
+                sidecar.name[:-len(suffix)].replace("__", "/") + ext)
+            if (pathlib.Path(root) / rel).is_file():
+                return rel.as_posix()
+    return None
+
+
 def docx_to_text(path):
     from docx import Document  # lazy — keeps import cost out of the fast paths
     doc = Document(str(path))

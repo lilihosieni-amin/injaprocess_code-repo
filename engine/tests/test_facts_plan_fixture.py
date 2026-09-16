@@ -10,7 +10,9 @@ import json
 import pathlib
 import shutil
 
-from facts_plan.build import _is_mirror, build, load_estate
+from facts_plan.build import (EST_OUT, IN_BUDGET, MAX_LINE, MAX_LINES,
+                              OUT_BUDGET, _is_mirror, build, est_tokens_out,
+                              load_estate)
 
 FIX = pathlib.Path(__file__).parent / "fixtures" / "facts-plan"
 EXPECTED = json.loads((FIX / "expected.json").read_text(encoding="utf-8"))
@@ -84,6 +86,22 @@ def test_line_pairs_are_one_unit_each_and_the_report_books_share_one(tmp_path):
     assert ids == [u["id"] for u in EXPECTED["units"]]
     assert sum(1 for i in ids if i.startswith("u-wb-")) == \
         sum(1 for u in EXPECTED["units"] if u["type"] == "workbook")
+
+
+def test_the_fixture_freezes_the_engines_own_estimator():
+    """§7's freeze, made real (I3): until this assertion the block was only
+    ever compared to itself, so the 2026-09-15 retune — 20000/1800 to
+    50000/4500 — never showed up as the fixture diff `est_tokens_out`'s
+    docstring promises."""
+    limits = EXPECTED["estimator"]
+    assert {k: limits[k] for k in EST_OUT} == EST_OUT
+    assert (limits["in_budget"], limits["out_budget"], limits["max_lines"],
+            limits["max_line"]) == (IN_BUDGET, OUT_BUDGET, MAX_LINES, MAX_LINE)
+    # the three the estimator spells inline, read back through it
+    record = {"kind": "record", "payload": {"fields": [{}, {}]}}
+    assert est_tokens_out([record], 0, False) == \
+        limits["record_base"] + 2 * limits["record_per_field"]
+    assert est_tokens_out([], 1000, True) == int(1000 * limits["transcript_ratio"])
 
 
 def test_every_unit_is_under_both_budgets_and_the_line_bound(tmp_path):

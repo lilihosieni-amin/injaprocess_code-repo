@@ -22,9 +22,9 @@
   "record_base": 150,
   "record_per_field": 60,
   "transcript_ratio": 0.4,
-  "in_budget": 20000,
+  "in_budget": 50000,
   "out_budget": 20000,
-  "max_lines": 1800,
+  "max_lines": 4500,
   "max_line": 1900
  },
  "units": [

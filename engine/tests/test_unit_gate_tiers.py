@@ -6,6 +6,7 @@ The first block runs on the real preparation run of 2026-09-12 (copied
 read-only under `fixtures/prep-run-2026-09-12/`); the rest on the synthetic
 runs the gate's older tests already use.
 """
+import copy
 import json
 import pathlib
 import re
@@ -16,12 +17,15 @@ from facts_plan.assemble import _judge, assemble, materialise, report, validate_
 from facts_plan.cli import unit_states
 from merge_facts import tiers
 from test_facts_plan_assemble import _plan as _a_plan
+from test_facts_plan_assemble import FORM, PHOTO, TALK, _two_unit_run
 from test_facts_plan_assemble import _record_out, _rule_out, _second_record
 from test_facts_plan_assemble import _root as _a_root
 from test_facts_plan_assemble import _run as _a_run
 from test_facts_plan_assemble import _skeleton as _a_skeleton
 from test_facts_plan_assemble import _write_review
 from test_validate_facts_unit import _bound_doc, _bound_run, _doc, _paper, _run, _write
+
+from engine_common import read_json, write_json_atomic
 
 PREP = pathlib.Path(__file__).parent / "fixtures" / "prep-run-2026-09-12"
 RUN = "runs/facts/preparation/20260912-102718"
@@ -643,3 +647,213 @@ def test_f5_the_undecided_block_says_how_many_were_not_reviewed(tmp_path):
     assert "«موردی بی‌عنوان»" in text
     assert "۱ مورد در این اجرا بررسی نشد و در اجرای بعدی تکمیل می‌شود." in text
     assert "bad" not in text
+
+
+# --------------------------------------------------------------------------
+# A unit may account for what it heard (spec 2026-09-15 §3)
+
+VOICE = {"type": "voice", "ref": "meetings/transcripts/preparation-1405-06-01.txt",
+         "lines": "213-252"}
+#: The decision whose entry `_built` returns first — the run's lowest record
+#: skeleton, and so the table the account below argues with.
+ACCOUNTED = 5
+
+
+def _with_account(doc, account):
+    doc = copy.deepcopy(doc)
+    doc["decisions"][ACCOUNTED]["accounts"] = [account]
+    return doc
+
+
+def _shown(run_dir, unit, passages=({"rel": VOICE["ref"], "first": 213,
+                                     "last": 252},)):
+    """The passages `build` printed to `unit`, as `plan.json` records them —
+    the fixture is a run from before the two phases, and the gate admits a
+    citation only inside what the plan says the unit was shown."""
+    plan = read_json(run_dir / "plan.json")
+    for row in plan["units"]:
+        row["talk"] = [dict(p) for p in passages] if row["id"] == unit else []
+    write_json_atomic(run_dir / "plan.json", plan)
+
+
+def test_a_units_voice_account_is_kept_open_and_the_form_value_stays_primary(tmp_path):
+    root, run_dir = _prep_root(tmp_path)
+    _shown(run_dir, "u-wb-amadesazi")
+    path = run_dir / "units" / "u-wb-amadesazi" / "out.1.json"
+    doc = _with_account(read_json(path), {"path": "data/fields/c_b/unit",
+                                          "value": "g", "source": VOICE})
+    write_json_atomic(path, doc)
+    entry = _built(root, run_dir, path)[0]
+    heard, form = entry["accounts"]
+    # the field the unit cited by its printed column key, under the key the
+    # unit gave it — an account on `c_b` addresses nothing once it is stored
+    assert heard == {"field": "data/fields/tedad_mini_burger/unit", "value": "g",
+                     "status": "open", "speaker_role": None,
+                     "statement": "مقدار ثبت‌شده برای این خانه: g",
+                     "source": VOICE}
+    assert entry["data"]["fields"][1]["key"] == "tedad_mini_burger"
+    # I1 — and the form's own reading beside it, so `resolve` can keep it.
+    assert form["field"] == heard["field"] and form["value"] != "g"
+    assert form["source"] == entry["source"][0]
+    assert entry["data"]["fields"][1]["unit"] != "g"        # the form's value is the entry's
+    assert _refused(validate_unit(root, run_dir, path)) == []
+
+
+def test_an_account_citing_a_passage_the_unit_was_not_shown_is_dropped(tmp_path):
+    """I5 — the run chose the transcript, but this unit was shown lines 213-252
+    of it and nothing else; 100-140 is talk it never read."""
+    root, run_dir = _prep_root(tmp_path)
+    _shown(run_dir, "u-wb-amadesazi")
+    path = run_dir / "units" / "u-wb-amadesazi" / "out.1.json"
+    clean = _built(root, run_dir, path)[0]
+    write_json_atomic(path, _with_account(read_json(path), {
+        "path": "data/fields/c_b/unit", "value": "g",
+        "source": dict(VOICE, lines="100-140")}))
+    findings = _judge(root, run_dir, path)[1]
+    assert not _refused(findings) and not _noted(findings)
+    assert _built(root, run_dir, path)[0] == clean
+
+
+def test_an_account_whose_source_is_not_a_chosen_transcript_is_dropped_silently(tmp_path):
+    root, run_dir = _prep_root(tmp_path)
+    path = run_dir / "units" / "u-wb-amadesazi" / "out.1.json"
+    bad = {"path": "data/fields/c_b/unit", "value": "g",
+           "source": {"type": "voice", "ref": "meetings/transcripts/made-up.txt",
+                      "lines": "1-2"}}
+    clean = _built(root, run_dir, path)[0]
+    write_json_atomic(path, _with_account(read_json(path), bad))
+    findings = _judge(root, run_dir, path)[1]
+    entry = _built(root, run_dir, path)[0]
+    # Silently: A7 drops an engine-owned member as a REPAIR, so neither the
+    # findings nor the entry may carry a trace of the one the unit invented.
+    assert not _refused(findings) and not _noted(findings)
+    assert "accounts" not in entry
+    assert [i for i in entry.get("issues") or [] if i["kind"] == "shape"] == []
+    assert bad["path"] not in (entry.get("field_status") or {})
+    assert entry == clean
+
+
+#: The reviewer's reproduction: a transcript unit of the real run, and the one
+#: meeting excerpt it was handed whole.
+TR_UNIT = "u-tr-preparation-1405-05-28-02-l1"
+TR_SPAN = ("meetings/transcripts/preparation-1405-05-28-02.txt", 1, 117)
+
+
+def _with_new_account(run_dir, account, voice=()):
+    """The unit's first `new[]` entry, arguing with a listed value."""
+    path = run_dir / "units" / TR_UNIT / "out.1.json"
+    doc = read_json(path)
+    doc["new"][0]["accounts"] = [account]
+    if voice:
+        doc["new"][0]["voice"] = list(voice)
+    write_json_atomic(path, doc)
+    return path
+
+
+def test_a_transcript_units_account_cites_the_excerpt_it_was_handed(tmp_path):
+    """Spec §3 phase 2: a spoken number that disagrees with a listed value is an
+    account. A phase-2 unit is shown no `talk` passages — its bound is its own
+    `#L…` input span, which is every line it read."""
+    root, run_dir = _prep_root(tmp_path)
+    rel, _first, _last = TR_SPAN
+    path = _with_new_account(run_dir, {"path": "data/quantity", "value": 215,
+                                       "source": {"type": "voice", "ref": rel,
+                                                  "lines": "10-20"}},
+                             voice=[{"ref": rel, "lines": "10-20"}])
+    entry = next(e for e in _built(root, run_dir, path)
+                 if e["_skeleton"].startswith("N-"))
+    heard = next(a for a in entry["accounts"] if a["value"] == 215)
+    assert heard["status"] == "open" and heard["source"]["lines"] == "10-20"
+    # the `voice` member is the excerpt `_unit_sources` already cites, so the
+    # entry carries that meeting once, not twice
+    assert [s for s in entry["source"] if s["type"] == "voice"] == \
+        [{"type": "voice", "ref": rel, "lines": "1-117"}]
+    assert _refused(validate_unit(root, run_dir, path)) == []
+
+
+@pytest.mark.parametrize("lines,rel", [
+    ("100-200", TR_SPAN[0]),                       # past the end of its excerpt
+    ("10-20", "meetings/transcripts/preparation-1405-06-01.txt"),   # another meeting
+])
+def test_a_transcript_units_account_outside_its_excerpt_is_dropped(tmp_path, lines,
+                                                                   rel):
+    root, run_dir = _prep_root(tmp_path)
+    clean = _built(root, run_dir,
+                   run_dir / "units" / TR_UNIT / "out.1.json")
+    path = _with_new_account(run_dir, {"path": "data/quantity", "value": 215,
+                                       "source": {"type": "voice", "ref": rel,
+                                                  "lines": lines}})
+    findings = _judge(root, run_dir, path)[1]
+    assert not _refused(findings) and not _noted(findings)
+    assert _built(root, run_dir, path) == clean
+
+
+def test_a_form_unit_is_bound_by_its_passages_and_not_by_its_files(tmp_path):
+    """The other half: a workbook unit's own inputs are `.xlsx` and a photo
+    unit's are `.text/` sidecars, so nothing of theirs is a meeting excerpt —
+    only the passages `build` recorded for them are."""
+    from facts_plan.assemble import _shown
+    assert _shown({"inputs": ["attachments/sheets/A/A.xlsx"],
+                   "talk": [{"rel": TR_SPAN[0], "first": 213, "last": 252}]}) \
+        == [{"rel": TR_SPAN[0], "first": 213, "last": 252}]
+    assert _shown({"inputs": ["departments/x/attachments/.text/p.image.md"]}) == []
+    assert _shown({"inputs": [f"{TR_SPAN[0]}#L1-L117"]}) == \
+        [{"rel": TR_SPAN[0], "first": 1, "last": 117}]
+
+
+# --------------------------------------------------------------------------
+# Task G (2026-09-16): an entry cites the photo it was read off, not every
+# photo its unit was handed.
+
+PHOTO_2 = "departments/cooking/attachments/.text/photo-2.image.md"
+UNGIVEN = "departments/cooking/attachments/.text/photo-9.image.md"
+
+
+def _photo_run(tmp_path, entry):
+    """The two-photo phase-1 unit writing `entry` as its only `new[]` record —
+    `(the entry as it is stored, the findings)`."""
+    root, run = _two_unit_run(tmp_path, att_new=[entry], tr_new=[],
+                              photos=(PHOTO, PHOTO_2))
+    path = run / "units" / "u-att-1" / "out.1.json"
+    return _built(root, run, path)[0], _judge(root, run, path)[1]
+
+
+def test_an_entry_read_off_one_photo_cites_that_photo(tmp_path):
+    entry, findings = _photo_run(tmp_path, {**FORM, "from": [PHOTO_2]})
+    assert entry["source"] == [{"type": "photo", "ref": PHOTO_2}]
+    assert not _refused(findings) and not _noted(findings)
+
+
+def test_a_from_the_unit_was_never_given_is_dropped_and_every_photo_is_cited(tmp_path):
+    """INV-3 at file level, at the A7 tier: a path the unit was not handed is
+    a path nobody read, so it is dropped in silence and the entry falls back to
+    the unit's own inputs rather than losing its evidence."""
+    entry, findings = _photo_run(tmp_path, {**FORM, "from": [UNGIVEN]})
+    assert entry["source"] == [{"type": "photo", "ref": PHOTO},
+                               {"type": "photo", "ref": PHOTO_2}]
+    assert not _refused(findings) and not _noted(findings)
+    assert "from" not in entry and UNGIVEN not in json.dumps(entry)
+
+
+def test_an_entry_with_no_from_still_cites_every_photo_of_its_unit(tmp_path):
+    entry, _findings = _photo_run(tmp_path, FORM)
+    assert entry["source"] == [{"type": "photo", "ref": PHOTO},
+                               {"type": "photo", "ref": PHOTO_2}]
+
+
+def test_a_new_entrys_voice_citation_reaches_its_sources(tmp_path):
+    """The fix wave of 2026-09-15 gated `voice` on a `new[]` entry and then lost
+    it: `_pseudo` copies a whitelist of members onto the synthetic decision, and
+    `voice` was not on it. A photo unit cites no transcript of its own, so the
+    meeting it names is only in `source[]` if the member survived the round
+    trip."""
+    root, run = _two_unit_run(tmp_path, att_new=[
+        {**FORM, "voice": [{"ref": TALK, "lines": "1-3"}]}], tr_new=[])
+    plan = read_json(run / "plan.json")
+    plan["units"][0]["talk"] = [{"rel": TALK, "first": 1, "last": 3}]
+    write_json_atomic(run / "plan.json", plan)
+    path = run / "units" / "u-att-1" / "out.1.json"
+    entry = _built(root, run, path)[0]
+    assert entry["source"] == [{"type": "photo", "ref": PHOTO},
+                               {"type": "voice", "ref": TALK, "lines": "1-3"}]
+    assert not _refused(_judge(root, run, path)[1])
