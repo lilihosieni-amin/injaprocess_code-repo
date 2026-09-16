@@ -122,19 +122,20 @@ def test_context_drops_sign_tests_and_empty_formats(estate):
 
 
 def test_reuse_slice_ranks_by_shared_tokens_and_caps():
-    index = [{"id": "F-00002", "kind": "item", "key": "item_1", "title": "پنیر پیتزا",
-              "aliases": ["وزن پنیر"], "scope": {"departments": ["cooking"]},
-              "retired": False},
-             {"id": "F-00003", "kind": "item", "key": "item_9", "title": "روغن سرخ‌کردنی",
-              "aliases": [], "scope": {"departments": ["cooking"]}, "retired": False},
-             {"id": "F-00004", "kind": "item", "key": "item_x", "title": "کاغذ",
-              "aliases": [], "scope": {"departments": ["warehouse"]}, "retired": False}]
-    own = [{"id": "S-i-0123456789ab", "kind": "item", "label": "##1 پنیر"}]
-    lines = reuse_slice(own, index, {"F-00002": "kg"}, "cooking",
+    index = [{"id": "F-00002", "kind": "measurement", "key": "vazn_panir",
+              "title": "وزن پنیر پیتزا", "aliases": ["وزن پنیر"],
+              "scope": {"departments": ["cooking"]}, "retired": False},
+             {"id": "F-00003", "kind": "measurement", "key": "vazn_roghan",
+              "title": "وزن روغن سرخ‌کردنی", "aliases": [],
+              "scope": {"departments": ["cooking"]}, "retired": False},
+             {"id": "F-00004", "kind": "measurement", "key": "vazn_kaqaz",
+              "title": "وزن کاغذ", "aliases": [],
+              "scope": {"departments": ["warehouse"]}, "retired": False}]
+    own = [{"id": "S-rec-0123456789ab", "kind": "record", "label": "پیتزا"}]
+    lines = reuse_slice(own, index, "cooking",
                         _tokens("پنیر پیتزا موجودی"), cap=2)
-    assert lines[0] == "S-i-0123456789ab · item · ##1 پنیر"
-    assert lines[1].startswith("F-00002 · item · item_1 · پنیر پیتزا")
-    assert lines[1].endswith("kg")
+    assert lines[0] == "S-rec-0123456789ab · record · پیتزا"
+    assert lines[1].startswith("F-00002 · measurement · vazn_panir · وزن پنیر پیتزا")
     assert len(lines) == 3                                 # own + cap
     assert "F-00004" not in " ".join(lines)                # another department
 
@@ -211,14 +212,14 @@ def test_unit_symbols_and_skeleton_written(tmp_path):
     assert symbols == ["g", "kg"]
     assert unit_symbols(tmp_path / "nowhere") == []
     path = write_skeleton(tmp_path, "cooking", "20260906-101500", symbols,
-                          [{"id": "S-i-0123456789ab", "kind": "item",
-                            "unit": "u-items-food1", "payload": {"code": "#1"}}],
+                          [{"id": "S-rec-0123456789ab", "kind": "record",
+                            "unit": "u-wb-pitza", "payload": {"fields": []}}],
                           [], [], [])
     doc = json.loads(path.read_text(encoding="utf-8"))
     assert doc["schema_version"] == 1 and doc["department"] == "cooking"
     assert doc["run"] == "20260906-101500"
     assert doc["unit_symbols"] == ["g", "kg"]
-    assert doc["candidates"][0]["id"] == "S-i-0123456789ab"
+    assert doc["candidates"][0]["id"] == "S-rec-0123456789ab"
     assert doc["instances"] == [] and doc["imports"] == [] and doc["issues"] == []
 
 

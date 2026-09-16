@@ -26,11 +26,8 @@
     "cadence": "nightly",
     "day_boundary": "01:15",
     "movement": {
-     "from": {
-      "ref": "N-u-wb-fried-0"
-     },
      "to": {
-      "ref": "N-u-wb-fried-1"
+      "ref": "N-u-wb-fried-0"
      },
      "reason": "باقی‌ماندهٔ اقلام لاین در پایان شب به انبار مرکزی برگردانده می‌شود."
     }
@@ -39,23 +36,18 @@
  ],
  "new": [
   {
-   "kind": "item",
-   "key": "line_sokhari",
-   "title": "لاین سوخاری",
-   "statement": "محل پخت و نگهداری اقلام سوخاری در آشپزخانه.",
+   "kind": "record",
+   "key": "daftar_tahvil_anbar_markazi",
+   "title": "دفتر تحویل انبار مرکزی",
+   "statement": "دفتر کاغذی انبار مرکزی که تحویل و برگشت اقلام لاین‌ها در آن نوشته می‌شود.",
    "data": {
-    "category": "place",
-    "unit": null
-   }
-  },
-  {
-   "kind": "item",
-   "key": "anbar_markazi",
-   "title": "انبار مرکزی",
-   "statement": "انباری که اقلام از آنجا به لاین‌های آشپزخانه تحویل می‌شود.",
-   "data": {
-    "category": "place",
-    "unit": null
+    "medium": "paper",
+    "role": "log",
+    "location": {
+     "kept_at": "انبار مرکزی",
+     "holder": "انباردار"
+    },
+    "cadence": "nightly"
    }
   }
  ]

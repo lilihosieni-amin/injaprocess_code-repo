@@ -37,8 +37,8 @@ from merge_facts.preconditions import _sever as _sever_member
 from merge_facts.tiers import note, refuse
 
 from facts_plan.build import (SIDECAR_DIR, TRANSCRIPT_DIR, TRANSCRIPT_EXT,
-                              estimate_tokens, label_of, process_index,
-                              shape_section)
+                              _tokens, estimate_tokens, label_of,
+                              process_index, shape_section)
 
 def _refs(value):
     """Every `{ref, field?}` object in a decision, in document order."""
@@ -763,7 +763,7 @@ def _lint_decision(decision, label, symbols, kind=None,
 
 #: A candidate's kind as the store spells it — a `.gs` script is a rule; a
 #: `new[]` entry already names a store kind, so it passes through.
-KIND_OF = {"record": "record", "item": "item", "rule": "rule", "script": "rule",
+KIND_OF = {"record": "record", "rule": "rule", "script": "rule",
            "gs": "rule"}
 _DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 
@@ -1103,8 +1103,8 @@ def _pseudo(entry, unit, n):
                    # `_judge_doc` and read by `_entry` off the decision: a
                    # member left off this list is gated and then silently lost.
                    if k in ("key", "title", "statement", "aliases", "branches",
-                            "processes", "accounts", "voice", "from", "extra",
-                            "_notes")}}
+                            "home", "processes", "accounts", "voice", "from",
+                            "extra", "_notes")}}
     return handle, candidate, decision
 
 
@@ -1396,10 +1396,10 @@ def _fold_review(root, run_dir, state, draft, scratch, exclude=frozenset(),
                                  if v is not None}}
         merged["_notes"] = list(previous.get("_notes") or []) + notes
         # A review `keep` carrying `data` changes the members it lists and
-        # nothing else: the unit's `category`, `fields[]`, … stay. Replacing
+        # nothing else: the unit's `quantity`, `fields[]`, … stay. Replacing
         # `data` wholesale (the shape until 2026-09-09) made a reviewer's
-        # one-member rewrite of sixteen items lose their `category`, and the
-        # whole review with it.
+        # one-member rewrite of sixteen entries lose the members it did not
+        # name, and the whole review with it.
         if isinstance(previous.get("data"), dict) and isinstance(decision.get("data"), dict):
             merged["data"] = {**previous["data"], **decision["data"]}
         merged["unit"] = previous.get("unit", "review")
@@ -1622,6 +1622,39 @@ def _attach_scopes(entries, state, by_temp):
 READ_OFF_A_FORM = ("sheet", "photo", "pdf", "docx")
 
 
+#: The three kinds that carry one (spec 2026-09-16); a record is its own
+#: place and the store schema forbids it a `home`.
+HOMED_KINDS = ("rule", "measurement", "note")
+
+
+def derive_home(entry):
+    """The table an entry belongs to — what the unit wrote, else what the
+    entry's own references say (spec 2026-09-16 §4.1).
+
+    A pure function of the entry: a rule whose bindings all name one record
+    belongs to that record, a measurement belongs to what it is `of` (with the
+    column, when it names one), and a note to the first table it is `about`
+    (owner decision 3). Anything else is unattached — including a record, which
+    is a place and has none.
+    """
+    if entry.get("kind") not in HOMED_KINDS:
+        return None
+    written = entry.get("home")
+    if isinstance(written, dict) and isinstance(written.get("ref"), str):
+        return {k: written[k] for k in ("ref", "field") if written.get(k)}
+    data = entry.get("data") or {}
+    if entry["kind"] == "rule":
+        refs = [(m.get("record") or {}).get("ref")
+                for m in data.get("applies_to") or [] if isinstance(m, dict)]
+        named = {r for r in refs if isinstance(r, str)}
+        return {"ref": named.pop()} if len(named) == 1 else None
+    source = data.get("of") if entry["kind"] == "measurement" \
+        else next(iter(data.get("about") or []), None)
+    if not isinstance(source, dict) or not isinstance(source.get("ref"), str):
+        return None
+    return {k: source[k] for k in ("ref", "field") if source.get(k)}
+
+
 def _entry(candidate, decision, state, part=None):
     """Step 2 — the envelope §2.6 describes: the skeleton's mechanical payload
     under the unit's own fields, `source[]` from every instance and binding,
@@ -1635,13 +1668,6 @@ def _entry(candidate, decision, state, part=None):
     # payload carries no wrappers, so this is a no-op for every real candidate.
     data = _unwrap(copy.deepcopy(candidate["payload"]), "data", status)
     given = _unwrap(written.get("data") or {}, "data", status)
-    # An item's `code` is the estate's, read off the header row and carried by
-    # the candidate's payload — never the model's to write. The schema admits
-    # it (a document that copies it back in is not a broken document) and it is
-    # dropped here, on the one path every decision takes: a unit's, a review's,
-    # and a split part's alike (R4). The cooking review of 2026-09-08 was
-    # refused whole for it.
-    given.pop("code", None)
     renames, fields = _rename_fields(data.pop("fields", []),
                                      given.pop("fields", []))
     data.update(given)
@@ -1724,6 +1750,8 @@ def _entry(candidate, decision, state, part=None):
              "retired": False, "data": data,
              "_skeleton": candidate["id"], "_unit": decision["unit"],
              "_renames": renames}
+    if kind in HOMED_KINDS:
+        entry["home"] = derive_home(dict(entry, home=written.get("home")))
     if written.get("aliases"):
         entry["aliases"] = written["aliases"]
     if written.get("accounts"):
@@ -2017,7 +2045,7 @@ def _sever_unknown(entry, known):
     sites = list(_ref_sites(public, []))
     gone = [(path, obj["ref"]) for path, obj in sites
             if isinstance(obj.get("ref"), str) and obj["ref"].startswith("F-")
-            and obj["ref"] not in known]
+            and obj["ref"] not in known and path != ["home"]]
     about = [path for path, _ in sites if path[:2] == ["data", "about"]]
     if about and len([p for p, _ in gone if p[:2] == ["data", "about"]]) == len(about):
         return
@@ -2040,8 +2068,8 @@ def _resolve_refs(entries, state):
 
     An `N-<unit>-<n>` handle — the one §2.6 step 6 gives a `new[]` entry —
     resolves exactly as an `S-` id does, so a unit can mint an entity and point
-    at it in the same run: a record's `movement` ends are `place` items, and
-    nothing in the sheets mints those.
+    at it in the same run: a record's `movement` ends are records of their own,
+    and the paper one is minted by the unit that read the meeting.
 
     The handle is run-wide, not unit-local: `by_skeleton` below is built from
     every kept entry of every unit, so a phase-2 unit's note may address a
@@ -2072,7 +2100,7 @@ def _resolve_refs(entries, state):
         for entry in kept:
             for obj in iter_ref_objects(entry):
                 ref = obj.get("ref")
-                if not isinstance(ref, str):
+                if not isinstance(ref, str) or obj is entry.get("home"):
                     continue
                 if ref.startswith(("S-", "N-")) and ref not in by_skeleton:
                     owner = dropped.get(ref) \
@@ -2094,7 +2122,9 @@ def _resolve_refs(entries, state):
             kept.remove(entry)
         _sever_derived(kept, {e["_skeleton"] for e, _ in held if e["_skeleton"]},
                        key="_skeleton")
+    placed = set(by_skeleton) | {e["id"] for e in kept if e.get("id")}
     for entry in kept:
+        _place(entry, placed, state["store_scopes"])
         for obj in iter_ref_objects(entry):
             ref = obj.get("ref")
             if isinstance(ref, str) and ref.startswith(("S-", "N-")):
@@ -2103,6 +2133,25 @@ def _resolve_refs(entries, state):
                 if obj.get("field") in (target.get("_renames") or {}):
                     obj["field"] = target["_renames"][obj["field"]]
     return kept
+
+
+def _place(entry, placed, store):
+    """An entry's `home` against what this run kept — by handle (`S-`/`N-`), by
+    the temp id a review names it with, or by the store's own `F-` id. A table
+    nobody kept costs the entry its place and nothing else (C29's note, without
+    the hold-back).
+
+    Placement is not a fact: an entry whose table was dropped, failed or was
+    held back still lands, unattached, and the panel lists it under «بدون
+    جدول» — holding it back instead would cost the owner the fact itself.
+    """
+    ref = (entry.get("home") or {}).get("ref")
+    if not isinstance(ref, str) or ref in placed or ref in store:
+        return
+    entry["home"] = None
+    tiers.apply_notes(entry, [note(entry.get("key") or "",
+                                   f"home: ref {ref} is in no entry of this run",
+                                   path="home")])
 
 
 # --------------------------------------------------------------------------
@@ -2171,6 +2220,29 @@ def _template_split(entries):
     return out
 
 
+def _homeless(entries):
+    """§2.6 step 7's third run-scoped flag (spec 2026-09-16): a rule or a
+    measurement this run placed under no table, beside the tables of the same
+    run whose titles read like it. The reviewer answers it with a `keep`
+    carrying `home`, exactly as it corrects any other member."""
+    records = [e for e in entries if e["kind"] == "record"]
+    out = []
+    for entry in entries:
+        if entry["kind"] not in ("rule", "measurement") or entry.get("home"):
+            continue
+        mine = _tokens(entry["title"])
+        near = [r for r in records
+                if len(mine & _tokens(" ".join([r["title"]]
+                                               + list(r.get("aliases") or [])))) >= 2]
+        if near:
+            out.append({"code": "homeless", "id": entry["id"],
+                        "candidates": [r["id"] for r in near],
+                        "message": "no home; these tables read like it: "
+                                   + "، ".join(f'{r["key"]} «{r["title"]}»'
+                                               for r in near)})
+    return out
+
+
 def _cross_unit(root, entries, state):
     """Step 7 — two `keep`s minting one `(kind, key, scope)` are merged with the
     lowest unit's prose; a scalar the two disagree on becomes two accounts when
@@ -2212,7 +2284,8 @@ def _cross_unit(root, entries, state):
                 for side in sides:
                     keeper.setdefault("accounts", []).append(_account(path, side))
         survivors.append(keeper)
-    flags += _template_split(survivors) + _wrapper_variants(survivors, state)
+    flags += _template_split(survivors) + _wrapper_variants(survivors, state) \
+        + _homeless(survivors)
     flags += flags_over(root, [{k: v for k, v in e.items()
                                 if not k.startswith("_")} for e in survivors])
     state["flags"] = flags
@@ -2260,19 +2333,22 @@ def _digest_text(state, entries):
     """`review/input.md` (§2.6) — one line per assembled entry, the flags, and
     the dropped candidates with their reason codes."""
     lines = ["# digest", "", "## entries", ""]
+    keys = {e["id"]: e["key"] for e in entries}
     for entry in entries:
         data = entry["data"]
         tail = {"rule": f'expr: {data.get("expr")}',
                 "record": "fields: " + "، ".join(
                     f'{f["key"]}[{f.get("unit") or "—"}]'
-                    for f in data.get("fields") or []),
-                "item": f'{data.get("code")} · {data.get("unit")} · '
-                        f'{data.get("category")}'}.get(entry["kind"], "")
+                    for f in data.get("fields") or [])}.get(entry["kind"], "")
         kinds = " · ".join(sorted({s["type"] for s in entry.get("source") or []}))
-        lines.append(" · ".join([entry["kind"], entry["key"],
-                                 _address(entry)[2], entry["title"],
-                                 entry["statement"], tail,
-                                 f"منابع: {kinds}"]))
+        line = [entry["kind"], entry["key"], _address(entry)[2], entry["title"],
+                entry["statement"], tail]
+        if entry["kind"] in HOMED_KINDS:
+            # The table it sits under, by the key the reviewer addresses an
+            # entry with — never the temp id, which names nothing it can read.
+            ref = (entry.get("home") or {}).get("ref")
+            line.append(f'جدول: {keys.get(ref, ref) if ref else "—"}')
+        lines.append(" · ".join(line + [f"منابع: {kinds}"]))
     lines += ["", "## flags", ""]
     # A flag's `id` is a temp id minted for this assembly and nowhere else, so
     # it addresses nothing the reviewer can go and read. A flag that carries the
@@ -2772,6 +2848,47 @@ def _store_held_block(run_dir):
     return [line + ".", ""]
 
 
+#: What a table's page lists under it, in the owner's words (spec 2026-09-16).
+SUBSET_FA = {"rule": "قاعده", "measurement": "اندازه‌گیری", "note": "یادداشت"}
+
+
+def _counted(counts):
+    return "، ".join(f"{_fa(counts[kind])} {SUBSET_FA[kind]}"
+                     for kind in HOMED_KINDS if counts[kind])
+
+
+def _by_table_block(entries, titles, moved):
+    """`report.md`'s placement block: what this run left under each table, what
+    it left unattached, and the entries whose place it would have changed and
+    did not (owner decision 1). Tables are named by their titles, never by an
+    id (§2.7), and one this run cannot name at all is left out.
+
+    `entries` is the store's own order, so the tables come out in it.
+    """
+    counts = {e["id"]: collections.Counter() for e in entries
+              if e["kind"] == "record"}
+    loose = collections.Counter()
+    for entry in entries:
+        if entry["kind"] not in HOMED_KINDS:
+            continue
+        ref = (entry.get("home") or {}).get("ref")
+        if ref:
+            counts.setdefault(ref, collections.Counter())[entry["kind"]] += 1
+        else:
+            loose[entry["kind"]] += 1
+    out = [f"«{titles[ref]}»: {_counted(count)}"
+           for ref, count in counts.items() if sum(count.values()) and ref in titles]
+    if sum(loose.values()):
+        out.append(f"بدون جدول: {_counted(loose)}")
+    for row in moved:
+        seen = titles.get(row.get("seen"))
+        title = titles.get(row.get("id")) or row.get("title")
+        if seen and title:
+            out.append(f"جای «{title}» تغییر نکرد؛ این اجرا آن را زیر "
+                       f"«{seen}» می‌دید.")
+    return ["زیر هر جدول چه ثبت شد:"] + out + [""] if out else []
+
+
 def gate_b(root, skeleton, entries, state):
     """`gate-b.md` (§2.7) — a finished Persian message the playbook sends
     verbatim. No id, no path, no code, no command; an entry is its title."""
@@ -2794,8 +2911,8 @@ def gate_b(root, skeleton, entries, state):
             reasons.append(word)
     out = [f"خلاصهٔ اعداد {name} — برای تأیید", "",
            f'ثبت می‌شود: {_fa(counts["rule"])} قاعده، {_fa(counts["record"])} '
-           f'جدول، {_fa(counts["item"])} قلم، {_fa(counts["measurement"])} '
-           f'اندازه‌گیری، {_fa(counts["note"])} یادداشت.',
+           f'جدول، {_fa(counts["measurement"])} اندازه‌گیری، '
+           f'{_fa(counts["note"])} یادداشت.',
            f'کنار گذاشته شد: {_fa(len(state["dropped"]))} مورد'
            + (f' ({"، ".join(reasons[:3])})' if reasons else "")
            + " — فهرست کامل در گزارش پایان اجرا.",
@@ -2857,11 +2974,19 @@ def report(root, run_dir):
     unknown = [(e, null_paths(e)) for e in entries]
     unknown = [(e, p) for e, p in unknown if p]
 
+    # A `moved-home.json` id `apply` could not name is named off the store
+    # here, and `report` prints no line it cannot name (owner decision 1).
+    titles = {e["id"]: e["title"] for kind in KIND_ORDER
+              for e in store[kind]["entries"]
+              if isinstance(e.get("title"), str) and e["title"].strip()}
+    moved = run_dir / "moved-home.json"
     out = [f"گزارش پایان اجرا — {name}", ""] \
         + _lost_block(assembly.get("lost_sources") or []) + [
            f'ثبت شد: {_fa(len(entries))} مورد. '
            f'کنار گذاشته شد: {_fa(len(assembly["dropped"]))} مورد. '
-           f'{_fa(len(assembly["undecided"]))} مورد بررسی‌نشده.', ""]
+           f'{_fa(len(assembly["undecided"]))} مورد بررسی‌نشده.', ""] \
+        + _by_table_block(entries, titles,
+                          read_json(moved) if moved.exists() else [])
     if disputes:
         out.append("اختلاف‌ها — شمارهٔ مورد و حرف گزینه را بفرستید، مثلاً «۱ الف»:")
         for n, (entry, accounts) in enumerate(disputes, start=1):
