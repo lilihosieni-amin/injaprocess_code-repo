@@ -84,7 +84,9 @@ entries lack it, and the panel is organised by kind rather than by table.
   corrects any other field. Attachments the reviewer makes are notes the owner sees (the entry's
   history says «جدول: بازبین»).
 - The digest and the report group by table: «فرم تبدیل آماده‌سازی برگر: ۸ قاعده، ۳ اندازه‌گیری،
-  ۱ یادداشت» and, last, «بدون جدول: ۱۲ قاعده، ۴ اندازه‌گیری».
+  ۱ یادداشت» and, last, «بدون جدول: ۱۲ قاعده، ۴ اندازه‌گیری». A run whose entry names a different
+  home than the one a person set is listed too: «جای «سقف ضایعات» تغییر نکرد؛ این اجرا آن را زیر
+  «فرم تولید نیمه‌ساخته» می‌دید.»
 
 ### 4.3 Moving an entry
 - `merge facts edit` accepts `set home` / `unset home` like any envelope field (the same `ops`
@@ -123,7 +125,7 @@ entries lack it, and the panel is organised by kind rather than by table.
 | schemas (3) | kind enum without `item`; `itemData`/`refItems` removed; `home` on rule/measurement/note (record-only ref); index row `home` |
 | `facts_plan/build.py` | §3.4; the recorded slice prints each table's handle for `home`; cards say how `home` is written |
 | `facts_plan/assemble.py` | `home` resolved with the other refs; derivation when absent; `homeless` digest flag; report grouped by table; four kinds |
-| `merge_facts/*` | four kind files; `refItems` rows removed; `home` in the ladder (a scalar the ladder never disputes: a later run's different home is an account like any scalar? — **no**: `home` is placement, not a fact; a later run's different home is recorded as a note and the stored home stays, so a person's move is never undone by a run); `edit` set/unset home; `.index.json` `home`; `audit` rows |
+| `merge_facts/*` | four kind files; `refItems` rows removed; `home` in the ladder: placement, not a fact — a later run's different home never overwrites the stored one; it is recorded as a note on the entry and listed in `report.md` (decision 1); `edit` set/unset home; `.index.json` `home`; `audit` rows |
 | `ui/src/facts` | ItemCard and item filter removed; record page sections; home link on entry pages; batch confirm |
 | `ui-backend/facts_store.py` | four kind files; index `home`; batch confirm reuses the per-entry endpoint |
 | data-repo agent + playbooks | item mode removed; `home` rule for units; reviewer `homeless` flag; `edit-fact` move/detach cases; lint pins |
@@ -143,9 +145,10 @@ entries lack it, and the panel is organised by kind rather than by table.
 - Real-run check: the 2026-09-15 local run re-assembled → every rule/measurement/note has a derived
   home or is listed unattached; the counts per table are printed.
 
-## 7. Open points for the owner
-1. When a later run disagrees with a person's move, the stored home stays and a note is added (§5) —
-   confirm.
-2. The unattached block: one list per department page («بدون جدول») — proposed — or a global list.
-3. A note that mentions two tables: listed under the first it names, unless the unit sets `home`
-   explicitly — confirm.
+## 7. Decisions (owner, 2026-09-16)
+1. When a later run disagrees with a person's move, the stored home stays; the run's opinion is
+   recorded as a note on the entry **and mentioned in the owner's chat message** (the report names
+   the entry and the table the run would have put it under).
+2. Unattached entries have no separate list: they stay in the facts list pages exactly as today; only
+   the entry's page says «بدون جدول». The report's «بدون جدول» block stays.
+3. A note that mentions two tables is listed under the first it names, unless the unit set `home`.
