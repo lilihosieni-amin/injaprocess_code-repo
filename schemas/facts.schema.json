@@ -336,6 +336,8 @@
         "aliases": { "type": "array", "items": { "type": "string" } },
         "statement": { "type": "string" },
         "home": { "oneOf": [{ "$ref": "#/$defs/homeRef" }, { "type": "null" }] },
+        "home_detached": { "type": "boolean",
+          "$comment": "2026-09-16 I2 — a person's explicit detach (`merge facts edit`, `unset home`). A null `home` and an absent one both mean «unattached», so this is the one thing that tells the write ladder a PERSON decided it: with it set, a later run never adopts its own derived home (owner decision 1 covers a detach as it covers a move); an `edit set home` clears it. Placement, not content — excluded from the fact fingerprint beside `home`, so a detach keeps the confirm tick." },
         "scope": { "$ref": "#/$defs/scope" },
         "source": { "type": "array", "items": { "$ref": "#/$defs/source" } },
         "status": { "enum": ["confirmed", "inferred", "informal", "disputed", "unknown"] },

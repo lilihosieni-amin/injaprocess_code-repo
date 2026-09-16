@@ -20,7 +20,11 @@ from inja_ui_backend import db, engine, facts_store, seed
 from inja_ui_backend.access import NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
-from inja_ui_backend.fingerprint import fact_fingerprint
+from inja_ui_backend.fingerprint import (
+    FACT_EXCLUDED_TOP_LEVEL,
+    fact_canonical_json,
+    fact_fingerprint,
+)
 from inja_ui_backend.store import confirmations, users
 from inja_ui_backend.tests_helpers import cfg_for
 
@@ -494,6 +498,54 @@ def _edit_via_engine(cfg, fid, statement="بیانیهٔ تازه"):
         ensure_ascii=False), encoding="utf-8")
     engine._run(cfg, ["merge", "facts", "edit", "--id", fid,
                       "--patch", str(patch), "--run", str(run)])
+
+
+def _placement_edit(cfg, fid, ops):
+    """The real verb, in process — `merge facts edit` is imported rather than
+    shelled so the assertion reads THIS tree's engine (`engine._run` drops
+    `PYTHONPATH`, so a subprocess would read the installed one)."""
+    from merge_facts.verbs import edit
+    run = engine.facts_run_dir(cfg, "cooking", "owner")
+    patch = run / "facts-patch.json"
+    patch.write_text(json.dumps({"schema_version": 1, "ops": ops},
+                                ensure_ascii=False), encoding="utf-8")
+    edit(cfg.data_root, fid, str(patch), str(run))
+
+
+def test_a_real_move_and_a_real_detach_leave_the_stored_print_untouched(
+        data_root, tmp_path, monkeypatch):
+    """C1 — the seam nobody tested. `fact_fingerprint` ignoring `home` proves
+    only half of spec §4.5: the other half is what the VERB writes. It used to
+    union a chat citation on every `edit`, `source` is content in the print,
+    and so the one behaviour four documents promise the owner — «moving an
+    entry does not reset its tick» — was the one the branch did not deliver.
+
+    Run the real verb against the real store and hash the stored envelope
+    before and after. Both placement edits, `set` and `unset`, must leave the
+    print alone; only the members `FACT_EXCLUDED_TOP_LEVEL` names may move.
+    """
+    assert FACT_EXCLUDED_TOP_LEVEL == ("updated_at", "home", "home_detached")
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    monkeypatch.setenv("SCHEMA_DIR", str(client.cfg.schema_dir))
+    fp = client.get(f"/api/facts/{RULE}").json()["confirmation"]["fingerprint"]
+    assert client.post(f"/api/confirmations/{RULE}",
+                       json={"fingerprint": fp}).status_code == 200
+
+    before = fact_canonical_json(_entry(data_root, "rules.json", RULE))
+    _placement_edit(client.cfg, RULE,
+                    [{"op": "set", "path": "home", "value": {"ref": RECORD}}])
+    moved = _entry(data_root, "rules.json", RULE)
+    assert moved["home"] == {"ref": RECORD}
+    assert fact_canonical_json(moved) == before
+    assert {r["id"]: r for r in client.get("/api/facts").json()["entries"]
+            }[RULE]["confirmed"] is True
+
+    _placement_edit(client.cfg, RULE, [{"op": "unset", "path": "home"}])
+    detached = _entry(data_root, "rules.json", RULE)
+    assert detached.get("home") is None and detached["home_detached"] is True
+    assert fact_canonical_json(detached) == before
+    assert {r["id"]: r for r in client.get("/api/facts").json()["entries"]
+            }[RULE]["confirmed"] is True
 
 
 def test_a_chat_edit_never_confirms_and_revokes_a_stale_panel_mark(data_root,

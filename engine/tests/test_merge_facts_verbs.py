@@ -723,12 +723,30 @@ def test_edit_moves_an_entry_and_keeps_its_history(tmp_path, monkeypatch):
     moved = _rule_entry(root)
     assert moved["home"] == {"ref": second, "field": "vazn"}
     assert moved["updated_at"] > e["updated_at"]
-    # nothing but the placement, the stamp and the chat citation moved: a move
-    # is not a content change (the tick the panel keeps hangs on the rest)
-    assert {k: v for k, v in moved.items() if k not in ("home", "updated_at", "source")} \
-        == {k: v for k, v in e.items() if k not in ("home", "updated_at", "source")}
-    assert [s["type"] for s in moved["source"]] == ["voice", "chat"]
+    # NOTHING but the placement and the stamp moved — C1, spec §4.5: a move is
+    # not a content change, and the panel's tick is a hash of the content. The
+    # chat citation every other `edit` unions in is content too (it is the
+    # account trail a reviewer vouches for), so a placement-only patch leaves
+    # it off; the run directory's delta and `facts-before/` are the move's
+    # record.
+    assert {k: v for k, v in moved.items() if k not in ("home", "updated_at")} \
+        == {k: v for k, v in e.items() if k not in ("home", "updated_at")}
+    assert [s["type"] for s in moved["source"]] == ["voice"]
     assert read_json(root / "facts" / ".index.json")["entries"][-1]["home"] == second
+
+
+def test_a_patch_that_also_changes_content_still_cites_the_chat(tmp_path):
+    """The exemption is the placement-ONLY patch's. One op on `statement`
+    beside the move and the entry is telling a different story, which is the
+    reviewer's to re-read and the citation's to account for."""
+    root = _root(tmp_path)
+    e, _first, second = _placed_rule(root)
+    edit(root, e["id"], _patch(root, "p.json", [
+        {"op": "set", "path": "home", "value": {"ref": second}},
+        {"op": "set", "path": "statement",
+         "value": "سقف ضایعات هر شب از روی گزارش خط محاسبه می‌شود."}]),
+        _chat_run(root, "2"))
+    assert [s["type"] for s in _rule_entry(root)["source"]] == ["voice", "chat"]
 
 
 def test_edit_detaches_an_entry(tmp_path):
@@ -739,6 +757,40 @@ def test_edit_detaches_an_entry(tmp_path):
     assert _rule_entry(root).get("home") is None
     assert next(r for r in read_json(root / "facts" / ".index.json")["entries"]
                 if r["id"] == e["id"])["home"] is None
+
+
+def test_unset_home_on_an_entry_that_never_had_one_is_a_no_op_success(tmp_path):
+    """Every entry written before 2026-09-16 carries no `home` key at all, and
+    «از جدولش جدا کن» over one of those used to be refused with `op 1 unset
+    home: not found ('home')` — the playbook's detach case failing on exactly
+    the entries that most need it. The op removes nothing and succeeds; the
+    decision is still recorded (`home_detached`)."""
+    root = _root(tmp_path)
+    _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    e = _rule_entry(root)
+    assert "home" not in e
+    report = edit(root, e["id"], _patch(root, "p.json",
+                  [{"op": "unset", "path": "home"}]), _chat_run(root, "2"))
+    assert report["problems"] == []
+    after = _rule_entry(root)
+    assert after.get("home") is None and after["home_detached"] is True
+
+
+def test_unset_home_marks_the_detach_and_set_home_clears_it(tmp_path):
+    """I2 — a person's detach is a decision the next run honours, so `edit`
+    leaves the marker `ladder.merge_home` reads. A later move is a NEW
+    decision about the same question and replaces it."""
+    root = _root(tmp_path)
+    e, first, _second = _placed_rule(root)
+    edit(root, e["id"], _patch(root, "p.json", [{"op": "unset", "path": "home"}]),
+         _chat_run(root, "2"))
+    assert _rule_entry(root)["home_detached"] is True
+    edit(root, e["id"], _patch(root, "p2.json",
+         [{"op": "set", "path": "home", "value": {"ref": first}}]),
+         _chat_run(root, "3"))
+    back = _rule_entry(root)
+    assert back["home"] == {"ref": first} and "home_detached" not in back
 
 
 def test_edit_refuses_a_home_that_is_not_a_table(tmp_path, capsys):

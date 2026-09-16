@@ -268,7 +268,9 @@ def test_quote_is_admitted_on_an_attachment_source(validate):
 SANCTIONED = {
     # `merge facts apply` writes these; a unit never sends them. `id` is a
     # minted `factId` in the store and a `tempId` in the delta.
-    "envelope": {"id", "status", "updated_at"},
+    # `home_detached` is a PERSON's mark, left by `merge facts edit` (2026-09-16
+    # I2) and read by the write ladder; no run ever proposes one.
+    "envelope": {"id", "status", "updated_at", "home_detached"},
     "account": {"id"},
     "source": {"hash", "run"},
     # a unit hands a rule's verbatim text over as `original`; `apply` writes the
@@ -382,8 +384,8 @@ def _unit_doc():
                             "quote": "انحراف را شب‌ها می‌گیریم"}]},
             {"skeleton": "S-r-1111ffff2222", "action": "drop",
              "reason_code": "date_passthrough", "reason": "خواندن تاریخ"},
-            {"skeleton": "S-i-222233334444", "action": "merge_into",
-             "into": "S-i-555566667777", "reason_code": "duplicate"},
+            {"skeleton": "S-rec-222233334444", "action": "merge_into",
+             "into": "S-rec-555566667777", "reason_code": "duplicate"},
             {"skeleton": "S-rec-888899990000", "action": "keep",
              "key": "gozaresh_shabane_pitza", "title": "گزارش شبانه پیتزا",
              "statement": "جدول گزارش شبانهٔ لاین پیتزا.",
@@ -398,7 +400,7 @@ def _unit_doc():
                        "statement": "انحراف لاین فرنگی.", "takes": ["gozaresh_nk__s1__j__r6"]}]}],
         "new": [{"kind": "note", "key": "note_placeholder", "title": "واحد نامشخص",
                  "statement": "واحد این قلم پرسیده نشده است.",
-                 "data": {"about": [{"ref": "S-i-555566667777"}],
+                 "data": {"about": [{"ref": "S-rec-555566667777"}],
                           "question": "واحد شمارش این قلم چیست؟"}}]}
 
 

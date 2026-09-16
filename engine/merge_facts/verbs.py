@@ -341,8 +341,16 @@ def _apply_op(entry, op):
         append_path(entry, path, value)
         return None, value              # the preview shows what joins, not the list
     if not path_exists(entry, path):          # remove / unset: nothing to undo
-        raise KeyError(path)
-    (remove_path if verb == "remove" else unset_path)(entry, path)
+        # `unset home` is the one exception (2026-09-16): every entry written
+        # before the member existed carries no `home` key at all, and «از
+        # جدولش جدا کن» over one of those asks for what is already true. The
+        # detach is still a decision — `edit` records it — so the op succeeds
+        # and removes nothing, rather than refusing the entries that most need
+        # it.
+        if not (verb == "unset" and path == "home"):
+            raise KeyError(path)
+    else:
+        (remove_path if verb == "remove" else unset_path)(entry, path)
     return before, None
 
 
@@ -470,8 +478,27 @@ def edit(root, fact_id, patch_path, run_dir, preview=False):
         except (AttributeError, TypeError, ValueError) as exc:
             problems.append(f"op {i} {op['op']} {op['path']}: {exc}")
             break
-    if not problems and any(o["path"].split("/", 1)[0] == "home" for o in ops):
+    home_ops = [o for o in ops if o["path"].split("/", 1)[0] == "home"]
+    # C1 (2026-09-16): a patch that touches nothing but `home` is a MOVE, and
+    # spec §4.5 says a move does not reset the tick. The chat citation unioned
+    # below would, so it is skipped for this patch alone — see there.
+    placement_only = bool(ops) and len(home_ops) == len(ops)
+    if not problems and home_ops:
         problems += _home_problems(store, work)
+    detach = [o for o in home_ops if o["path"] == "home"]
+    if not problems and detach:
+        # I2 (2026-09-16): a person's detach is their decision, exactly as
+        # their move is (owner decision 1). `home: null` and an absent `home`
+        # both mean "unattached" (§4.1), so nothing in the entry told
+        # `ladder.merge_home` the difference between «این قاعده به هیچ جدولی
+        # مربوط نیست» and an entry nobody ever placed — and the next run
+        # re-filed it. This marker is what the ladder reads. A later `set` is
+        # a new decision and clears it. Placement, not content: it sits in
+        # `FACT_EXCLUDED_TOP_LEVEL` beside `home`, so a detach keeps the tick.
+        if detach[-1]["after"] is None:
+            work["home_detached"] = True
+        else:
+            work.pop("home_detached", None)
     found = []
     if not problems:
         # Spec 2026-09-13: the store's own repairs, on the store's contract —
@@ -506,7 +533,16 @@ def edit(root, fact_id, patch_path, run_dir, preview=False):
         _restamp_sources(root, entry, work, run_ref)
         sources = work.setdefault("source", [])
         source_key = UNION_FIELDS["source"]
-        if source_key(chat_src) not in {source_key(s) for s in sources}:
+        # A placement-only patch cites nothing (C1). The citation's `ref` is
+        # this run's own `meta.json`, so it is a new member on every call —
+        # and `source` is NOT excluded from the fact print (on a fact it is
+        # the account trail a reviewer vouches for), so unioning it here moved
+        # the print and threw away the tick that spec §4.5 promises a move
+        # keeps. The move is still on the record without it: the run
+        # directory's delta names the verb, its args and the patch, and
+        # `facts-before/` still backs `revert`.
+        if not placement_only \
+                and source_key(chat_src) not in {source_key(s) for s in sources}:
             sources.append(chat_src)
         work["updated_at"] = _now()
         entries = [work if e["id"] == fact_id else e

@@ -137,7 +137,12 @@ def fingerprint(doc: dict) -> str:
 #: `source` is not excluded at all: on a process it is pipeline provenance, but
 #: on a fact it is the account trail a reviewer is vouching for, so it counts
 #: as content like everything else in the envelope.
-FACT_EXCLUDED_TOP_LEVEL: tuple[str, ...] = ("updated_at", "home")
+#: `home_detached` joins `home` for the same reason: it is the marker
+#: `merge facts edit` leaves when a person detaches an entry (2026-09-16 I2),
+#: so the next run does not re-file it. Detaching an entry is a filing
+#: decision exactly as moving it is, and a detach that reset the tick would
+#: break §4.5 by the other door.
+FACT_EXCLUDED_TOP_LEVEL: tuple[str, ...] = ("updated_at", "home", "home_detached")
 
 
 def _fact_value(value):
@@ -159,7 +164,8 @@ def _fact_value(value):
 
 
 def fact_canonical(doc: dict) -> dict:
-    """`doc` with its top-level `updated_at` and `home` gone, nothing else.
+    """`doc` with its top-level `FACT_EXCLUDED_TOP_LEVEL` keys gone — the
+    bookkeeping stamp and the two placement members — and nothing else.
 
     A separate function from `canonical` rather than a shared one taking a
     parametrised exclusion set: `canonical`'s exclusion is deep by design
