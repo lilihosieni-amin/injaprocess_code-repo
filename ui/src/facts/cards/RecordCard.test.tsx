@@ -479,10 +479,10 @@ describe('the record card', () => {
 })
 
 /**
- * «قواعد، اندازه‌گیری‌ها و یادداشت‌ها» — the one list a table's page gained on
- * 2026-09-16 («tables as the spine»; one heading over the lot, rules first,
- * then measurements, then notes, by the owner's word the same day), and the
- * one button that ticks every unconfirmed row of it.
+ * «قواعد» / «اندازه‌گیری‌ها» / «یادداشت‌ها» — the three subset sections a
+ * table's page gained on 2026-09-16 («tables as the spine»; one-word headings
+ * by the owner's word the same day), and the one button that ticks every
+ * unconfirmed row of them.
  *
  * The rows are the served `bundle.subsets`, derived server-side out of the
  * index's `home` column: the panel joins nothing and counts nothing the server
@@ -508,12 +508,12 @@ const ok = () =>
 describe('a table’s page lists what lives in it', () => {
   afterEach(() => vi.restoreAllMocks())
 
-  it('heads the one list with how many of its rows are confirmed', () => {
+  it('heads each section with one word and how many of its rows are confirmed', () => {
     render(<RecordCard bundle={HOMED()} onOpen={vi.fn()} />, { wrapper: createWrapper() })
-    expect(screen.getByText('قواعد، اندازه‌گیری‌ها و یادداشت‌ها — ۱ از ۳ تأیید شده'))
-      .toBeInTheDocument()
-    // No per-kind heading any more.
-    expect(screen.queryByText(/این جدول —/)).toBeNull()
+    expect(screen.getByText('قواعد — ۱ از ۲ تأیید شده')).toBeInTheDocument()
+    expect(screen.getByText('یادداشت‌ها — ۰ از ۱ تأیید شده')).toBeInTheDocument()
+    // An empty section is omitted rather than drawn with a zero.
+    expect(screen.queryByText(/اندازه‌گیری‌ها —/)).toBeNull()
     // Rules first, then notes — the served order within a kind.
     expect(screen.getAllByRole('listitem').map((li) => li.textContent))
       .toEqual(['سقف ضایعاتتأییدشده', 'تبدیل واحدتأییدنشده', 'یادداشت انبارتأییدنشده'])
@@ -586,13 +586,12 @@ describe('a table’s page lists what lives in it', () => {
       })} onOpen={vi.fn()} />,
       { wrapper: createWrapper() },
     )
-    expect(screen.getByText('قواعد، اندازه‌گیری‌ها و یادداشت‌ها — ۰ از ۲ تأیید شده'))
-      .toBeInTheDocument()
+    expect(screen.getByText('قواعد — ۰ از ۲ تأیید شده')).toBeInTheDocument()
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
   })
 
   it('draws no section at all for a table nothing is homed on', () => {
     render(<RecordCard bundle={HOMED({ subsets: [] })} onOpen={vi.fn()} />)
-    expect(screen.queryByText(/قواعد، اندازه‌گیری‌ها و یادداشت‌ها/)).toBeNull()
+    expect(screen.queryByText(/قواعد —/)).toBeNull()
   })
 })

@@ -580,7 +580,9 @@ export const SCREEN_LABELS: Record<string, string> = {
   // «tables as the spine»). The three section heads a record's page draws over
   // its own rules, measurements and notes; the count that stands beside each
   // one; and the button that ticks every unconfirmed row of all three at once.
-  heading_subsets: 'قواعد، اندازه‌گیری‌ها و یادداشت‌ها',
+  heading_subset_rule: 'قواعد',
+  heading_subset_measurement: 'اندازه‌گیری‌ها',
+  heading_subset_note: 'یادداشت‌ها',
   subset_confirmed_count: '{n} از {m} تأیید شده',
   confirm_all_subsets: 'تأیید همهٔ موارد این جدول',
   // One failure, named: the batch is per entry, so one refusal is one row's

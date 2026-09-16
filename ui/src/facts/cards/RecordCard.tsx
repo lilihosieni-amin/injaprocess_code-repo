@@ -857,19 +857,6 @@ function SubsetCard({ bundle, onOpen }: {
   const placed = bundle.subsets.filter(
     (r): r is PlacedSubset => !isRestricted(r))
   const unconfirmed = placed.filter((r) => !r.confirmed)
-  // One list, rules first, then measurements, then notes, each in the served
-  // (id) order — the owner wants one heading over the lot, not a section per
-  // kind (2026-09-16).
-  const rows = SUBSET_KINDS.flatMap((kind) => bundle.subsets.filter((r) => r.kind === kind))
-  // **The denominator is every row the list draws, masked ones included** —
-  // «keep the row, hide the name … so a count stays honest»
-  // (`routers/facts._neighbour_visibility`). Counting only the rows that can
-  // say whether they are confirmed would print «۰ از ۱» over two rows. The
-  // numerator is the confirmed count among those that can say, which is what
-  // a masked row withholds.
-  const count = label(SCREEN_LABELS, 'subset_confirmed_count')
-    .replace('{n}', toFa(placed.filter((r) => r.confirmed).length))
-    .replace('{m}', toFa(rows.length))
 
   const confirmAll = async () => {
     setRunning(true)
@@ -899,32 +886,51 @@ function SubsetCard({ bundle, onOpen }: {
           {label(SCREEN_LABELS, 'confirm_all_subsets')}
         </Button>
       </CountBand>
-      <section>
-        <HeadBand>
-          <span className="text-fs-body font-extrabold">
-            {`${label(SCREEN_LABELS, 'heading_subsets')} — ${count}`}
-          </span>
-        </HeadBand>
-        <ul className="list-none p-0 m-0">
-          {rows.map((r) => (
-            // The title, and the tick state alone at the row's far end (the
-            // left, in this script) — no column tag, no other tag (owner,
-            // 2026-09-16).
-            <li key={r.id} className="flex items-center gap-s5 px-s9 py-s6
-                                      border-b border-line-row last:border-b-0">
-              <RefLink className="text-fs-body-lead" onOpen={onOpen} underline={false}
-                named={isRestricted(r)
-                  ? { text: label(SCREEN_LABELS, 'restricted_neighbour'), restricted: true }
-                  : { text: r.title ?? r.id, restricted: false, id: r.id }} />
-              {!isRestricted(r) && (
-                <Tag tone={r.confirmed ? 'ok' : 'violet2'} className="ms-auto">
-                  {label(CONFIRMATION_LABELS, r.confirmed ? 'confirmed' : 'unconfirmed')}
-                </Tag>
-              )}
-            </li>
-          ))}
-        </ul>
-      </section>
+      {SUBSET_KINDS.map((kind) => {
+        const rows = bundle.subsets.filter((r) => r.kind === kind)
+        if (rows.length === 0) return null
+        // **The denominator is every row the section draws, masked ones
+        // included** — «keep the row, hide the name … so a count stays
+        // honest» (`routers/facts._neighbour_visibility`). Counting only the
+        // rows that can say whether they are confirmed would print «۰ از ۱»
+        // over two rows. The numerator is the confirmed count among those
+        // that can say, which is what a masked row withholds.
+        const count = label(SCREEN_LABELS, 'subset_confirmed_count')
+          .replace('{n}', toFa(rows.filter(
+            (r) => !isRestricted(r) && r.confirmed).length))
+          .replace('{m}', toFa(rows.length))
+        return (
+          <section key={kind}>
+            {/* One word for the heading — «قواعد», «اندازه‌گیری‌ها»,
+                «یادداشت‌ها» — and bolder than a band's usual caption
+                (owner, 2026-09-16). */}
+            <HeadBand>
+              <span className="text-fs-body font-extrabold">
+                {`${label(SCREEN_LABELS, `heading_subset_${kind}`)} — ${count}`}
+              </span>
+            </HeadBand>
+            <ul className="list-none p-0 m-0">
+              {rows.map((r) => (
+                // The title, and the tick state alone at the row's far end
+                // (the left, in this script) — no column tag, no other tag
+                // (owner, 2026-09-16).
+                <li key={r.id} className="flex items-center gap-s5 px-s9 py-s6
+                                          border-b border-line-row last:border-b-0">
+                  <RefLink className="text-fs-body-lead" onOpen={onOpen} underline={false}
+                    named={isRestricted(r)
+                      ? { text: label(SCREEN_LABELS, 'restricted_neighbour'), restricted: true }
+                      : { text: r.title ?? r.id, restricted: false, id: r.id }} />
+                  {!isRestricted(r) && (
+                    <Tag tone={r.confirmed ? 'ok' : 'violet2'} className="ms-auto">
+                      {label(CONFIRMATION_LABELS, r.confirmed ? 'confirmed' : 'unconfirmed')}
+                    </Tag>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      })}
     </DetailCard>
   )
 }
