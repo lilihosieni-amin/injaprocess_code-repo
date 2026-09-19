@@ -334,3 +334,27 @@ def test_merge_entry_notes_the_placement_once_and_unions_an_adoption():
     assert len([i for i in existing["issues"] if i["kind"] == "placement"]) == 1
     unplaced = _placed(None)
     assert ("home", "union") in merge_entry(unplaced, incoming, SRC_B)
+
+
+def test_a_blank_column_block_merges_like_any_other_scalar_member():
+    """2026-09-19 — `repeat` says one printed heading spans N unnamed columns.
+    It is an ordinary scalar leaf of a field: re-read the same, nothing moves;
+    read a different count, the usual dispute on its own path."""
+    e = _base()
+    e["kind"] = "record"
+    e["data"] = {"medium": "paper", "role": "log",
+                 "location": {"kept_at": "انبار", "holder": "انباردار"},
+                 "fields": [{"key": "nimesakhte", "title": "نیمه ساخته برگر",
+                             "type": "number", "unit": "kg", "repeat": 14}]}
+    same = copy.deepcopy(e)
+    changes = merge_entry(e, same, SRC_B)
+    assert e["data"]["fields"][0]["repeat"] == 14
+    assert all(a == "noop" for p, a in changes
+               if p == "data/fields/nimesakhte/repeat")
+    assert not e.get("accounts")
+    other = copy.deepcopy(e)
+    other["data"]["fields"][0]["repeat"] = 12
+    merge_entry(e, other, SRC_A)
+    assert e["data"]["fields"][0]["repeat"] == 14              # not overwritten
+    assert any(a["field"] == "data/fields/nimesakhte/repeat"
+               for a in e["accounts"])

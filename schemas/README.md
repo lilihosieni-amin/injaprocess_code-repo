@@ -80,6 +80,13 @@ migration note added here:
   `{spreadsheetId, sheetId, sheet, hidden}` off the first instance); a branch
   narrower than its writer would make `save_store` refuse what `apply` wrote.
 
+- **v2.2** (2026-09-19) — `field` gains an optional `repeat` (integer ≥ 2): this
+  printed heading spans `repeat` unnamed columns that are filled in by hand, so
+  a block of blank columns is ONE field with the printed heading as its `title`
+  and the printed unit as its `unit`, never N fields with N invented titles
+  (INV-3). Both halves; the `schema_version` constant stays at `2` — the member
+  is optional and every store already in the tree validates unchanged.
+
 **`conventions` (`manifest.schema.json`, v3.6 §3.1, I6).** The estate's own
 spellings are data, not engine constants: an optional top-level `conventions`
 object carries `branch_tokens[]` (the branch spellings a tab name is folded by),

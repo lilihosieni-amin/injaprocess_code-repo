@@ -353,6 +353,18 @@ merged eight of them into forms by title similarity.
   titles, units, cadence, who holds the form, thresholds, aliases — cited as a `voice` source.
   Every rule and measurement such a unit writes for its own table also names that table as its
   **home** (section 7.2).
+  An attachment unit is handed several files at once — fourteen photos of the preparation run — so
+  each file's text is printed under a heading naming the file and the path a citation must spell,
+  and **only such a unit's shape section carries the `from` line**: an entry read off one of them
+  answers `from: ["<path exactly as printed>"]`, and its examples show it. When a unit says nothing
+  (the server run of 2026-09-19 said nothing on all 28 of its entries), `assemble` no longer credits
+  the entry to every file it read: it takes the citation of the record the entry is **homed** on
+  when that record is the same unit's, else the file whose text carries at least two of the entry's
+  own words — a tie citing the tied files only — and every file only when neither answers.
+  A block of columns that is blank on the paper under one printed heading («۱۴ ستون زیر
+  «نیمه ساخته برگر»») is written as **one** field with `repeat: 14`, the printed heading as its
+  title and the printed unit as its unit — never fourteen fields with fourteen invented titles, and
+  a column headed only «کیلو» keeps that word as its title.
 - **Phase 2** is the transcript units, and they now know what phase 1 recorded. Their *reuse slice*
   is replaced by «آنچه تا کنون ثبت شده» (*what is recorded so far*): every record phase 1 kept with
   its columns and location, every rule, each with a handle the unit may address (the

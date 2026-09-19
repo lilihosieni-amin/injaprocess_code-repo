@@ -1,7 +1,7 @@
 """The two cards the unit reads. They are transcribed from the checker, so
 they are tested against it: a retune of the lint that leaves the prompt behind
 fails here rather than in a run."""
-from facts_plan.build import cards
+from facts_plan.build import EXAMPLES, cards
 from merge_facts import SEGMENT_RE
 from merge_facts.content import COLLOQUIAL, KEYWORDS, PIPELINE_WORDS
 
@@ -143,6 +143,62 @@ def test_the_three_data_cards_open_with_the_home_line():
     assert "نخستین عضو `applies_to` آن نام می‌برد." in rule
 
 
+def test_only_an_attachment_unit_s_cards_ask_for_the_file_it_read():
+    """Bug 1a, 2026-09-19: the instruction lived only in the agent file, so the
+    server run wrote `from` on 0 of 28 `new[]` entries and every one of them was
+    credited to all fourteen photos. The unit writes what its card prints.
+
+    A workbook or transcript unit has no file headings to cite, so the line is
+    absent there — the same `home` gap, one member over.
+    """
+    from facts_plan.build import FROM_LINE, KIND_DATA, shape_card
+    schema = _schema()
+    for kind in KIND_DATA:
+        card = shape_card((kind,), schema, attachment=True)
+        head = card.index(f"## {kind} — data")
+        assert head < card.index(FROM_LINE), kind        # right under the heading
+        assert FROM_LINE not in shape_card((kind,), schema), kind
+    # the agent file's own sentence, word for word
+    for token in ('`from: ["<path exactly as printed>"]`', "`### <name> · <path> · عکس: …`"):
+        assert token in shape_card(("record",), schema, attachment=True), token
+
+
+def test_an_attachment_unit_s_examples_carry_the_file_they_were_read_off():
+    """The card is the one place a unit copies a shape from, so the paper form
+    and one thing read off it show `from`. `facts-unit.schema.json` closes
+    `newEntry` and `_repair`'s `ENGINE_OWNED` pops `from` before the schema sees
+    it, so the examples validate with it stripped — exactly as `home` is."""
+    from engine_common import validate
+    from facts_plan.build import examples_for, shape_card
+    shown = examples_for(attachment=True)
+    assert [e.get("from") for e in shown][:2] == [
+        ["departments/<بخش>/attachments/.text/photo-….image.md"]] * 2
+    assert examples_for() == [e for e in examples_for()
+                              if "from" not in e]      # nobody else is given one
+    validate("facts-unit.schema.json",
+             {"schema_version": 1, "unit": "u-att-1", "attempt": 1,
+              "decisions": [],
+              "new": [{k: v for k, v in e.items() if k != "from"} for e in shown]})
+    assert '"from"' in shape_card(("record",), _schema(), attachment=True)
+
+
+def test_the_record_card_forbids_an_invented_column_title():
+    """Bug 2, 2026-09-19: a block of fourteen blank hand-filled columns under
+    one printed heading «نیمه ساخته برگر» was written as fourteen fields titled
+    «مادهٔ اول»…«مادهٔ چهاردهم» (INV-3), and the lower table's printed «عدد» /
+    «کیلو» were retitled «تعداد» / «وزن»."""
+    from facts_plan.build import BLANK_BLOCK_LINE, UNIT_HEADING_LINE, shape_card
+    for attachment in (False, True):        # a sheet can have the same shape
+        card = shape_card(("record",), _schema(), attachment=attachment)
+        assert BLANK_BLOCK_LINE in card
+        assert UNIT_HEADING_LINE in card
+    assert "`repeat: " in BLANK_BLOCK_LINE
+    fields = {f["key"]: f for f in EXAMPLES[0]["data"]["fields"]}
+    assert fields["nimesakhte"]["repeat"] == 14
+    assert fields["nimesakhte"]["title"] == "نیمه ساخته برگر"
+    assert fields["nimesakhte"]["unit"] == "kg"
+
+
 def test_the_shape_card_names_the_decision_table_shape():
     """v3.7 §4 (I8) — the fourth rule body. The schema types a row as a bare
     object, so the shape a row takes is the card's to say or nobody's."""
@@ -182,13 +238,23 @@ def test_the_shape_card_stays_inside_a_unit_s_budget():
     head of the three homed cards. The line is repeated on purpose — the unit
     reads the card of the kind it is writing — and 770 tokens buys the member
     the last real run wrote on none of its 120 entries.
+
+    2026-09-19: 4000 → 5500, and the attachment unit's card is measured too. The
+    blank-column pair and the `repeat` example cost every unit 303 tokens; the
+    `from` line at the head of all four cards and on two examples costs an
+    attachment unit a further 864. Both buy a member the server run wrote on 0
+    of 28 entries, and both are charged where the rule applies.
     """
     from facts_plan.build import (MAX_LINE, WRITABLE_KINDS, estimate_tokens,
                                   shape_section)
     text = shape_section()
-    assert 1200 <= estimate_tokens(text) <= 4000
-    assert max(len(line) for line in text.split("\n")) <= MAX_LINE
+    attached = shape_section(attachment=True)
+    assert 1200 <= estimate_tokens(text) <= 5500
+    assert estimate_tokens(text) < estimate_tokens(attached) <= 5500
+    for one in (text, attached):
+        assert max(len(line) for line in one.split("\n")) <= MAX_LINE
     assert shape_section() == text                       # deterministic
+    assert shape_section(attachment=True) == attached
     assert "Shape card" in text and set(WRITABLE_KINDS)
 
 
@@ -202,6 +268,21 @@ def test_render_input_carries_the_shape_section_after_the_expression_card():
     assert text.index("Expression card") < text.index("Shape card")
     assert text.index("Shape card") < text.index("Style card")
     assert "medium=paper: holder*، kept_at*" in text
+
+
+def test_only_an_attachment_unit_s_input_asks_which_file_an_entry_came_off():
+    """The line reaches the unit through `render_input`, which is the only
+    caller that knows the unit's type."""
+    from facts_plan.build import FROM_LINE, render_input
+    skeleton = {"unit_symbols": [], "candidates": [], "instances": []}
+    unit = {"id": "u-tr-x-l1", "type": "transcript", "inputs": [],
+            "candidates": [], "nodes": [], "est_tokens_in": 0,
+            "est_tokens_out": 0}
+    assert FROM_LINE not in render_input(unit, skeleton, {})
+    assert FROM_LINE not in render_input(dict(unit, id="u-wb-x", type="workbook"),
+                                         skeleton, {})
+    assert FROM_LINE in render_input(dict(unit, id="u-att-1", type="attachment"),
+                                     skeleton, {})
 
 
 def test_the_card_names_the_estates_table_prefix():

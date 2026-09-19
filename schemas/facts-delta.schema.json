@@ -134,6 +134,7 @@
                             { "type": "string" }] },
         "unit": { "type": ["string", "null"] },
         "unit_raw": { "type": ["string", "null"] },
+        "repeat": { "type": "integer", "minimum": 2 },
         "description": { "type": ["string", "null"] },
         "constraints": { "type": "object", "additionalProperties": false,
           "properties": { "enum": { "type": "array" }, "readOnly": { "type": "boolean" },

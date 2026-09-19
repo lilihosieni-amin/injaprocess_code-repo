@@ -1808,6 +1808,7 @@ def _entry(candidate, decision, state, part=None):
                 data[collection] = [m for m in data[collection]
                                     if m["key"] in takes]
     sources = [_source_of(i, state["paths"]) for i in data.get("instances") or []]
+    cite_all = False
     location = data.get("location") or {}
     if not sources and location.get("spreadsheetId"):
         sources.append({"type": "sheet",
@@ -1832,7 +1833,11 @@ def _entry(candidate, decision, state, part=None):
         # narrows; an entry that names none of them keeps all of them, because
         # citing too much is a smaller loss than citing nothing.
         cited = set(written.get("from") or ())
-        sources = [s for s in read if s["ref"] in cited] or read
+        sources = [s for s in read if s["ref"] in cited]
+        # …and when it said nothing, `_narrow_citations` has the rest of the
+        # ladder (bug 1b): the marker says which files are still on trial.
+        cite_all = not sources and len(read) > 1
+        sources = sources or read
     # §3 phase 1: what the meeting filled in that the form does not state is
     # cited as the meeting — after the sheet or the photo, so `READ_OFF_A_FORM`
     # and the "form wins a merge" rule both keep reading the first source, and
@@ -1866,6 +1871,8 @@ def _entry(candidate, decision, state, part=None):
              "retired": False, "data": data,
              "_skeleton": candidate["id"], "_unit": decision["unit"],
              "_renames": renames}
+    if cite_all:
+        entry["_cite_all"] = [s["ref"] for s in read]
     if kind in HOMED_KINDS:
         entry["home"] = derive_home(dict(entry, home=written.get("home")),
                                     _kind_of(state))
@@ -1964,6 +1971,75 @@ def _target_of(state, skid):
         skid = decision["into"]
 
 
+#: Rung 3's floor. One word in common is every form in the department («فرم»,
+#: «برگه», «انبار»); two is a claim about which file this one came off.
+CITE_TOKENS = 2
+
+
+def _inherited_citation(entry, kept, read):
+    """Rung 2 — a rule, a measurement or a note read off a form is homed on
+    that form, and the form's own photo is the one it was read off. Only within
+    the unit: a home in another unit cites files this one never read."""
+    target = kept.get((entry.get("home") or {}).get("ref"))
+    if target is None or target is entry or target["kind"] != "record" \
+            or target["_unit"] != entry["_unit"]:
+        return []
+    return [s["ref"] for s in target["source"] if s["ref"] in read]
+
+
+def _title_citation(entry, read, by_tokens):
+    """Rung 3 — of the files the unit read, the one whose text carries most of
+    the entry's own words, when it carries at least `CITE_TOKENS` of them. A tie
+    at the top cites the tied files and no others."""
+    mine = _tokens(" ".join([entry.get("title") or ""]
+                            + list(entry.get("aliases") or [])))
+    scored = [(len(mine & by_tokens.get(rel, frozenset())), rel) for rel in read]
+    best = max(score for score, _ in scored)
+    return [rel for score, rel in scored if score == best] \
+        if best >= CITE_TOKENS else []
+
+
+def _narrow_citations(kept, texts):
+    """Bug 1b, 2026-09-19 — which of its files an entry was read off, when the
+    unit did not say. Pure over the entries, the files they were credited to
+    and those files' texts.
+
+    `_entry` credits an entry with no written `from` to every file its unit
+    read; on the server run that was all fourteen photos on each of twenty-eight
+    entries — a citation nobody could check, and the owner opening one paper
+    form saw fourteen. The ladder narrows it in order: a written citation (which
+    never reaches here), the citation of the form the entry is homed on, the
+    file whose text carries the entry's words, and only then every file.
+
+    Records are settled first, so an entry homed on one takes what this ladder
+    settled for it rather than what the unit failed to say.
+    """
+    by_tokens = {rel: _tokens(text) for rel, text in texts.items()}
+    for entry in sorted((e for e in kept.values() if e.get("_cite_all")),
+                        key=lambda e: (e["kind"] != "record", str(e["_skeleton"]))):
+        read = entry.pop("_cite_all")
+        chosen = _inherited_citation(entry, kept, read) \
+            or _title_citation(entry, read, by_tokens)
+        if chosen and len(chosen) < len(read):
+            keep, was = set(chosen), set(read)
+            entry["source"] = [s for s in entry["source"]
+                               if s["ref"] not in was or s["ref"] in keep]
+    return kept
+
+
+def _citation_texts(root, kept):
+    """The texts the ladder ranks on — the unit's own inputs, read from the
+    sidecar paths the plan named and nowhere else (INV-3). A file the estate no
+    longer holds simply scores nothing."""
+    wanted = {ref for entry in kept.values() for ref in entry.get("_cite_all") or ()}
+    out = {}
+    for rel in sorted(wanted):
+        path = pathlib.Path(root or ".") / rel
+        if path.is_file():
+            out[rel] = path.read_text(encoding="utf-8")
+    return out
+
+
 def _note_key(entry, by_temp):
     """§3.1 — minted from the sorted `(kind, key)` pairs of `about[]` and the
     normalised question, so the same note built twice mints the same key
@@ -2016,7 +2092,9 @@ def _kept_entries(by_id, state):
         elif decision["action"] == "split":
             for n, part in enumerate(decision["into"], start=1):
                 kept[f"{cid}#{n}"] = _entry(candidate, decision, state, part=part)
-    return kept
+    # Bug 1b — the rest of the citation ladder, over the whole set at once
+    # because a rule inherits the citation of the form it is homed on.
+    return _narrow_citations(kept, _citation_texts(state.get("root"), kept))
 
 
 def _state_for(root, run_dir, doc):
@@ -2045,6 +2123,7 @@ def _state_for(root, run_dir, doc):
     manifest = root / "attachments" / "sheets" / "manifest.json"
     workbooks = read_json(manifest)["workbooks"] if manifest.is_file() else []
     return by_id, {
+        "root": root,
         "by_skeleton": by_skeleton, "new": [], "failed": set(),
         "dropped": [], "undecided": [], "provenance": {},
         "department": skeleton["department"], "issues": skeleton["issues"],
@@ -2105,7 +2184,7 @@ def _build_entries(root, skeleton, state):
     ids are minted in kind order over all of them, then every `{ref}` and every
     provisional field key is resolved (1a, 1b)."""
     by_id = {c["id"]: c for c in skeleton["candidates"] + state["new"]}
-    state["candidates"] = by_id
+    state["candidates"], state["root"] = by_id, root
     state["dropped"], state["undecided"], state["provenance"] = [], [], {}
     kept = _kept_entries(by_id, state)
     for row in state.get("refused_new") or []:
