@@ -38,15 +38,45 @@ DEDUP_KEYS = {"accounts": lambda m: (m.get("field"), m.get("statement"),
               "units": lambda m: m.get("pack_unit"),
               "calls": lambda m: m.get("ref")}
 OBJECT_FIELDS = frozenset({"from", "via", "writes_to", "derived", "mirror_of",
-                           "location", "pack", "movement", "range", "refItems",
+                           "location", "pack", "movement", "range",
                            "constraints", "identifier_scheme", "fix", "of",
                            "template_of", "supersedes", "superseded_by", "scope"})
 IMMUTABLE = frozenset({"id", "kind", "key", "status", "updated_at",
                        "field_status", "valid_from", "valid_to", "retired"})
+#: What a person reads when a run disagreed with where they put an entry.
+PLACEMENT_FA = "این اجرا این مورد را زیر جدول دیگری می‌دید؛ جای ثبت‌شده تغییر نکرد."
+PLACEMENT_ISSUE = {"kind": "placement", "description": PLACEMENT_FA, "affects": []}
 # Top-level fields the ladder never touches directly: identity/lifecycle
 # (IMMUTABLE), set-union fields (handled separately, before this dispatch
 # runs), and accounts (handled separately, after).
-TOP_SKIP = IMMUTABLE | frozenset(UNION_FIELDS) | frozenset({"accounts", "extra"})
+# `home` joins them: placement is not a leaf to fill or dispute — `merge_home`
+# below is its whole ladder.
+TOP_SKIP = IMMUTABLE | frozenset(UNION_FIELDS) | frozenset({"accounts", "extra",
+                                                            "home",
+                                                            "home_detached"})
+
+
+def merge_home(existing, incoming):
+    """Owner decision 1 (2026-09-16): `home` is placement, not a fact. A stored
+    home is never overwritten by a run — the run's view becomes a `placement`
+    issue and is returned for the report; an unplaced entry adopts the run's.
+
+    A person's DETACH is the same decision and holds the same way: `edit unset
+    home` leaves `home_detached`, because a null home and an absent one both
+    read as "unattached" and the ladder could not otherwise tell «این قاعده به
+    هیچ جدولی مربوط نیست» from an entry nobody had placed yet."""
+    if existing.get("kind") == "record":
+        return None                     # a table is a place and has no home;
+    mine, theirs = existing.get("home"), incoming.get("home")  # adopting one
+    if not theirs or theirs == mine:    # would only fail `save_store` later
+        return None
+    if not mine and not existing.get("home_detached"):
+        existing["home"] = copy.deepcopy(theirs)
+        return None
+    issues = existing.setdefault("issues", [])
+    if PLACEMENT_ISSUE not in issues:
+        issues.append(copy.deepcopy(PLACEMENT_ISSUE))
+    return theirs["ref"]
 
 
 def merge_extra(existing, incoming):
@@ -217,7 +247,13 @@ def _merge_member(entry, current, incoming, path, source, changes, skip=frozense
         if _is_keyed_list(v, k):
             current.setdefault(k, [])
             _merge_collection(entry, current[k], v, k, p, source, changes)
-        elif isinstance(v, dict) and (k in OBJECT_FIELDS or isinstance(current.get(k), dict)):
+        elif isinstance(v, dict) and isinstance(current.get(k, {}), dict) \
+                and (k in OBJECT_FIELDS or isinstance(current.get(k), dict)):
+            # `current.get(k, {})`: an object field standing on something that
+            # is no object — words where `of` may carry either (`refOrText`,
+            # spec 2026-09-16 §3.2), or the `null` a REPAIR wrote — is not a
+            # member merge. It is one value against another, which §11 already
+            # knows how to fill or dispute.
             current.setdefault(k, {})
             _merge_member(entry, current[k], v, p, source, changes)
         else:
@@ -243,6 +279,15 @@ def merge_entry(existing, incoming, incoming_source):
     # so e.g. `scope` disputes leaf-by-leaf (scope/branches) rather than as
     # a whole-dict blob.
     _merge_member(existing, existing, incoming, "", incoming_source, changes, skip=TOP_SKIP)
+    placed, noted = existing.get("home"), PLACEMENT_ISSUE in (existing.get("issues") or [])
+    if merge_home(existing, incoming):
+        # The disagreement is reported every run (`apply` reads it back out of
+        # `changes` for `moved-home.json`), but only the run that first notes
+        # it changed the entry — the same `dispute`/`noop` pair `_dispute`
+        # draws, and for the same reason: idempotency (§17).
+        changes.append(("home", "noop" if noted else "placement"))
+    elif existing.get("home") != placed:
+        changes.append(("home", "union"))      # an unplaced entry took the run's
     changes += [(f"extra/{key}", "union") for key in merge_extra(existing, incoming)]
     changes += [(f"field_status/{path}", "union")
                 for path in merge_field_status(existing, incoming)]

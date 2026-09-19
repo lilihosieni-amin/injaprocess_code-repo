@@ -13,7 +13,7 @@ const WEIGHING = bundleOf('measurement', {
   exceptions: 'شب‌های تعطیل ثبت نمی‌شود',
 }, {
   resolved: {
-    'F-00001': { kind: 'item', title: 'پنیر پیتزا', code: '##1' },
+    'F-00001': { kind: 'record', title: 'انبار سرد' },
     'F-00011': { kind: 'record', title: 'مانده شب فرنگی و برگر' },
   },
 })
@@ -42,6 +42,17 @@ describe('the measurement card', () => {
     expect(screen.queryByText('F-00011')).toBeNull()
     // The column key survives as the small mono hint §17 allows beside a title.
     expect(screen.getByText('end_stock')).toBeInTheDocument()
+  })
+
+  it('draws «برای» as the words themselves when `of` is text, not a ref', () => {
+    // `of` is `refOrText` (spec 2026-09-16 §3.2): a unit that heard what is
+    // weighed but found no table for it writes the words. They resolve to
+    // nothing, so a reader of `resolved` alone drew an empty pane.
+    render(<MeasurementCard bundle={bundleOf('measurement', {
+      quantity: 'mass', unit: 'kg', of: 'وزن مرغ خام',
+    })} onOpen={vi.fn()} />)
+    expect(screen.getByText('وزن مرغ خام')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'وزن مرغ خام' })).toBeNull()
   })
 
   it('draws the method and the exceptions', () => {

@@ -49,13 +49,13 @@ def test_the_deviation_column_is_one_candidate_bound_in_both_twins(built):
     assert deviation["render"]["input_headers"] == ["مصرف واقعی", "مصرف اعلامی"]
 
 
-def test_a_binding_carries_its_rows_with_label_and_item_code(built):
+def test_a_binding_carries_its_rows_with_their_labels(built):
     _, _, _, candidates, _ = built
     binding = _by_output(candidates, "انحراف")["payload"]["applies_to"][0]
     assert binding["rows"] == [
-        {"key": "r6", "row": 6, "label": "پنیر پیتزا ##1", "item": "##1"},
-        {"key": "r7", "row": 7, "label": "خمیر پیتزا ##26", "item": "##26"},
-        {"key": "r8", "row": 8, "label": "سس گوجه ##33", "item": "##33"}]
+        {"key": "r6", "row": 6, "label": "پنیر پیتزا ##1"},
+        {"key": "r7", "row": 7, "label": "خمیر پیتزا ##26"},
+        {"key": "r8", "row": 8, "label": "سس گوجه ##33"}]
 
 
 def test_the_tolerance_keeps_its_let_names_and_a_ref_basis(built):

@@ -104,8 +104,8 @@ PUBLIC_NODE_KEYS: tuple[str, ...] = (
     "position", "layout", "source", "removed", "junctionType", "direction",
 )
 
-#: Which of QF-26's switches governs which fact kind. The five kinds of the
-#: facts store, and nothing else is a fact.
+#: Which of QF-26's switches governs which fact kind. The kinds of the facts
+#: store, and nothing else is a fact.
 #:
 #: Public, because the switch a kind answers to is one table read from two
 #: places — this module's own fact branch, and `routers/facts`' list, which has
@@ -113,7 +113,6 @@ PUBLIC_NODE_KEYS: tuple[str, ...] = (
 #: copies of this mapping is how the list and the detail would come to disagree
 #: about which entries exist.
 FACT_SWITCH: dict[str, str] = {
-    "item": "fact_items",
     "record": "fact_records",
     "measurement": "fact_measurements",
     "rule": "fact_rules",

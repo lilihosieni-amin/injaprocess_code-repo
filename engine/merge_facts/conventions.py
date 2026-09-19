@@ -1,6 +1,6 @@
 """The estate's own conventions (spec §3.1, invariant I6).
 
-The branch spellings, the item-code namespaces and their key prefixes, the
+The branch spellings, the code namespaces and their key prefixes, the
 placeholder header, the month names and the table prefix are facts about ONE
 estate's spreadsheets, not about the engine. They live in
 `attachments/sheets/manifest.json` under `conventions`, `dump-workbook
@@ -88,17 +88,6 @@ class Conventions:
     #: A branch token wherever it sits in an identifier (`…__ChaleBagh__…`).
     branch_in_text: re.Pattern
 
-    @property
-    def item_namespace(self):
-        """The namespace an item-list code carries — the longest one.
-
-        ponytail: the estate's `##` list is its item list and `#` its food
-        list, and the longest namespace is what says «an item» in both the
-        card and a rule's `ingredientId` binding. Name it in the manifest if
-        an estate ever wants the shorter one.
-        """
-        return max(self.code_namespaces, key=len) if self.code_namespaces else ""
-
     def split_code(self, code):
         """`##1` → `("##", "1")`; a text that is no code keeps itself."""
         for namespace in sorted(self.code_namespaces, key=len, reverse=True):
@@ -108,8 +97,8 @@ class Conventions:
 
     def code_key(self, code):
         """`##1` → `ing_1`, `#71` → `food_71`. A store key is ASCII and matches
-        `SEGMENT_RE`; `#` does not (QF-32), so the code itself lives in
-        `item.data.code` and this is what a row is keyed by."""
+        `SEGMENT_RE`; `#` does not (QF-32), so the code stays in the row's own
+        cell and this is what a row is keyed by."""
         namespace, digits = self.split_code(code)
         return f"{self.code_namespaces[namespace]}_{digits}" if namespace else digits
 
@@ -121,7 +110,7 @@ class Conventions:
 
     def matches_code(self, namespace, value):
         """Does `value` carry a code of `namespace`? The namespace is the
-        entry's own (`refItems.namespace`, the store's frozen `#`/`##`), so an
+        caller's own (the store's frozen `#`/`##`), so an
         estate whose manifest declares other namespaces answers for it rather
         than raising."""
         pattern = self.code_in_cell.get(namespace) or cell_pattern(

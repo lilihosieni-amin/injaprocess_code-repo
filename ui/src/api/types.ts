@@ -152,14 +152,14 @@ export interface ExportResult { url: string; pdf_url?: string; generated_at: str
 /** The switchable fields, in the order `store/policy.py` lists them.
  *
  *  D17's six first: a node has no KPIs — `process_kpis` is `process.kpis[]`,
- *  and what a node carries is ICOM. Then QF-26's six, one per fact kind plus
- *  `fact_sources` for provenance; a kind whose switch is off is withheld whole
- *  rather than blanked, and `fact_sources` strips `source[]` from all five at
- *  once. */
+ *  and what a node carries is ICOM. Then QF-26's fact switches, one per fact
+ *  kind plus `fact_sources` for provenance; a kind whose switch is off is
+ *  withheld whole rather than blanked, and `fact_sources` strips `source[]`
+ *  from all four at once. */
 export type PolicyField =
   | 'process_summary' | 'process_idef0' | 'process_kpis'
   | 'node_description' | 'node_actor' | 'node_icom'
-  | 'fact_items' | 'fact_records' | 'fact_measurements'
+  | 'fact_records' | 'fact_measurements'
   | 'fact_rules' | 'fact_notes' | 'fact_sources'
 
 /** `version` is a digest of the policy, not a counter: it is what D27 keys the
@@ -181,8 +181,21 @@ export interface VisibilityPolicy {
 
 // ─────────────────────────── quantitative facts (spec §6/§7, §14) ───────────
 
-/** The five kinds an entry can be (§7). */
-export type FactKind = 'item' | 'record' | 'measurement' | 'rule' | 'note'
+/** The four kinds an entry can be (§7).
+ *
+ *  **`item` was the fifth until 2026-09-16** («tables as the spine»): the owner
+ *  removed it — *«Items, and any reference that was made to items, should be
+ *  removed»* — and what an item used to be is now a row of a table. */
+export type FactKind = 'record' | 'measurement' | 'rule' | 'note'
+
+/** The same four, as a list — what the kind filter offers, in the order the
+ *  list screen draws them. */
+export const FACT_KINDS: FactKind[] = ['record', 'measurement', 'rule', 'note']
+
+/** Where a rule, a measurement or a note lives — the record it is about or
+ *  written on, and the column when it is one column's (§7, 2026-09-16).
+ *  `null` or absent is unattached; a `record` never carries one. */
+export type FactHome = { ref: string; field?: string }
 
 /** Epistemic status of a field, and of the entry as a whole (QF-6).
  *  **Not** the confirmation tick, which is one boolean (QF-25). */
@@ -255,22 +268,6 @@ export interface FactIssue {
   fix?: { op: 'multiply' | 'divide' | 'shift_columns' | 'ignore'; factor?: number }
 }
 
-/** `item.data` (§7). `category` and `unit` are the schema's two required keys. */
-export interface ItemData {
-  category: 'ingredient' | 'product' | 'packaging' | 'consumable' | 'place' | 'other'
-  unit: string
-  unit_raw?: string
-  code?: string
-  code_absent?: boolean
-  group?: string
-  state?: 'raw' | 'cooked' | 'frozen' | 'prepared'
-  grade?: string
-  pack?: { size: number; unit: string } | null
-  units?: { pack_unit: string; factor_to_base: number | null | { min: number; max: number } }[]
-  tracked?: { record?: FactRef; value: boolean; reason?: string }[]
-  stub?: boolean
-}
-
 /** One column of a `record` (§7). */
 export interface RecordField {
   key: string
@@ -287,7 +284,6 @@ export interface RecordField {
   /** `{instance key: column letter}` — the same column sits at a different
    *  letter in each copy of the template (QF-47). */
   columns?: Record<string, string>
-  refItems?: { namespace?: string }
   constraints?: {
     enum?: string[]; readOnly?: boolean; required?: boolean
     minimum?: number; maximum?: number
@@ -376,7 +372,9 @@ export interface RecordData {
 export interface MeasurementData {
   quantity: 'mass' | 'count' | 'volume' | 'duration' | 'money' | 'ratio' | 'other'
   unit: string
-  of?: FactRef
+  /** What is measured: a `{ref}`, or the **words** for it when no table names
+   *  it (`refOrText`, spec 2026-09-16 §3.2). Read it with `refOrText`. */
+  of?: FactRef | string | null
   writes_to?: FactRef
   when?: string
   by?: string
@@ -408,7 +406,8 @@ export interface RuleOutput {
   nature?: 'standard' | 'target' | 'observed' | 'limit'
   per?: string
   share?: number
-  of?: FactRef
+  /** As a measurement's — a `{ref}` or the words for it (`refOrText`). */
+  of?: FactRef | string | null
   writes_to?: FactRef
 }
 
@@ -484,11 +483,12 @@ export interface FactEntry {
   superseded_by?: FactRef | null
   issues?: FactIssue[]
   processes?: { ref: string }[]
+  /** The table this entry belongs to (2026-09-16). Never on a `record`. */
+  home?: FactHome | null
   /** Members the engine kept rather than dropped (gate tiers P1) — no card draws them. */
   extra?: Record<string, unknown>
 }
 
-export const isItem = (e: FactEntry): e is FactEntry & { data: ItemData } => e.kind === 'item'
 export const isRecordFact = (e: FactEntry): e is FactEntry & { data: RecordData } => e.kind === 'record'
 export const isMeasurement = (e: FactEntry): e is FactEntry & { data: MeasurementData } => e.kind === 'measurement'
 export const isRule = (e: FactEntry): e is FactEntry & { data: RuleData } => e.kind === 'rule'
@@ -519,6 +519,11 @@ export interface FactListRow {
   fingerprint: string
   confirmed: boolean
   updated_at: string
+  /** The id of the record this row is homed on, straight off `.index.json`
+   *  (the column is not indexed). `null` for a record and for an unattached
+   *  entry. The list screen does not draw it — it is the index's own column,
+   *  served because the row is the index's projection. */
+  home: string | null
 }
 
 /** How much of the estate has been read — `merge facts check`'s own count,
@@ -547,13 +552,40 @@ export interface Restricted { restricted: true }
 export const isRestricted = (v: unknown): v is Restricted =>
   typeof v === 'object' && v !== null && (v as { restricted?: unknown }).restricted === true
 
-/** `resolved` — every id, item key and process id the entry references, → a
- *  Persian label. `code` is the estate code rendered beside an item's title;
- *  `fields` is a **record's** columns, `{key: title}`, which is what lets a
- *  `{ref, field}` edge name the column it reads and not only the record. */
+/** `resolved` — every id and process id the entry references, → a Persian
+ *  label. `fields` is a **record's** columns, `{key: title}`, which is what
+ *  lets a `{ref, field}` edge name the column it reads and not only the record;
+ *  `retired` is present and `true` only for a retired target, which is how a
+ *  home link says «جدول بازنشسته» rather than drawing a press into a table
+ *  nobody uses any more. */
 export interface FactLabel {
-  kind: string; title: string; code?: string; fields?: Record<string, string>
+  kind: string; title: string; retired?: boolean; fields?: Record<string, string>
 }
+
+/**
+ * One row of a table's subset list (2026-09-16).
+ *
+ * `fingerprint` and `confirmed` are the pair every confirmable surface carries
+ * — the state, and the means to act on it — so the batch tick can echo a print
+ * the client never computes (QF-24). `field` is the column the row is homed on,
+ * as a **key**: the Persian for it is the record's own `fields[].title`, which
+ * the screen already holds.
+ */
+export type FactSubset =
+  | {
+    id: string; kind: FactKind; title: string | null; field?: string
+    confirmed: boolean; fingerprint: string
+  }
+  // A masked row keeps its `kind` as well as its id, which `consumers` does
+  // not. The section a row sits in **is** its kind here, so a row without one
+  // could not be drawn at all — and dropping it would withhold that the table
+  // holds something, which is more than the ruling («keep the row, hide the
+  // name») asks for. What it still carries no trace of is what the entry says,
+  // whether anyone has vouched for it, and its print.
+  | ({ id: string; kind: FactKind } & Restricted)
+
+/** A subset row the caller may open — the half of the union that has content. */
+export type PlacedSubset = Exclude<FactSubset, Restricted>
 
 /** One entry the reverse index says uses this one (QF-39). */
 export type FactConsumer = { id: string; title: string | null } | ({ id: string } & Restricted)
@@ -584,8 +616,11 @@ export interface FactBundle {
   confirmation: { confirmed: boolean; can_confirm: boolean; fingerprint: string }
   red_paths: { unknown: string[]; disputed: string[] }
   resolved: Record<string, FactLabel | Restricted>
-  row_titles: Record<string, string | Restricted>
-  path_labels: Record<string, string | Restricted>
+  /** A row's Persian title — its own `title`, or its key. **Never masked**:
+   *  with items gone no row title is composed out of a neighbour's name, so
+   *  there is no neighbour's Persian in here to withhold. */
+  row_titles: Record<string, string>
+  path_labels: Record<string, string>
   /** `{spreadsheetId: title}` — the manifest's file name without its
    *  extension, which is the only name the estate has for a workbook. */
   workbook_titles: Record<string, string>
@@ -601,6 +636,12 @@ export interface FactBundle {
   binding_labels: Record<string, { workbook: string; sheet: string; branch: string | null }>
   consumers: FactConsumer[]
   processes: FactProcessLink[]
+  /** **On a record only** — every rule, measurement and note whose `home` is
+   *  this table, plus the notes about it that no table claims. Derived
+   *  server-side out of `.index.json`'s `home` column and ordered by id, the
+   *  way `consumers` is: the panel joins nothing and counts nothing the server
+   *  has not already decided. Empty for every other kind. */
+  subsets: FactSubset[]
   /**
    * «متن اصلی» — the verbatim body `data.original_ref` names, read out of
    * `facts/originals/` by the route (QF-31 moves it there, so an entry carries

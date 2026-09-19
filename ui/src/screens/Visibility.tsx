@@ -38,8 +38,6 @@ const ROWS: { field: PolicyField; label: string; hint: string }[] = [
     hint: 'نقشی که انجام هر فعالیت بر عهدهٔ اوست.' },
   { field: 'node_icom', label: 'ICOM فعالیت',
     hint: 'ورودی‌ها، کنترل‌ها، خروجی‌ها و مکانیزم‌های هر فعالیت.' },
-  { field: 'fact_items', label: KIND_LABELS.item,
-    hint: 'اقلام داده‌های کمّی: مواد اولیه، محصول‌ها و بسته‌بندی‌ها با کد و واحد شمارش.' },
   { field: 'fact_records', label: KIND_LABELS.record,
     hint: 'جدول‌ها و فرم‌های ثبت روزانه با ستون‌هایشان.' },
   { field: 'fact_measurements', label: KIND_LABELS.measurement,

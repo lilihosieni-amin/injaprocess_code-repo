@@ -6,10 +6,15 @@ import re
 
 from engine_common import read_json, validate, write_json_atomic
 
-KIND_FILES = {"item": "items.json", "record": "records.json",
-              "measurement": "measurements.json", "rule": "rules.json",
-              "note": "notes.json"}
-KIND_ORDER = ["item", "record", "measurement", "rule", "note"]
+#: The four kinds the store holds (spec 2026-09-16 "tables as the spine"). The
+#: `item` kind is gone: a table's column of names is text, and what an item
+#: used to say about the world is said by the table it lives in.
+KINDS = ("record", "measurement", "rule", "note")
+KIND_FILES = {"record": "records.json", "measurement": "measurements.json",
+              "rule": "rules.json", "note": "notes.json"}
+#: Dependency order — a record before what homes in it, so `_plan` finds a hit
+#: before a miss mints.
+KIND_ORDER = list(KINDS)
 
 # QF-32's key grammars — shared by `apply` (preconditions, key derivation) and
 # `content` (Task 9's content pass), hoisted here (Task 9 review, F3) so
@@ -311,6 +316,11 @@ def build_index(store):
                          "status": e["status"],
                          "field_status_counts": field_status_counts(e),
                          "processes": [p["ref"] for p in e.get("processes") or []],
+                         # The record this entry sits under, or null — the
+                         # field is not indexed, the table is (2026-09-16).
+                         # Records carry no home and index as null, so every
+                         # row has the key.
+                         "home": (e.get("home") or {}).get("ref"),
                          "retired": e.get("retired", False),
                          "valid_to": e.get("valid_to"),
                          "stub": bool((e.get("data") or {}).get("stub")),
@@ -318,7 +328,7 @@ def build_index(store):
     return {"schema_version": STORE_SCHEMA_VERSION, "entries": rows}
 
 def save_store(root, store, only=None):
-    """Validate, then write the five files and the index. `only` (a set of
+    """Validate, then write the four files and the index. `only` (a set of
     ids) validates just the entries a verb wrote (spec 2026-09-13 P2/C37): an
     older off-contract entry elsewhere in a kind file is the audit's to report,
     and must not block every later write of its kind."""

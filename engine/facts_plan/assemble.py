@@ -37,8 +37,8 @@ from merge_facts.preconditions import _sever as _sever_member
 from merge_facts.tiers import note, refuse
 
 from facts_plan.build import (SIDECAR_DIR, TRANSCRIPT_DIR, TRANSCRIPT_EXT,
-                              estimate_tokens, label_of, process_index,
-                              shape_section)
+                              _tokens, estimate_tokens, label_of,
+                              process_index, shape_section)
 
 def _refs(value):
     """Every `{ref, field?}` object in a decision, in document order."""
@@ -336,6 +336,56 @@ def _sever(item, label, known):
     return out
 
 
+def _drop_items(doc, items):
+    """Runs on disk are history (spec 2026-09-16 §3.6): a document written
+    before `item` left the contract is read, not refused. Its item entries and
+    the decisions addressing them are dropped here, before the schema gate
+    sees a kind it no longer knows — otherwise every one of them became an
+    `undecided[]` row promising the owner a next run that will never mint it.
+
+    **Only for such a run** — `_judge_doc` calls this when the run's
+    `plan.json` carries no `contract` stamp (I1). A run this engine planned is
+    left alone: a unit that writes `kind: "item"` there has written an unknown
+    kind, and an unknown kind is the schema gate's to refuse out loud, not
+    this filter's to swallow.
+
+    `items` is the skeleton's own item candidates, so a decision about one of
+    those goes the same way as one about an item entry. A decision naming any
+    other unknown skeleton is left alone — that is the `unknown_skeleton`
+    hold-back, and it is still a thing the reviewer has to hear about.
+
+    Returns the `(where, n)` of every slot it emptied: the count is the one
+    line `assemble` and `digest` print on stderr, and the set is what tells
+    the judging loop below to pass the slot over in silence rather than refuse
+    it as «is not an object» — which is how the review's three item decisions
+    came back as held rows saying «item …» in a message that carries no ids.
+    """
+    def about_an_item(row):
+        if "item" in (row.get("kind"),
+                      (row.get("entry") or {}).get("kind"),
+                      (row.get("into") or {}).get("kind")
+                      if isinstance(row.get("into"), dict) else None):
+            return True
+        return row.get("skeleton") in items
+
+    # The slot is emptied, never removed: a `new[]` index is its
+    # `N-<unit>-<n>` handle, a decision's index is the `decisions[n]` a gate
+    # line names, and closing the gap would move both. `_folded` drops a
+    # non-dict decision and keeps a `None` in `new[]`, which is what the A16
+    # duplicate rule already does.
+    out = set()
+    for where in ("decisions", "new"):
+        kept = []
+        for n, row in enumerate(doc[where]):
+            if isinstance(row, dict) and about_an_item(row):
+                out.add((where, n))
+                kept.append(None)
+            else:
+                kept.append(row)
+        doc[where] = kept
+    return out
+
+
 def _judge_doc(root, run_dir, path, doc, semantics=True):
     """`(doc, findings, unshaped)` — rows A3–A28 over a parsed document, in
     place. `doc` is None when a finding refuses the whole of it; otherwise it is
@@ -367,9 +417,21 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
     for key in sorted(set(doc) - _allowed("root")):
         doc.pop(key)
     skeleton = read_json(pathlib.Path(run_dir) / "skeleton.json")
-    candidates = {c["id"]: c for c in skeleton["candidates"]}
-    nodes = process_index(root, skeleton["department"])
+    items = {c["id"] for c in skeleton["candidates"]
+             if c.get("kind") == "item"}
+    candidates = {c["id"]: c for c in skeleton["candidates"]
+                  if c["id"] not in items}
     plan = read_json(pathlib.Path(run_dir) / "plan.json")
+    # I1: the item filter is a tolerance for runs that were ALREADY on disk
+    # when `item` left the contract, not a standing filter. `build` stamps
+    # every plan it writes with `contract`, so a plan without one is an old
+    # run and only that run is read through the filter. On a stamped plan a
+    # `kind: "item"` is off-contract like any other unknown kind: the schema
+    # gate refuses it, the owner sees it in `undecided[]` and in the gate's
+    # note, and nothing disappears in silence.
+    ignored = _drop_items(doc, items) if "contract" not in plan else set()
+    doc["_items_ignored"] = len(ignored)
+    nodes = process_index(root, skeleton["department"])
     unit = next((u for u in plan.get("units") or []
                  if u.get("id") == doc["unit"]), None)
     ctx = {"candidates": candidates, "department": skeleton["department"],
@@ -388,6 +450,9 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
     found, passed, unshaped = [], [], set()
     for where in ("decisions", "new"):
         for n, item in enumerate(doc[where]):
+            if (where, n) in ignored:      # an item, read away above
+                unshaped.add((where, n))
+                continue
             if not isinstance(item, dict):
                 found.append(refuse(f"{where}[{n}]", "is not an object"))
                 unshaped.add((where, n))
@@ -763,7 +828,7 @@ def _lint_decision(decision, label, symbols, kind=None,
 
 #: A candidate's kind as the store spells it — a `.gs` script is a rule; a
 #: `new[]` entry already names a store kind, so it passes through.
-KIND_OF = {"record": "record", "item": "item", "rule": "rule", "script": "rule",
+KIND_OF = {"record": "record", "rule": "rule", "script": "rule",
            "gs": "rule"}
 _DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 
@@ -983,14 +1048,16 @@ def _outputs(root, run_dir, plan):
     out, problems = [], []
     for unit in sorted(plan["units"], key=lambda u: u["id"]):
         attempts = sorted((run_dir / "units" / unit["id"]).glob("out.*.json"))
-        merged, whole = None, []
+        merged, whole, ignored = None, [], 0
         for path in attempts:
             doc, found = _judge(root, run_dir, path)
             whole = [f.line() for f in tiers.refusals(found)
                      if tiers.item_of(f) is None]
             if doc is not None and not whole:
+                ignored += doc.get("_items_ignored") or 0
                 merged = _overlay(merged, _folded(doc, found), unit["id"])
         if merged is not None:
+            merged["_items_ignored"] = ignored
             out.append((unit, attempts[-1], merged))
         elif attempts and len(attempts) < ATTEMPTS:
             problems += [f'{unit["id"]}: {message}' for message in whole]
@@ -1103,8 +1170,8 @@ def _pseudo(entry, unit, n):
                    # `_judge_doc` and read by `_entry` off the decision: a
                    # member left off this list is gated and then silently lost.
                    if k in ("key", "title", "statement", "aliases", "branches",
-                            "processes", "accounts", "voice", "from", "extra",
-                            "_notes")}}
+                            "home", "processes", "accounts", "voice", "from",
+                            "extra", "_notes")}}
     return handle, candidate, decision
 
 
@@ -1118,7 +1185,10 @@ def _collect(root, run_dir, plan, skeleton):
              # `--review` writes `review_held: []` rather than nothing, and the
              # fold loop may read `reviewed_by` before any review is folded.
              "review_held": [], "reviewed_by": {},
-             "provenance": {}, "flags": [], "refused": {}, "refused_new": []}
+             "provenance": {}, "flags": [], "refused": {}, "refused_new": [],
+             # Entries of the retired `item` kind an old run's units wrote
+             # (`_drop_items`), for `assemble`/`digest`'s one stderr line.
+             "items_ignored": 0}
     returned = set()
     for unit, _path, doc in _outputs(root, run_dir, plan):
         returned.add(unit["id"])
@@ -1131,6 +1201,7 @@ def _collect(root, run_dir, plan, skeleton):
             handle, candidate, decision = _pseudo(entry, unit["id"], n)
             state["new"].append(candidate)
             state["by_skeleton"][handle] = decision
+        state["items_ignored"] += doc.get("_items_ignored") or 0
         state["refused"].update(doc["refused"])
         state["refused_new"] += [dict(row, unit=unit["id"])
                                  for _n, row in sorted(doc["refused_new"].items())]
@@ -1315,6 +1386,8 @@ def _fold_review(root, run_dir, state, draft, scratch, exclude=frozenset(),
         doc, found, _unshaped = _judge_doc(root, run_dir, path, doc)
         if doc is None:
             raise ValueError("; ".join(tiers.lines(found)))
+        state["items_ignored"] = (state.get("items_ignored") or 0) \
+            + (doc.get("_items_ignored") or 0)
     except (OSError, ValueError) as exc:
         # R8 routes the reviewer's second failure straight here, so this is the
         # document the fold must survive, not the one it may assume away: every
@@ -1352,7 +1425,10 @@ def _fold_review(root, run_dir, state, draft, scratch, exclude=frozenset(),
     skip = set(verdicts) | set(exclude) | set(gate)
     folded, settled, reviewed_by = [], [], {}
     for n, decision in enumerate(doc["decisions"]):
-        if n in skip:
+        # A slot rather than a decision: A16 empties a duplicate, `_drop_items`
+        # empties one about a retired `item` kind. Both keep the index, which
+        # is what `verdicts`, `gate` and `raw` are all keyed by.
+        if n in skip or not isinstance(decision, dict):
             continue
         if decision.get("action") == "contradiction":
             # The fifth action, `review`-only: the reviewer settles a
@@ -1396,10 +1472,10 @@ def _fold_review(root, run_dir, state, draft, scratch, exclude=frozenset(),
                                  if v is not None}}
         merged["_notes"] = list(previous.get("_notes") or []) + notes
         # A review `keep` carrying `data` changes the members it lists and
-        # nothing else: the unit's `category`, `fields[]`, … stay. Replacing
+        # nothing else: the unit's `quantity`, `fields[]`, … stay. Replacing
         # `data` wholesale (the shape until 2026-09-09) made a reviewer's
-        # one-member rewrite of sixteen items lose their `category`, and the
-        # whole review with it.
+        # one-member rewrite of sixteen entries lose the members it did not
+        # name, and the whole review with it.
         if isinstance(previous.get("data"), dict) and isinstance(decision.get("data"), dict):
             merged["data"] = {**previous["data"], **decision["data"]}
         merged["unit"] = previous.get("unit", "review")
@@ -1581,14 +1657,24 @@ def _scope_of(candidate, department, decision, by_id):
                                or set(decision.get("branches") or []))}
 
 
+def _ref_id(value):
+    """The id a `{ref}` edge names — `None` when the field carries the **words**
+    for what it means instead (`refOrText`: a measurement's and a rule output's
+    `of`, spec 2026-09-16 §3.2), or nothing at all. Words are a value, never an
+    attachment: nothing resolves them, no table is derived from them, and they
+    travel to the store as written."""
+    ref = value.get("ref") if isinstance(value, dict) else None
+    return ref if isinstance(ref, str) else None
+
+
 def _attachment_refs(data):
     """The four edges §3.2 calls an attachment, in one generator."""
-    yield (data.get("of") or {}).get("ref")
-    yield (data.get("writes_to") or {}).get("ref")
+    yield _ref_id(data.get("of"))
+    yield _ref_id(data.get("writes_to"))
     for member in data.get("about") or []:
-        yield (member or {}).get("ref")
+        yield _ref_id(member)
     for member in data.get("tracked") or []:
-        yield ((member or {}).get("record") or {}).get("ref")
+        yield _ref_id(member.get("record") if isinstance(member, dict) else None)
 
 
 def _attach_scopes(entries, state, by_temp):
@@ -1622,6 +1708,69 @@ def _attach_scopes(entries, state, by_temp):
 READ_OFF_A_FORM = ("sheet", "photo", "pdf", "docx")
 
 
+#: The three kinds that carry one (spec 2026-09-16); a record is its own
+#: place and the store schema forbids it a `home`.
+HOMED_KINDS = ("rule", "measurement", "note")
+
+
+def derive_home(entry, kind_of=None):
+    """The table an entry belongs to — what the unit wrote, else what the
+    entry's own references say (spec 2026-09-16 §4.1).
+
+    A pure function of its arguments: a rule whose bindings all name one record
+    belongs to that record, a measurement belongs to what it is `of` (with the
+    column, when it names one), and a note to the first **table** it is `about`
+    (owner decision 3). Anything else is unattached — including a record, which
+    is a place and has none.
+
+    `kind_of(ref) -> kind | None` is what tells a table from a rule: a note
+    that speaks of a rule before the form it is written on belongs to the form,
+    and a measurement `of` a rule belongs nowhere. A ref the caller cannot
+    place answers `None` and is taken as written — the store severs a `home`
+    that names no record, with a note the owner reads (C29).
+    """
+    if entry.get("kind") not in HOMED_KINDS:
+        return None
+    written = entry.get("home")
+    if isinstance(written, dict) and isinstance(written.get("ref"), str):
+        return {k: written[k] for k in ("ref", "field") if written.get(k)}
+    data = entry.get("data") or {}
+
+    def a_table(member):
+        ref = _ref_id(member)                 # words, not a ref: no table to sit on
+        return ref is not None and (kind_of is None
+                                    or kind_of(ref) in (None, "record"))
+
+    if entry["kind"] == "rule":
+        # Spec §4.1: "a rule with bindings on exactly one RECORD". A binding
+        # whose `record.ref` names a rule is no table, so it derives nothing
+        # rather than a home the store then severs with a note the owner reads.
+        named = {m["record"]["ref"] for m in data.get("applies_to") or []
+                 if isinstance(m, dict) and a_table(m.get("record"))}
+        return {"ref": named.pop()} if len(named) == 1 else None
+
+    source = data.get("of") if entry["kind"] == "measurement" \
+        else next((m for m in data.get("about") or [] if a_table(m)), None)
+    if not a_table(source):
+        return None
+    return {k: source[k] for k in ("ref", "field") if source.get(k)}
+
+
+def _kind_of(state):
+    """`ref -> the kind it names`, over this run's candidates (a `new[]` entry
+    included) and the store. An `S-`/`N-`/`F-` id nothing knows answers `None`,
+    which every caller reads as "no reason to rule it out"."""
+    candidates = state.get("candidates") or {}
+    stored = state.get("store_kinds") or {}
+
+    def kind_of(ref):
+        candidate = candidates.get(ref)
+        if candidate:
+            return KIND_OF.get(candidate["kind"], candidate["kind"])
+        return stored.get(ref)
+    return kind_of
+
+
 def _entry(candidate, decision, state, part=None):
     """Step 2 — the envelope §2.6 describes: the skeleton's mechanical payload
     under the unit's own fields, `source[]` from every instance and binding,
@@ -1635,13 +1784,6 @@ def _entry(candidate, decision, state, part=None):
     # payload carries no wrappers, so this is a no-op for every real candidate.
     data = _unwrap(copy.deepcopy(candidate["payload"]), "data", status)
     given = _unwrap(written.get("data") or {}, "data", status)
-    # An item's `code` is the estate's, read off the header row and carried by
-    # the candidate's payload — never the model's to write. The schema admits
-    # it (a document that copies it back in is not a broken document) and it is
-    # dropped here, on the one path every decision takes: a unit's, a review's,
-    # and a split part's alike (R4). The cooking review of 2026-09-08 was
-    # refused whole for it.
-    given.pop("code", None)
     renames, fields = _rename_fields(data.pop("fields", []),
                                      given.pop("fields", []))
     data.update(given)
@@ -1724,6 +1866,9 @@ def _entry(candidate, decision, state, part=None):
              "retired": False, "data": data,
              "_skeleton": candidate["id"], "_unit": decision["unit"],
              "_renames": renames}
+    if kind in HOMED_KINDS:
+        entry["home"] = derive_home(dict(entry, home=written.get("home")),
+                                    _kind_of(state))
     if written.get("aliases"):
         entry["aliases"] = written["aliases"]
     if written.get("accounts"):
@@ -2017,7 +2162,7 @@ def _sever_unknown(entry, known):
     sites = list(_ref_sites(public, []))
     gone = [(path, obj["ref"]) for path, obj in sites
             if isinstance(obj.get("ref"), str) and obj["ref"].startswith("F-")
-            and obj["ref"] not in known]
+            and obj["ref"] not in known and path != ["home"]]
     about = [path for path, _ in sites if path[:2] == ["data", "about"]]
     if about and len([p for p, _ in gone if p[:2] == ["data", "about"]]) == len(about):
         return
@@ -2040,8 +2185,8 @@ def _resolve_refs(entries, state):
 
     An `N-<unit>-<n>` handle — the one §2.6 step 6 gives a `new[]` entry —
     resolves exactly as an `S-` id does, so a unit can mint an entity and point
-    at it in the same run: a record's `movement` ends are `place` items, and
-    nothing in the sheets mints those.
+    at it in the same run: a record's `movement` ends are records of their own,
+    and the paper one is minted by the unit that read the meeting.
 
     The handle is run-wide, not unit-local: `by_skeleton` below is built from
     every kept entry of every unit, so a phase-2 unit's note may address a
@@ -2072,7 +2217,7 @@ def _resolve_refs(entries, state):
         for entry in kept:
             for obj in iter_ref_objects(entry):
                 ref = obj.get("ref")
-                if not isinstance(ref, str):
+                if not isinstance(ref, str) or obj is entry.get("home"):
                     continue
                 if ref.startswith(("S-", "N-")) and ref not in by_skeleton:
                     owner = dropped.get(ref) \
@@ -2094,7 +2239,9 @@ def _resolve_refs(entries, state):
             kept.remove(entry)
         _sever_derived(kept, {e["_skeleton"] for e, _ in held if e["_skeleton"]},
                        key="_skeleton")
+    placed = set(by_skeleton) | {e["id"] for e in kept if e.get("id")}
     for entry in kept:
+        _place(entry, placed, state["store_scopes"])
         for obj in iter_ref_objects(entry):
             ref = obj.get("ref")
             if isinstance(ref, str) and ref.startswith(("S-", "N-")):
@@ -2103,6 +2250,25 @@ def _resolve_refs(entries, state):
                 if obj.get("field") in (target.get("_renames") or {}):
                     obj["field"] = target["_renames"][obj["field"]]
     return kept
+
+
+def _place(entry, placed, store):
+    """An entry's `home` against what this run kept — by handle (`S-`/`N-`), by
+    the temp id a review names it with, or by the store's own `F-` id. A table
+    nobody kept costs the entry its place and nothing else (C29's note, without
+    the hold-back).
+
+    Placement is not a fact: an entry whose table was dropped, failed or was
+    held back still lands, unattached, and the panel lists it under «بدون
+    جدول» — holding it back instead would cost the owner the fact itself.
+    """
+    ref = (entry.get("home") or {}).get("ref")
+    if not isinstance(ref, str) or ref in placed or ref in store:
+        return
+    entry["home"] = None
+    tiers.apply_notes(entry, [note(entry.get("key") or "",
+                                   f"home: ref {ref} is in no entry of this run",
+                                   path="home")])
 
 
 # --------------------------------------------------------------------------
@@ -2171,6 +2337,37 @@ def _template_split(entries):
     return out
 
 
+def _homeless(entries):
+    """§2.6 step 7's third run-scoped flag (spec 2026-09-16): a rule or a
+    measurement this run placed under no table, beside the tables of the same
+    run whose titles read like it. The reviewer answers it with a `keep`
+    carrying `home`, exactly as it corrects any other member.
+
+    Both halves of the line are addresses the reviewer can use: the flag
+    carries its `entry`, so `_digest_text` names it `rule <key>` the way a
+    decision addresses it, and each candidate is named by the temp id a
+    review's `home` carries as well as by its key and title.
+    """
+    records = [e for e in entries if e["kind"] == "record"]
+    out = []
+    for entry in entries:
+        if entry["kind"] not in ("rule", "measurement") or entry.get("home"):
+            continue
+        mine = _tokens(entry["title"])
+        near = [r for r in records
+                if len(mine & _tokens(" ".join([r["title"]]
+                                               + list(r.get("aliases") or [])))) >= 2]
+        if near:
+            out.append({"code": "homeless", "id": entry["id"],
+                        "entry": {"kind": entry["kind"], "key": entry["key"],
+                                  "scope": entry["scope"]},
+                        "candidates": [r["id"] for r in near],
+                        "message": "no home; these tables read like it: "
+                                   + "، ".join(f'{r["id"]} {r["key"]} '
+                                               f'«{r["title"]}»' for r in near)})
+    return out
+
+
 def _cross_unit(root, entries, state):
     """Step 7 — two `keep`s minting one `(kind, key, scope)` are merged with the
     lowest unit's prose; a scalar the two disagree on becomes two accounts when
@@ -2212,7 +2409,8 @@ def _cross_unit(root, entries, state):
                 for side in sides:
                     keeper.setdefault("accounts", []).append(_account(path, side))
         survivors.append(keeper)
-    flags += _template_split(survivors) + _wrapper_variants(survivors, state)
+    flags += _template_split(survivors) + _wrapper_variants(survivors, state) \
+        + _homeless(survivors)
     flags += flags_over(root, [{k: v for k, v in e.items()
                                 if not k.startswith("_")} for e in survivors])
     state["flags"] = flags
@@ -2260,19 +2458,22 @@ def _digest_text(state, entries):
     """`review/input.md` (§2.6) — one line per assembled entry, the flags, and
     the dropped candidates with their reason codes."""
     lines = ["# digest", "", "## entries", ""]
+    keys = {e["id"]: e["key"] for e in entries}
     for entry in entries:
         data = entry["data"]
         tail = {"rule": f'expr: {data.get("expr")}',
                 "record": "fields: " + "، ".join(
                     f'{f["key"]}[{f.get("unit") or "—"}]'
-                    for f in data.get("fields") or []),
-                "item": f'{data.get("code")} · {data.get("unit")} · '
-                        f'{data.get("category")}'}.get(entry["kind"], "")
+                    for f in data.get("fields") or [])}.get(entry["kind"], "")
         kinds = " · ".join(sorted({s["type"] for s in entry.get("source") or []}))
-        lines.append(" · ".join([entry["kind"], entry["key"],
-                                 _address(entry)[2], entry["title"],
-                                 entry["statement"], tail,
-                                 f"منابع: {kinds}"]))
+        line = [entry["kind"], entry["key"], _address(entry)[2], entry["title"],
+                entry["statement"], tail]
+        if entry["kind"] in HOMED_KINDS:
+            # The table it sits under, by the key the reviewer addresses an
+            # entry with — never the temp id, which names nothing it can read.
+            ref = (entry.get("home") or {}).get("ref")
+            line.append(f'جدول: {keys.get(ref, ref) if ref else "—"}')
+        lines.append(" · ".join(line + [f"منابع: {kinds}"]))
     lines += ["", "## flags", ""]
     # A flag's `id` is a temp id minted for this assembly and nowhere else, so
     # it addresses nothing the reviewer can go and read. A flag that carries the
@@ -2301,6 +2502,13 @@ def _prepare(root, run_dir, review, exclude=frozenset(), held=None, only=None):
     which is what `phase_entries` needs to fold one phase on its own."""
     run_dir = pathlib.Path(run_dir)
     skeleton = read_json(run_dir / "skeleton.json")
+    # A skeleton built before 2026-09-16 still offers item candidates; they are
+    # read away here for the same reason `_drop_items` reads away the units'
+    # item entries — a run on disk is history, not a refusal.
+    items = [c for c in skeleton["candidates"] if c.get("kind") == "item"]
+    if items:
+        skeleton = dict(skeleton, candidates=[c for c in skeleton["candidates"]
+                                              if c.get("kind") != "item"])
     plan = read_json(run_dir / "plan.json")
     if only is not None:
         plan = dict(plan, units=[u for u in plan["units"] if u["id"] in only])
@@ -2308,6 +2516,7 @@ def _prepare(root, run_dir, review, exclude=frozenset(), held=None, only=None):
                          "manifest.json")
     store = load_store(root)
     state = _collect(root, run_dir, plan, skeleton)
+    state["items_ignored"] += len(items)
     state.update({
         "department": skeleton["department"], "issues": skeleton["issues"],
         # The reviewer is held to the same closed unit list a unit is (§3.3),
@@ -2329,7 +2538,11 @@ def _prepare(root, run_dir, review, exclude=frozenset(), held=None, only=None):
         # exists (1a) and where its entry sits (§3.2's attachment union).
         "store_scopes": {e["id"]: canonical_scope(e.get("scope"))
                          for kind in KIND_ORDER
-                         for e in store[kind]["entries"]}})
+                         for e in store[kind]["entries"]},
+        # …and what kind each one is, which is what tells a note's `about`
+        # list which of its members is a table (`derive_home`).
+        "store_kinds": {e["id"]: kind for kind in KIND_ORDER
+                        for e in store[kind]["entries"]}})
     if review:
         # The reviewer read the assembly as it stood *before* the review, flags
         # and all — so the hash is checked against that same document, rebuilt
@@ -2359,11 +2572,22 @@ def phase_entries(root, run_dir, unit_ids):
     return sorted(out, key=lambda e: (KIND_ORDER.index(e["kind"]), e["handle"]))
 
 
+def _say_items_ignored(state):
+    """One line, in English on stderr, when a run on disk carried entries of
+    the retired `item` kind (spec 2026-09-16 §3.6). The owner's `report.md`
+    says nothing about them: they are not a thing this run left undone."""
+    n = state.get("items_ignored") or 0
+    if n:
+        print(f"facts-plan: ignored {n} output(s) of the retired kind 'item' "
+              "from this run", file=sys.stderr)
+
+
 def digest(root, run_dir):
     """`review/input.md` + `review/input.sha256` — steps 1–7 in memory, the temp
     ids discarded. Over `DIGEST_CEILING` the run stops (R7) — nothing is
     written and the reviewer is never skipped."""
     run_dir, skeleton, state = _prepare(root, run_dir, False)
+    _say_items_ignored(state)
     entries = _build_entries(root, skeleton, state)
     _cross_unit(root, entries, state)
     text = _digest_text(state, entries)
@@ -2459,6 +2683,7 @@ def assemble(root, run_dir, *, review=False):
                   f'{(row.get("refused") or [row.get("reason")])[0]}',
                   file=sys.stderr)
         raise SystemExit(2)
+    _say_items_ignored(state)
     clean = [{k: v for k, v in e.items() if not k.startswith("_")}
              for e in entries]
     write_json_atomic(run_dir / "facts-delta.json",
@@ -2772,6 +2997,47 @@ def _store_held_block(run_dir):
     return [line + ".", ""]
 
 
+#: What a table's page lists under it, in the owner's words (spec 2026-09-16).
+SUBSET_FA = {"rule": "قاعده", "measurement": "اندازه‌گیری", "note": "یادداشت"}
+
+
+def _counted(counts):
+    return "، ".join(f"{_fa(counts[kind])} {SUBSET_FA[kind]}"
+                     for kind in HOMED_KINDS if counts[kind])
+
+
+def _by_table_block(entries, titles, moved):
+    """`report.md`'s placement block: what this run left under each table, what
+    it left unattached, and the entries whose place it would have changed and
+    did not (owner decision 1). Tables are named by their titles, never by an
+    id (§2.7), and one this run cannot name at all is left out.
+
+    `entries` is the store's own order, so the tables come out in it.
+    """
+    counts = {e["id"]: collections.Counter() for e in entries
+              if e["kind"] == "record"}
+    loose = collections.Counter()
+    for entry in entries:
+        if entry["kind"] not in HOMED_KINDS:
+            continue
+        ref = (entry.get("home") or {}).get("ref")
+        if ref:
+            counts.setdefault(ref, collections.Counter())[entry["kind"]] += 1
+        else:
+            loose[entry["kind"]] += 1
+    out = [f"«{titles[ref]}»: {_counted(count)}"
+           for ref, count in counts.items() if sum(count.values()) and ref in titles]
+    if sum(loose.values()):
+        out.append(f"بدون جدول: {_counted(loose)}")
+    for row in moved:
+        seen = titles.get(row.get("seen"))
+        title = titles.get(row.get("id")) or row.get("title")
+        if seen and title:
+            out.append(f"جای «{title}» تغییر نکرد؛ این اجرا آن را زیر "
+                       f"«{seen}» می‌دید.")
+    return ["زیر هر جدول چه ثبت شد:"] + out + [""] if out else []
+
+
 def gate_b(root, skeleton, entries, state):
     """`gate-b.md` (§2.7) — a finished Persian message the playbook sends
     verbatim. No id, no path, no code, no command; an entry is its title."""
@@ -2794,8 +3060,8 @@ def gate_b(root, skeleton, entries, state):
             reasons.append(word)
     out = [f"خلاصهٔ اعداد {name} — برای تأیید", "",
            f'ثبت می‌شود: {_fa(counts["rule"])} قاعده، {_fa(counts["record"])} '
-           f'جدول، {_fa(counts["item"])} قلم، {_fa(counts["measurement"])} '
-           f'اندازه‌گیری، {_fa(counts["note"])} یادداشت.',
+           f'جدول، {_fa(counts["measurement"])} اندازه‌گیری، '
+           f'{_fa(counts["note"])} یادداشت.',
            f'کنار گذاشته شد: {_fa(len(state["dropped"]))} مورد'
            + (f' ({"، ".join(reasons[:3])})' if reasons else "")
            + " — فهرست کامل در گزارش پایان اجرا.",
@@ -2857,11 +3123,19 @@ def report(root, run_dir):
     unknown = [(e, null_paths(e)) for e in entries]
     unknown = [(e, p) for e, p in unknown if p]
 
+    # A `moved-home.json` id `apply` could not name is named off the store
+    # here, and `report` prints no line it cannot name (owner decision 1).
+    titles = {e["id"]: e["title"] for kind in KIND_ORDER
+              for e in store[kind]["entries"]
+              if isinstance(e.get("title"), str) and e["title"].strip()}
+    moved = run_dir / "moved-home.json"
     out = [f"گزارش پایان اجرا — {name}", ""] \
         + _lost_block(assembly.get("lost_sources") or []) + [
            f'ثبت شد: {_fa(len(entries))} مورد. '
            f'کنار گذاشته شد: {_fa(len(assembly["dropped"]))} مورد. '
-           f'{_fa(len(assembly["undecided"]))} مورد بررسی‌نشده.', ""]
+           f'{_fa(len(assembly["undecided"]))} مورد بررسی‌نشده.', ""] \
+        + _by_table_block(entries, titles,
+                          read_json(moved) if moved.exists() else [])
     if disputes:
         out.append("اختلاف‌ها — شمارهٔ مورد و حرف گزینه را بفرستید، مثلاً «۱ الف»:")
         for n, (entry, accounts) in enumerate(disputes, start=1):

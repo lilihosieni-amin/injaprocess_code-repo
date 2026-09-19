@@ -4,9 +4,9 @@ import { toFa } from '../lib/format'
 
 /**
  * Reading the three name maps `GET /api/facts/{fid}` serves beside an entry —
- * `resolved`, `row_titles`, `path_labels` — and the one rule that governs all
- * three: **a neighbour the caller may not open arrives as `{restricted: true}`
- * and has no name at all** (`api/types.ts`'s `Restricted`, the owner's ruling of
+ * `resolved`, `row_titles`, `path_labels` — and the one rule that governs
+ * `resolved`: **a neighbour the caller may not open arrives as
+ * `{restricted: true}` and has no name at all** (`api/types.ts`'s `Restricted`, the owner's ruling of
  * 2026-08-31). Every reader here narrows before it reads a title, and the
  * masked answer is «خارج از دسترسی شما» — settled copy, in `factsLabels.ts` and
  * in spec Appendix D.
@@ -22,32 +22,17 @@ import { toFa } from '../lib/format'
 export interface Named {
   /** The Persian to draw — a title, or «خارج از دسترسی شما». */
   text: string
-  /**
-   * An item's estate code — `##1`, `#61` — **kept apart from the title**.
-   *
-   * §17 renders it beside the title, and the design composes the two into one
-   * string (`refTitle`, :4742). That string is a latin run inside a Persian text
-   * node and the browser reorders it: «پنیر پیتزا ##1» is drawn «پنیر پیتزا
-   * 1##». It is conformance note 6's defect in a second place, so the code
-   * travels separately and every renderer draws it as its own island.
-   */
-  code?: string
+  /** `true` ⇒ the target is retired — a home link says so instead of pressing
+   *  into a table nobody fills in any more. */
+  retired?: boolean
   /** `true` ⇒ masked: draw the text, never a link (QF-23). */
   restricted: boolean
-  /**
-   * The `F-…` id to navigate to, when there is one.
-   *
-   * **Absent for an item key**, and that is the served shape rather than an
-   * omission: `facts_store._labels` maps an item's key to `{kind, title, code?}`
-   * with **no id** (`facts_store.py:291`), so a `refItems` cell can be *named*
-   * and cannot be *opened*. The design navigates from one (`refGo((s.fLabels
-   * [raw] || {}).id || raw)`, :4916) because its own fixture carries an `id`
-   * the route does not serve.
-   */
+  /** The `F-…` id to navigate to. Absent for a process id, which this screen
+   *  does not open from here. */
   id?: string
 }
 
-/** An `F-…` id is its own destination; an item key is not (see `Named.id`). */
+/** An `F-…` id is its own destination; a process id is opened elsewhere. */
 const FACT_ID = /^F-\d+$/
 
 const masked = (): Named => ({
@@ -55,12 +40,8 @@ const masked = (): Named => ({
 })
 
 /**
- * The Persian title for an id, an item key or a process id — conformance
- * note 2's replacement for the design's `refTitle` (:4742).
- *
- * The estate code rides beside an item's title where there is one, as §17
- * requires — but as a field of its own rather than joined into the string the
- * design joins it into. See `Named.code`.
+ * The Persian title for an id or a process id — conformance note 2's
+ * replacement for the design's `refTitle` (:4742).
  *
  * A ref the map does not carry answers `undefined` rather than the raw ref: the
  * store drops a dangling target on purpose (`facts_store.resolved_map`), so the
@@ -73,7 +54,7 @@ export function resolvedTitle(bundle: FactBundle, ref: string): Named | undefine
   if (isRestricted(found)) return masked()
   return {
     text: found.title,
-    code: found.code,
+    retired: found.retired,
     restricted: false,
     id: FACT_ID.test(ref) ? ref : undefined,
   }
@@ -102,20 +83,35 @@ export function refTitle(
 }
 
 /**
+ * The same, for an edge that may carry **words instead of a ref** — a
+ * measurement's and a rule output's `of` (`refOrText`, spec 2026-09-16 §3.2).
+ *
+ * Words are what the unit heard and nothing resolves them: they are drawn as
+ * they were written, with no id, so `RefLink` prints them and offers no press.
+ * An empty string is no answer at all and reads as absent.
+ */
+export function refOrText(
+  bundle: FactBundle, value: FactRef | string | undefined | null,
+): Named | undefined {
+  if (typeof value === 'string') {
+    return value === '' ? undefined : { text: value, restricted: false }
+  }
+  return refTitle(bundle, value)
+}
+
+/**
  * A row key → the row's Persian title (§17). Every row key is in the map, so a
  * miss means the row is not the entry's — never that it has no name.
  */
 export function rowTitle(bundle: FactBundle, key: string): Named | undefined {
   const found = bundle.row_titles[key]
-  if (found === undefined) return undefined
-  return isRestricted(found) ? masked() : { text: found, restricted: false }
+  return found === undefined ? undefined : { text: found, restricted: false }
 }
 
 /** A QF-7 path → «ستون — ردیف» (§17). Used by the accounts card's grouping. */
 export function pathLabel(bundle: FactBundle, path: string): Named | undefined {
   const found = bundle.path_labels[path]
-  if (found === undefined) return undefined
-  return isRestricted(found) ? masked() : { text: found, restricted: false }
+  return found === undefined ? undefined : { text: found, restricted: false }
 }
 
 /**

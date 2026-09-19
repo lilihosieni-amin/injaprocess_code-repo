@@ -57,8 +57,7 @@ def test_unit_ids_and_budgets():
                      "applies_to": [{"key": "pitza__s5__j__r6"}]}}],
         "instances": [{"key": "pitza__s5", "sheetId": 5}]}
     manifest = {"workbooks": [_wb("pitza", "MandeShab__ChaleBagh__Amar__Pitza")]}
-    units = plan_units(skeleton, workbook_groups(manifest, "cooking"),
-                       [], [], [])
+    units = plan_units(skeleton, workbook_groups(manifest, "cooking"), [], [])
     assert [u["id"] for u in units] == ["u-wb-pitza"]
     assert units[0]["type"] == "workbook"
     assert units[0]["candidates"] == ["S-r-0000000000002", "S-rec-000000000001"]
@@ -73,7 +72,7 @@ def test_transcript_chunks_are_line_aligned_and_named_by_first_line():
     assert chunks[1][0] == chunks[0][1] + 1            # no line lost, none shared
     units = plan_units({"candidates": [], "instances": []}, {},
                        [("cooking-1405-05-26", "meetings/transcripts/"
-                         "cooking-1405-05-26.txt", chunks[0], "x")], [], [])
+                         "cooking-1405-05-26.txt", chunks[0], "x")], [])
     assert units[0]["id"] == "u-tr-cooking-1405-05-26-l1"
     assert units[0]["inputs"] == ["meetings/transcripts/cooking-1405-05-26.txt"
                                   f"#L{chunks[0][0]}-L{chunks[0][1]}"]
@@ -111,7 +110,7 @@ def test_a_template_spanning_two_groups_makes_them_one_unit():
     manifest = {"workbooks": [
         _wb("sokhari", "MandeShab__ChaleBagh__Amar__Sokhari"),
         _wb("fried", "MandeShab__Naharkhoran__Amar__FRIED")]}
-    units = plan_units(skeleton, workbook_groups(manifest, "cooking"), [], [], [])
+    units = plan_units(skeleton, workbook_groups(manifest, "cooking"), [], [])
     assert [u["id"] for u in units] == ["u-wb-fried"]
     assert units[0]["candidates"] == ["S-rec-000000000001"]
     assert sorted(units[0]["inputs"]) == sorted(
@@ -129,7 +128,7 @@ def test_a_candidate_no_unit_holds_exits_2(capsys):
         "instances": [{"key": "nowhere__s1", "sheetId": 1}]}
     with pytest.raises(SystemExit) as excinfo:
         plan_units(skeleton, workbook_groups({"workbooks": []}, "cooking"),
-                   [], [], [])
+                   [], [])
     assert excinfo.value.code == 2
     assert "S-rec-000000000001" in capsys.readouterr().err
 
@@ -190,7 +189,7 @@ def test_a_set_aside_candidate_is_in_no_unit_and_trips_no_invariant():
     nowhere on purpose — it is the one candidate no unit may list."""
     skeleton = _two_tabs_one_axis()
     manifest = {"workbooks": [_wb("x", "MandeShab__ChaleBagh__Amar__X")]}
-    units = plan_units(skeleton, workbook_groups(manifest, "cooking"), [], [], [])
+    units = plan_units(skeleton, workbook_groups(manifest, "cooking"), [], [])
     assert [u["candidates"] for u in units] == [["S-rec-000000000002"]]
     assert "unit" not in skeleton["candidates"][0]
     assert [i["target"] for i in skeleton["issues"]] == ["S-rec-000000000001"]
@@ -208,12 +207,12 @@ def test_input_md_carries_the_candidates_the_slices_and_both_cards():
             "candidates": ["S-r-0000000000002"], "nodes": [],
             "est_tokens_in": 0, "est_tokens_out": 250}
     text = render_input(unit, skeleton, {"text": "", "context": [],
-                                         "reuse": ["F-00002 · item · item_1 · پنیر"],
+                                         "reuse": ["F-00002 · record · form · فرم"],
                                          "processes": ["cooking-030 · n001 · شمارش"],
                                          "field_tables": ["S-rec-… · «پیتزا» · c_a"]})
     assert "S-r-0000000000002 · «انحراف»" in text
     assert "MINUS(@,@)" in text and "1 bindings" in text
-    assert "F-00002 · item · item_1 · پنیر" in text
+    assert "F-00002 · record · form · فرم" in text
     assert "cooking-030 · n001 · شمارش" in text
     assert "Expression card" in text and "Style card" in text
 
@@ -230,8 +229,11 @@ def test_plan_json_records_the_hashes(tmp_path):
 
 
 def test_label_of():
-    assert label_of({"kind": "item", "payload": {"code": "##1",
-                                                 "labels": ["پنیر"]}}) == "##1 پنیر"
+    assert label_of({"kind": "record",
+                     "payload": {"instances": [{"key": "pitza__s5",
+                                                "sheet": "پیتزا"}]}}) == "پیتزا"
+    assert label_of({"kind": "rule", "payload": {},
+                     "render": {"output": "انحراف"}}) == "انحراف"
 
 
 def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
@@ -265,7 +267,8 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
     skeleton = json.loads((run_dir / "skeleton.json").read_text(encoding="utf-8"))
     plan = json.loads((run_dir / "plan.json").read_text(encoding="utf-8"))
     assert (run_dir / "functions.md").read_text(encoding="utf-8").startswith("#")
-    assert set(plan) == {"schema_version", "department", "hashes", "units"}
+    assert set(plan) == {"schema_version", "contract", "department", "hashes",
+                         "units"}
     assert plan["schema_version"] == 1 and plan["department"] == "cooking"
     assert all(h.startswith("sha256:") for h in plan["hashes"].values())
     assert any(rel.endswith("cooking-1405-05-26.txt") for rel in plan["hashes"])
@@ -278,12 +281,9 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
     assert [u["id"] for u in plan["units"] if u["type"] == "workbook"] == [
         "u-wb-gozareshat", "u-wb-mini_bom", "u-wb-mini_kanter_ch",
         "u-wb-mini_pitza_ch"]
-    assert {u["type"] for u in plan["units"]} == {"workbook", "transcript",
-                                                  "items"}
+    assert {u["type"] for u in plan["units"]} == {"workbook", "transcript"}
     assert out == {"units": len(plan["units"]),
-                   "candidates": {"item": sum(c["kind"] == "item"
-                                              for c in skeleton["candidates"]),
-                                  "record": sum(c["kind"] == "record"
+                   "candidates": {"record": sum(c["kind"] == "record"
                                                 for c in skeleton["candidates"]),
                                   "rule": sum(c["kind"] == "rule"
                                               for c in skeleton["candidates"])}}
@@ -309,6 +309,15 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
         # §3.3: and the run's own unit symbols, so no unit invents one.
         assert "## واحدهای مجاز" in text
         assert "`g`" in text and "`kg`" in text
+        # 2026-09-16: every rule, measurement and note names the table it
+        # lives on, so all three cards and the worked examples say `home`.
+        for kind in ("rule", "measurement", "note"):
+            head = text.index(f"## {kind} — data")
+            assert text.index("`home` کنار `data`", head) - head < 200, kind
+        examples = text[text.index("## نمونه‌های کامل `new[]`"):]
+        assert examples.count('"home"') == 3       # not the record example
+        assert '"home": {\n    "ref": "S-rec-…"\n  }' in examples
+        assert '"field": "meqdar"' in examples
     chunk = next(u for u in plan["units"] if u["type"] == "transcript")
     assert chunk["inputs"] == ["meetings/transcripts/cooking-1405-05-26.txt#L1-L39"]
     # a line under the cap is quoted byte for byte, trailing spaces included
@@ -320,8 +329,8 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
     pitza = (run_dir / "units" / "u-wb-mini_pitza_ch" / "input.md").read_text(
         encoding="utf-8")
     assert "getTotalFoodsIngredient" in pitza and "getIngredientValue(foodIds[i]" in pitza
-    items = next(u for u in plan["units"] if u["type"] == "items")
-    assert "## توابع" not in (run_dir / "units" / items["id"] / "input.md").read_text(
+    bom = next(u for u in plan["units"] if u["id"] == "u-wb-mini_bom")
+    assert "## توابع" not in (run_dir / "units" / bom["id"] / "input.md").read_text(
         encoding="utf-8")
 
 

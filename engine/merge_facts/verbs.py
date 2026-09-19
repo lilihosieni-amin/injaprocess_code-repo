@@ -20,7 +20,7 @@ set/remove/unset/append ops to one entry, gated by the store's own gate.
 Every *writing* verb (`resolve`, `retire`, `promote`, `edit` and
 `repair-source-refs`) shares one shape:
 `load_store`, find the entry, mutate it, `entry["status"] = derive_status
-(entry)`, stamp `updated_at` on the touched entry only, snapshot the five
+(entry)`, stamp `updated_at` on the touched entry only, snapshot the four
 files to `{run_dir}/facts-before/` (`apply`'s own `_snapshot`, Task 5 — taken
 right before the write, same as `apply`'s), `save_store` (which rebuilds
 `.index.json`), and append `{"verb": ..., "args": {...}}` to
@@ -64,7 +64,7 @@ from merge_facts import (
     unset_path,
 )
 from merge_facts import conventions
-# `_snapshot` is `apply`'s own (Task 5): the five files as they stand right
+# `_snapshot` is `apply`'s own (Task 5): the four files as they stand right
 # before a write, kept at `{run_dir}/facts-before/` so `revert` (Task 7) can
 # restore an entry wholesale. Every *writing* verb here needs the same
 # snapshot for the same reason — its run directory is just as revertible as
@@ -93,17 +93,16 @@ _KIND_DATA_STUBS = {
     # Neutral containers `promote` may inject — empty, so nothing is
     # fabricated: `rule`'s `inputs`/`outputs` start as empty lists (a later
     # apply or edit fills them), and `note`'s own `data` needs nothing extra.
-    # item/record/measurement are deliberately absent: their schema-required
+    # record and measurement are deliberately absent: their schema-required
     # keys (`_KIND_REQUIRED_KEYS` below) are facts about the world — category,
-    # unit, medium, role, location, quantity — and `promote` must never guess
-    # at one. A note promoted to one of those three kinds is only accepted
+    # medium, role, location, quantity — and `promote` must never guess
+    # at one. A note promoted to one of those two kinds is only accepted
     # when its own `data` already carries them.
     "rule": {"inputs": [], "outputs": []},
     "note": {},
 }
 
 _KIND_REQUIRED_KEYS = {
-    "item": ("category", "unit"),
     "record": ("medium", "role", "location"),
     "measurement": ("quantity", "unit"),
 }
@@ -224,7 +223,7 @@ def retire(root, fact_id, heir, run_dir, date=None):
 def promote(root, fact_id, kind, key, run_dir):
     """Move a note into a real kind, in place: the id stays, the kind and key
     change. `data` gets only neutral, empty containers a promote may add
-    without inventing a fact (see `_KIND_DATA_STUBS`) — for item/record/
+    without inventing a fact (see `_KIND_DATA_STUBS`) — for record and
     measurement, the note's own `data` must already carry the target kind's
     schema-required keys, or promotion is refused. Only a note is promotable,
     and its hash key never carries over — `key` is always required."""
@@ -267,7 +266,7 @@ def promote(root, fact_id, kind, key, run_dir):
     # Belt: every precondition above is checked before this point, but a
     # residual schema failure (a shape `_KIND_REQUIRED_KEYS` doesn't cover)
     # must still exit clean rather than traceback. `save_store` validates
-    # all five files before writing any, so the store is untouched either way.
+    # all four files before writing any, so the store is untouched either way.
     try:
         _snapshot(root, pathlib.Path(run_dir))
         save_store(root, store)
@@ -342,9 +341,35 @@ def _apply_op(entry, op):
         append_path(entry, path, value)
         return None, value              # the preview shows what joins, not the list
     if not path_exists(entry, path):          # remove / unset: nothing to undo
-        raise KeyError(path)
-    (remove_path if verb == "remove" else unset_path)(entry, path)
+        # `unset home` is the one exception (2026-09-16): every entry written
+        # before the member existed carries no `home` key at all, and «از
+        # جدولش جدا کن» over one of those asks for what is already true. The
+        # detach is still a decision — `edit` records it — so the op succeeds
+        # and removes nothing, rather than refusing the entries that most need
+        # it.
+        if not (verb == "unset" and path == "home"):
+            raise KeyError(path)
+    else:
+        (remove_path if verb == "remove" else unset_path)(entry, path)
     return before, None
+
+
+def _home_problems(store, entry):
+    """R3 (2026-09-16): a `home` an instruction names must be a table that is
+    there. A run's dangling home is severed with a note (C29) because nobody is
+    at the keyboard to ask; an owner moving an entry by hand is told instead,
+    in one line, and nothing is written."""
+    if entry["kind"] == "record":
+        return ["home: a table has no home"]
+    ref = (entry.get("home") or {}).get("ref")
+    if ref is None:
+        return []
+    kind, target = _find(store, ref)
+    if target is None:
+        return [f"home: {ref} names no entry"]
+    if kind != "record":
+        return [f"home: {ref} is not a record"]
+    return []
 
 
 def _settle(entry, path, value, chat_src):
@@ -453,6 +478,27 @@ def edit(root, fact_id, patch_path, run_dir, preview=False):
         except (AttributeError, TypeError, ValueError) as exc:
             problems.append(f"op {i} {op['op']} {op['path']}: {exc}")
             break
+    home_ops = [o for o in ops if o["path"].split("/", 1)[0] == "home"]
+    # C1 (2026-09-16): a patch that touches nothing but `home` is a MOVE, and
+    # spec §4.5 says a move does not reset the tick. The chat citation unioned
+    # below would, so it is skipped for this patch alone — see there.
+    placement_only = bool(ops) and len(home_ops) == len(ops)
+    if not problems and home_ops:
+        problems += _home_problems(store, work)
+    detach = [o for o in home_ops if o["path"] == "home"]
+    if not problems and detach:
+        # I2 (2026-09-16): a person's detach is their decision, exactly as
+        # their move is (owner decision 1). `home: null` and an absent `home`
+        # both mean "unattached" (§4.1), so nothing in the entry told
+        # `ladder.merge_home` the difference between «این قاعده به هیچ جدولی
+        # مربوط نیست» and an entry nobody ever placed — and the next run
+        # re-filed it. This marker is what the ladder reads. A later `set` is
+        # a new decision and clears it. Placement, not content: it sits in
+        # `FACT_EXCLUDED_TOP_LEVEL` beside `home`, so a detach keeps the tick.
+        if detach[-1]["after"] is None:
+            work["home_detached"] = True
+        else:
+            work.pop("home_detached", None)
     found = []
     if not problems:
         # Spec 2026-09-13: the store's own repairs, on the store's contract —
@@ -487,7 +533,16 @@ def edit(root, fact_id, patch_path, run_dir, preview=False):
         _restamp_sources(root, entry, work, run_ref)
         sources = work.setdefault("source", [])
         source_key = UNION_FIELDS["source"]
-        if source_key(chat_src) not in {source_key(s) for s in sources}:
+        # A placement-only patch cites nothing (C1). The citation's `ref` is
+        # this run's own `meta.json`, so it is a new member on every call —
+        # and `source` is NOT excluded from the fact print (on a fact it is
+        # the account trail a reviewer vouches for), so unioning it here moved
+        # the print and threw away the tick that spec §4.5 promises a move
+        # keeps. The move is still on the record without it: the run
+        # directory's delta names the verb, its args and the patch, and
+        # `facts-before/` still backs `revert`.
+        if not placement_only \
+                and source_key(chat_src) not in {source_key(s) for s in sources}:
             sources.append(chat_src)
         work["updated_at"] = _now()
         entries = [work if e["id"] == fact_id else e

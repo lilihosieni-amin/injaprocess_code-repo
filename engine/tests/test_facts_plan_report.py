@@ -16,14 +16,14 @@ def test_every_issue_kind_has_the_owner_s_words():
     assert set(ISSUE_FA) == set(ISSUE_TEXT)
 
 
-def _store(root, entries):
+def _store(root, entries, records=()):
     (root / "facts").mkdir(exist_ok=True)
-    for name in ("items", "records", "measurements", "rules", "notes"):
+    held = {"rules": entries, "records": records}
+    for name in ("records", "measurements", "rules", "notes"):
         (root / "facts" / f"{name}.json").write_text(
-            json.dumps({"schema_version": 2, "entries": []}), encoding="utf-8")
-    (root / "facts" / "rules.json").write_text(
-        json.dumps({"schema_version": 2, "entries": entries}, ensure_ascii=False),
-        encoding="utf-8")
+            json.dumps({"schema_version": 2,
+                        "entries": list(held.get(name) or [])},
+                       ensure_ascii=False), encoding="utf-8")
     (root / "departments").mkdir(exist_ok=True)
     (root / "departments" / "registry.json").write_text(json.dumps(
         {"departments": [{"code": "cooking", "name": "آشپزخانه"}]}),
@@ -393,3 +393,78 @@ def test_a_run_with_nothing_held_back_says_nothing_about_it(tmp_path):
     _store(tmp_path, [])
     (run_dir / "held.json").write_text("[]", encoding="utf-8")
     assert "ایراد ساختاری" not in report(tmp_path, run_dir).read_text(encoding="utf-8")
+
+
+# --------------------------------------------------------------------------
+# the by-table block (spec 2026-09-16): what this run left under each table,
+# what it left unattached, and the places it would have changed and did not.
+
+
+def _stored(id, kind, key, title, **over):
+    return {"id": id, "kind": kind, "key": key, "title": title,
+            "statement": "…", "scope": {"departments": ["cooking"],
+                                        "branches": []},
+            "status": "inferred", "retired": False, "valid_to": None,
+            "updated_at": "2026-09-06T10:00:00Z",
+            "source": [{"type": "sheet", "ref": "x", "sheet": "پیتزا"}],
+            "data": {"inputs": [], "outputs": []}, **over}
+
+
+def test_the_report_groups_by_table_then_the_unattached_then_the_unmoved(tmp_path):
+    run_dir = _run(tmp_path)
+    records = [_stored("F-00025", "record", "form_tabdil",
+                      "فرم تبدیل آماده‌سازی برگر",
+                      data={"medium": "paper", "role": "log", "location": {}}),
+               _stored("F-00031", "record", "form_nime", "فرم تولید نیمه‌ساخته",
+                      data={"medium": "paper", "role": "log", "location": {}})]
+    rules = [_stored("F-00116", "rule", "saqf", "سقف ضایعات",
+                    home={"ref": "F-00025"}),
+             _stored("F-00117", "rule", "hadaqal", "حداقل موجودی", home=None)]
+    _store(tmp_path, rules, records=records)
+    (run_dir / "touched.json").write_text(json.dumps(
+        ["F-00025", "F-00031", "F-00116", "F-00117"]), encoding="utf-8")
+    (run_dir / "moved-home.json").write_text(json.dumps(
+        [{"id": "F-00116", "title": "سقف ضایعات", "stored": "F-00025",
+          "seen": "F-00031"}], ensure_ascii=False), encoding="utf-8")
+
+    text = report(tmp_path, run_dir).read_text(encoding="utf-8")
+
+    assert "«فرم تبدیل آماده‌سازی برگر»: ۱ قاعده" in text
+    assert "بدون جدول: ۱ قاعده" in text
+    assert "جای «سقف ضایعات» تغییر نکرد؛ این اجرا آن را زیر " \
+           "«فرم تولید نیمه‌ساخته» می‌دید." in text
+    assert not re.search(r"F-\d{5}|T-\d+", text)
+
+
+def test_the_report_names_a_table_the_run_would_have_given_a_detached_entry(tmp_path):
+    """I2: the row for a detach carries `stored: null` — there is no stored
+    table to name — and the owner still has to hear that this run disagreed,
+    so the line prints off the entry's title and the run's table alone."""
+    run_dir = _run(tmp_path)
+    records = [_stored("F-00031", "record", "form_nime", "فرم تولید نیمه‌ساخته",
+                      data={"medium": "paper", "role": "log", "location": {}})]
+    _store(tmp_path, [_stored("F-00116", "rule", "saqf", "سقف ضایعات", home=None)],
+           records=records)
+    (run_dir / "touched.json").write_text(json.dumps(["F-00031", "F-00116"]),
+                                          encoding="utf-8")
+    (run_dir / "moved-home.json").write_text(json.dumps(
+        [{"id": "F-00116", "title": "سقف ضایعات", "stored": None,
+          "seen": "F-00031"}], ensure_ascii=False), encoding="utf-8")
+    text = report(tmp_path, run_dir).read_text(encoding="utf-8")
+    assert "جای «سقف ضایعات» تغییر نکرد؛ این اجرا آن را زیر " \
+           "«فرم تولید نیمه‌ساخته» می‌دید." in text
+    assert not re.search(r"F-\d{5}|T-\d+", text)
+
+
+def test_a_run_that_placed_everything_says_nothing_about_the_unattached(tmp_path):
+    run_dir = _run(tmp_path)
+    records = [_stored("F-00025", "record", "form_tabdil", "فرم تبدیل",
+                      data={"medium": "paper", "role": "log", "location": {}})]
+    _store(tmp_path, [_stored("F-00116", "rule", "saqf", "سقف ضایعات",
+                             home={"ref": "F-00025"})], records=records)
+    (run_dir / "touched.json").write_text(json.dumps(["F-00025", "F-00116"]),
+                                          encoding="utf-8")
+    text = report(tmp_path, run_dir).read_text(encoding="utf-8")
+    assert "«فرم تبدیل»: ۱ قاعده" in text
+    assert "بدون جدول" not in text
+    assert "تغییر نکرد" not in text

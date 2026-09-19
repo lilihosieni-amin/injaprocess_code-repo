@@ -98,15 +98,15 @@ def test_each_refused_meeting_unit_lands_with_notes_and_no_refusal(tmp_path, uni
 # F3 / A42 — a refusal costs one decision
 
 
-def _refused_item(rule=None):
+def _refused_measurement(rule=None):
     rule = rule or _rule_out()
-    rule["decisions"][1]["key"] = "Panir!"          # no repair makes it a key
+    rule["decisions"][1]["key"] = "Vazn!"           # no repair makes it a key
     return rule
 
 
 def test_f3_one_refused_decision_lands_the_others(tmp_path):
     root = _a_root(tmp_path)
-    run_dir = _a_run(root, {"u-a": _record_out(), "u-b": _refused_item()})
+    run_dir = _a_run(root, {"u-a": _record_out(), "u-b": _refused_measurement()})
     found = validate_unit(root, run_dir, run_dir / "units/u-b/out.1.json")
     assert _items(found) == [("decisions", 1)]
     assemble(root, run_dir)
@@ -114,18 +114,18 @@ def test_f3_one_refused_decision_lands_the_others(tmp_path):
     assert sorted(e["key"] for e in delta["entries"]) == \
         ["enheraf", "gozaresh_shabane_pitza"]
     assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
-    row = next(u for u in assembly["undecided"] if u["skeleton"] == "S-i-000000000003")
+    row = next(u for u in assembly["undecided"] if u["skeleton"] == "S-r-000000000003")
     assert row["reason"] == "refused" and row["refused"]
     plan = json.loads((run_dir / "plan.json").read_text(encoding="utf-8"))
     state = next(s for s in unit_states(root, run_dir, plan["units"])
                  if s["id"] == "u-b")
     assert state["state"] == "done"
-    assert state["retry"] == ["decisions[1] S-i-000000000003"]
+    assert state["retry"] == ["decisions[1] S-r-000000000003"]
 
 
 def test_a42_a_retry_answers_only_the_refused_decision_and_the_two_merge(tmp_path):
     root = _a_root(tmp_path)
-    run_dir = _a_run(root, {"u-a": _record_out(), "u-b": _refused_item()})
+    run_dir = _a_run(root, {"u-a": _record_out(), "u-b": _refused_measurement()})
     retry = _rule_out(attempt=2)
     retry["decisions"] = retry["decisions"][1:]
     out2 = run_dir / "units/u-b/out.2.json"
@@ -140,7 +140,7 @@ def test_a42_a_retry_answers_only_the_refused_decision_and_the_two_merge(tmp_pat
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     assert sorted(e["key"] for e in delta["entries"]) == \
-        ["enheraf", "gozaresh_shabane_pitza", "item_1"]
+        ["enheraf", "gozaresh_shabane_pitza", "vazn_panir"]
 
 
 def test_a42_a_retrys_new_entry_replaces_the_refused_one_by_kind_and_key(tmp_path):
@@ -156,7 +156,7 @@ def test_a42_a_retrys_new_entry_replaces_the_refused_one_by_kind_and_key(tmp_pat
          "new": [fixed]}, ensure_ascii=False), encoding="utf-8")
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
-    assert {"gozaresh_hafteqi", "bad_key", "enheraf", "item_1"} <= \
+    assert {"gozaresh_hafteqi", "bad_key", "enheraf", "vazn_panir"} <= \
         {e["key"] for e in delta["entries"]}
 
 
@@ -340,7 +340,7 @@ def test_a10_an_unknown_action_refuses_that_decision_only(tmp_path):
 def test_a11_a_missing_reason_code_becomes_other(tmp_path):
     root = _a_root(tmp_path)
     rule = _rule_out()
-    rule["decisions"][1] = {"skeleton": "S-i-000000000003", "action": "drop",
+    rule["decisions"][1] = {"skeleton": "S-r-000000000003", "action": "drop",
                             "reason_code": "no such code"}
     run_dir = _a_run(root, {"u-a": _record_out(), "u-b": rule})
     assert _refused(validate_unit(root, run_dir, run_dir / "units/u-b/out.1.json")) == []
@@ -584,15 +584,15 @@ def test_a41_a_review_decision_the_schema_refuses_holds_back_only_itself(tmp_pat
     _write_review(run_dir, [
         {"action": "keep", "key": "enheraf", "title": "انحراف تازه",
          "statement": "انحراف مصرف اعلامی است."},
-        {"entry": {"kind": "item", "key": "item_1"}, "action": "keep",
-         "key": "item_1", "title": "پنیر ورقه‌ای",
-         "statement": "پنیر پیتزا که با کیلوگرم شمرده می‌شود."}])
+        {"entry": {"kind": "measurement", "key": "vazn_panir"},
+         "action": "keep", "key": "vazn_panir", "title": "وزن پنیر ورقه‌ای",
+         "statement": "پنیر پیتزا با کیلوگرم وزن می‌شود."}])
     assert assemble(root, run_dir, review=True)["review_status"] == "partial"
     assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
     assert [(r["n"], r["reason"]) for r in assembly["review_held"]] == [(0, "refused")]
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     assert next(e for e in delta["entries"]
-                if e["key"] == "item_1")["title"] == "پنیر ورقه‌ای"
+                if e["key"] == "vazn_panir")["title"] == "وزن پنیر ورقه‌ای"
 
 
 def _lost(tmp_path, units, failed, candidates=()):

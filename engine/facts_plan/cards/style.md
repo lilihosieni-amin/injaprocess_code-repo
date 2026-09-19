@@ -1,12 +1,12 @@
 # Style card
 
 **`title`** — a noun phrase naming the concept. At most 60 characters, Persian,
-no file, tab or cell name, no Latin except an item code.
+no file, tab or cell name, no Latin except `csv`, `Excel`, `sheet` or a
+unit symbol.
 
 **`statement`** — one to three sentences in the register of a written
 procedure: what is measured or computed, in what unit, by whom, when; for a
-record, what it is and who fills it; for an item, what it is and how it is
-counted.
+record, what it is, who fills it and how often.
 
 Never, in either field:
 
@@ -17,8 +17,8 @@ Never, in either field:
 - a schema field name, or this pipeline's vocabulary: «اسکلت»,
   «بخش از داده‌ها», «واحد کاری», «original», «bindings», «FEEL»,
   «account», «expr»;
-- a Latin token of four letters or more — `csv`, `Excel`, `sheet`, a unit
-  symbol and an item code are the only exceptions;
+- a Latin token of four letters or more — `csv`, `Excel`, `sheet` and this
+  run's unit symbols are the only exceptions;
 - a quotation, «گفته شد», «گوینده»;
 - the colloquial endings «می‌زنن», «می‌کنن», «داشته باشن», «بگیم», «می‌گیم»;
 - a «…» span longer than eight words.

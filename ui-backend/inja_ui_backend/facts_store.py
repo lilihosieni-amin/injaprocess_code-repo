@@ -6,9 +6,9 @@ is not an exception to it.
 
 Beside the two loaders the confirmation gate needs, this module builds the
 bundles a *served* entry needs: `resolved`, `row_titles` and `path_labels`,
-which between them cover every id, item key, row key and red path an entry
-references, so no screen can fall back to a raw key (spec §17); plus
-`red_paths`, `consumers`, `process_links` and `coverage`.
+which between them cover every id, row key and red path an entry references,
+so no screen can fall back to a raw key (spec §17); plus `red_paths`,
+`consumers`, `subsets`, `process_links` and `coverage`.
 
 Two disciplines run through all of it:
 
@@ -20,7 +20,7 @@ Two disciplines run through all of it:
   dangling ref simply has no entry — no invented Persian stands in for a
   target that is gone.
 - **Persian is copied, never composed from English.** Every label here comes
-  from the entry itself (`fields[].title`, `outputs[].title`, an item's
+  from the entry itself (`fields[].title`, `outputs[].title`, a row's
   `title`) or verbatim from Appendix D, whose payload-field table is
   transcribed whole rather than sampled — the appendix decides which names
   have a label, not which ones a red path happened to need. A name it does
@@ -71,7 +71,7 @@ _LEAF_LABELS: dict[str, str] = {
     "sections": "بخش‌ها", "signatures": "امضاها",
     "title": "عنوان", "key": "کلید", "type": "نوع",
     "constraints": "محدودیت‌ها", "derived": "محاسبه‌شده با", "group": "گروه",
-    "filled_by": "تکمیل‌کننده", "refItems": "ارجاع به آیتم",
+    "filled_by": "تکمیل‌کننده",
     "enum": "مقادیر مجاز", "readOnly": "فقط‌خواندنی", "required": "اجباری",
     "minimum": "کمینه", "maximum": "بیشینه",
     "section": "بخش", "when": "زمان", "open": "ردیف باز",
@@ -133,8 +133,12 @@ _CONTEXT_LABELS: dict[tuple[str, str], str] = {
 }
 
 #: Kind -> file, the plural of the kind name (spec §4, "Storage layout").
+#:
+#: **Four since 2026-09-16** («tables as the spine»): the owner removed the
+#: `item` kind — *«Items, and any reference that was made to items, should be
+#: removed»* — and `facts/items.json` with it. What an item used to be is a row
+#: of a table.
 _FILES: dict[str, str] = {
-    "item": "items.json",
     "record": "records.json",
     "measurement": "measurements.json",
     "rule": "rules.json",
@@ -164,7 +168,7 @@ def load_index(root: Path) -> dict:
 def load_entry(root: Path, fact_id: str) -> dict | None:
     """The envelope `fact_id` names, or `None`.
 
-    The index row's `kind` picks which of the five files to open; when the
+    The index row's `kind` picks which of the four files to open; when the
     index and a store file disagree about an entry's kind, the file is the
     truth for content, so this uses the index only to find the file, never to
     answer anything about what is inside it. `None`, never an exception, both
@@ -172,7 +176,7 @@ def load_entry(root: Path, fact_id: str) -> dict | None:
     points at does not carry it — a caller (the confirm gate among them) can
     treat "not found" as one case rather than two. That same "never an
     exception" holds for a malformed row too — one missing `id` or naming a
-    `kind` outside the five (a hand-edited or partially-migrated store) reads
+    `kind` outside the four (a hand-edited or partially-migrated store) reads
     as "not found" rather than a `KeyError`, for the same reason: the gate
     that calls this must fail closed, not crash.
     """
@@ -194,13 +198,13 @@ def load_all(root: Path) -> list[dict]:
     """Every entry in the store, kind by kind.
 
     The index would be cheaper, but it carries no `data` — and every bundle
-    below is a walk over payloads (`refItems` cells, `inputs[].from`, an
-    item's `code`). A file that is absent or unreadable contributes nothing
-    rather than taking the request down with it.
+    below is a walk over payloads (`inputs[].from`, `rows[]`, `accounts[]`). A
+    file that is absent or unreadable contributes nothing rather than taking
+    the request down with it.
     """
-    # ponytail: no cache — one detail request re-reads the five files once per
+    # ponytail: no cache — one detail request re-reads the four files once per
     # bundle it asks for. Memoise per request (or per store mtime) if the store
-    # grows past a few thousand entries; today it is five small JSON files.
+    # grows past a few thousand entries; today it is four small JSON files.
     out: list[dict] = []
     for filename in _FILES.values():
         path = Path(root) / "facts" / filename
@@ -309,13 +313,12 @@ def red_paths(entry: dict) -> dict:
 
 
 def _labels(root: Path) -> dict[str, dict]:
-    """`id -> {kind, title, code?, fields?}`, and an item's **key** to the same
-    label.
+    """`id -> {kind, title, retired?, fields?}`.
 
-    Both are needed because the store references items two ways: a `{ref}`
-    names the id, while a `refItems` cell holds the item's key (QF-37's one
-    exception, so a reference row's key stays derivable). The two namespaces
-    cannot collide — ids are `F-…`, keys are lower-case.
+    **One namespace since 2026-09-16.** An item's *key* used to be a second way
+    into this map, because a `refItems` cell held the key rather than a `{ref}`
+    (QF-37's one exception). The item kind is gone and such a column is text,
+    so an id is the whole of what a neighbour is named by.
 
     A **record** carries its columns too — `{field key: title}` — because a
     `{ref, field}` edge names one of them and the panel could otherwise only
@@ -324,23 +327,26 @@ def _labels(root: Path) -> dict[str, dict]:
     names, and «record — key» answers the owner's question where «record»
     alone does not. Masking is unaffected — a restricted neighbour's whole
     label is replaced by the router, columns with it.
+
+    `retired` rides along, present only when it is `True`: an entry's `home`
+    reaches the screen through this map like any other reference, and a home
+    that names a retired table is drawn as «جدول بازنشسته» rather than as a
+    press into a table nobody fills in any more.
     """
     out: dict[str, dict] = {}
     for entry in load_all(root):
+        if not isinstance(entry.get("id"), str):
+            continue
         label = {"kind": entry.get("kind"), "title": entry.get("title")}
-        code = (entry.get("data") or {}).get("code")
-        if entry.get("kind") == "item" and code:
-            label["code"] = str(code)
+        if entry.get("retired") is True:
+            label["retired"] = True
         if entry.get("kind") == "record":
             fields = {f["key"]: f.get("title") or f["key"]
                       for f in (entry.get("data") or {}).get("fields") or []
                       if isinstance(f, dict) and isinstance(f.get("key"), str)}
             if fields:
                 label["fields"] = fields
-        if isinstance(entry.get("id"), str):
-            out[entry["id"]] = label
-        if entry.get("kind") == "item" and isinstance(entry.get("key"), str):
-            out[entry["key"]] = label
+        out[entry["id"]] = label
     return out
 
 
@@ -400,16 +406,9 @@ def _cited_nodes(entry: dict) -> dict[str, set]:
     return out
 
 
-def _ref_item_columns(data: dict) -> list[str]:
-    """The declared columns whose cells hold an item key, in declared order."""
-    return [f["key"] for f in data.get("fields") or []
-            if isinstance(f, dict) and f.get("refItems")
-            and isinstance(f.get("key"), str)]
-
-
 def resolved_map(root: Path, entry: dict) -> dict:
-    """Every id, item key and process id the entry points at → `{kind, title,
-    code?, fields?}` (spec §17).
+    """Every id and process id the entry points at → `{kind, title, retired?,
+    fields?}` (spec §17).
 
     The walk is over the **whole envelope**, not only `data`: `supersedes`,
     `superseded_by` and `issues[].affects` are `{ref}` objects too, and the
@@ -422,12 +421,6 @@ def resolved_map(root: Path, entry: dict) -> dict:
         ref = obj.get("ref")
         if isinstance(ref, str) and _FACT_ID_RE.fullmatch(ref) and ref in labels:
             found[ref] = labels[ref]
-    data = entry.get("data") or {}
-    for column in _ref_item_columns(data):
-        for row in data.get("rows") or []:
-            cell = row.get(column) if isinstance(row, dict) else None
-            if isinstance(cell, str) and cell in labels:
-                found[cell] = labels[cell]
     for ref in _process_refs(entry):
         doc = _process_doc(root, ref)
         if doc is not None and doc.get("name"):
@@ -438,31 +431,24 @@ def resolved_map(root: Path, entry: dict) -> dict:
 def row_titles(root: Path, entry: dict) -> dict:
     """`row key -> the row's Persian title` (spec §17).
 
-    A log's fixed rows carry their own `title`. A reference table's do not:
-    the row *is* its cells, so the title is composed from the titles of its
-    `refItems` columns in `primaryKey` order — `prod_61__ing_41` → «اینجا
-    پیتزا — قارچ» (§9). Every row key is in the map, so a caller can render
-    `row_titles[key]` unconditionally; a row whose cells resolve to nothing
-    maps to its own key rather than to invented Persian.
+    A row's own `title`, falling back to its key. Every row key is in the map,
+    so a caller can render `row_titles[key]` unconditionally.
+
+    **Nothing is composed any more.** A reference table's row used to have no
+    title of its own — the row *was* its cells, so the title was built out of
+    the titles of the items its `refItems` columns named, `prod_61__ing_41` →
+    «اینجا پیتزا — قارچ» (§9). With the item kind gone (2026-09-16) such a
+    column is text, so the only Persian a row has is its own, and the router no
+    longer has a neighbour's name to withhold from a composed one.
+
+    `root` stays in the signature: the caller is the bundle builder, which
+    passes the store root to every map it assembles, and a reader of this
+    module's one-argument-out exception would have to go and find out why.
     """
-    data = entry.get("data") or {}
-    rows = [r for r in data.get("rows") or []
+    rows = [r for r in (entry.get("data") or {}).get("rows") or []
             if isinstance(r, dict) and isinstance(r.get("key"), str)]
-    if not rows:
-        return {}
-    columns = _ref_item_columns(data)
-    order = [k for k in data.get("primaryKey") or [] if k in columns] or columns
-    labels = _labels(root) if order else {}
-    out = {}
-    for row in rows:
-        if isinstance(row.get("title"), str) and row["title"]:
-            out[row["key"]] = row["title"]
-            continue
-        parts = [labels[row[c]]["title"] for c in order
-                 if isinstance(row.get(c), str)
-                 and labels.get(row[c], {}).get("title")]
-        out[row["key"]] = " — ".join(parts) if parts else row["key"]
-    return out
+    return {r["key"]: r["title"] if isinstance(r.get("title"), str) and r["title"]
+            else r["key"] for r in rows}
 
 
 def binding_labels(root: Path, entry: dict) -> dict:
@@ -628,15 +614,21 @@ def path_labels(root: Path, entry: dict) -> dict:
     return {p: _path_label(entry, p, titles) for p in sorted(paths)}
 
 
-def _consumes(data: dict, fact_id: str, item_key: str | None) -> bool:
+def _consumes(data: dict, fact_id: str) -> bool:
     """Does this payload use the target?
 
     QF-8 enumerates the typed edges itself — `inputs[].from`, `writes_to`,
     `of`, `via`, `calls[]`, `mirror_of`, `template_of`, `derived`,
     `reconciled_against`, `supersedes` — and every one of them but
-    `supersedes` is a *use*, so every one of them but `supersedes` is here,
-    plus the `refItems` cell, which is an edge carried as a bare key rather
-    than a `{ref}` (QF-37's one exception).
+    `supersedes` is a *use*, so every one of them but `supersedes` is here.
+    The `refItems` cell was an eleventh until 2026-09-16, an edge carried as a
+    bare key rather than a `{ref}`; the item kind it pointed at is gone.
+
+    **`home` is deliberately not one of them.** It says where an entry lives,
+    not that it reads anything the table holds — and a table's page already
+    lists what is homed on it (`subsets`), which is the question `home`
+    answers. Counting it here would make every rule of a table a "consumer" of
+    it and drown the one list that answers "what breaks if this changes".
 
     Two deliberate exclusions. `supersedes`/`superseded_by` link two versions
     of one thing rather than one entry consuming another, and `processes[]`
@@ -666,11 +658,6 @@ def _consumes(data: dict, fact_id: str, item_key: str | None) -> bool:
     for member in data.get("fields") or []:                    # derived
         if isinstance(member, dict) and hits(member.get("derived")):
             return True
-    if item_key:                                               # refItems cell
-        for column in _ref_item_columns(data):
-            if any(isinstance(r, dict) and r.get(column) == item_key
-                   for r in data.get("rows") or []):
-                return True
     for pair in data.get("reconciled_against") or []:          # reconciled
         if isinstance(pair, dict) and hits(pair.get("against")):
             return True
@@ -681,21 +668,86 @@ def consumers(root: Path, fact_id: str) -> list:
     """`[{"id", "title"}]` — the entries that use this one (QF-39's reverse
     index, derived server-side).
 
-    Ordered by id, so two calls over one store answer in the same order. The
-    `refItems` join is on the target's **key**, not its id (QF-37's one
-    exception), which is why the target itself is found first.
+    Ordered by id, so two calls over one store answer in the same order.
     """
-    entries = load_all(root)
-    target = next((e for e in entries if e.get("id") == fact_id), None)
-    item_key = None
-    if target is not None and target.get("kind") == "item":
-        key = target.get("key")
-        item_key = key if isinstance(key, str) else None
     return sorted(({"id": e["id"], "title": e.get("title")}
-                   for e in entries
+                   for e in load_all(root)
                    if isinstance(e.get("id"), str)
-                   and _consumes(e.get("data") or {}, fact_id, item_key)),
+                   and _consumes(e.get("data") or {}, fact_id)),
                   key=lambda row: row["id"])
+
+
+#: The kinds that can be homed on a table. A record never is: a table has no
+#: home (§7, 2026-09-16).
+_HOMED_KINDS = ("rule", "measurement", "note")
+
+
+def _home_field(entry: object) -> str | None:
+    """The column a stored `home` narrows to, or `None`.
+
+    The **entry's**, because `.index.json` carries only the record id — the
+    column is not indexed (spec 2026-09-16), and it is the entry that is the
+    truth about its own payload anyway.
+    """
+    home = entry.get("home") if isinstance(entry, dict) else None
+    field = home.get("field") if isinstance(home, dict) else None
+    return field if isinstance(field, str) else None
+
+
+def _about(entry: object) -> set:
+    """The ids a note's `data.about` names."""
+    data = (entry.get("data") or {}) if isinstance(entry, dict) else {}
+    return {a["ref"] for a in data.get("about") or []
+            if isinstance(a, dict) and isinstance(a.get("ref"), str)}
+
+
+def subsets(root: Path, fact_id: str) -> list:
+    """`[{"id", "kind", "title", "field"?}]` — what lives in this table.
+
+    **The owner's ruling of 2026-09-16 («tables as the spine»)**: a table is
+    the spine of the store, so its page lists every rule, measurement and note
+    whose `home` is this record — and the notes *about* it that no table
+    claims, because a note explaining a table is part of that table's page
+    whether or not anyone placed it there.
+
+    Derived here rather than in the client, and from the **index**, which is
+    what `.index.json` is for: the flattened projection the store is listed
+    through. The client holds one entry and could join nothing. Ordered by id,
+    so two calls over one store answer in the same order — the rule `consumers`
+    follows, and for the same reason.
+
+    The entries are read too, for the two things the index does not carry: a
+    `home`'s column, and a note's `about`. A row with no entry behind it is
+    dropped, exactly as `list_facts` drops one: a row whose own page would 404
+    is a dead link drawn by the server itself.
+
+    Nothing here is a confirmation and nothing here is a mask — both are the
+    router's (it holds the connection and the caller), and this module answers
+    the same list to everyone.
+    """
+    entries = {e["id"]: e for e in load_all(root) if isinstance(e.get("id"), str)}
+    index = load_index(root)
+    rows = (index.get("entries") if isinstance(index, dict) else None) or []
+    out = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        rid, kind = row.get("id"), row.get("kind")
+        if not isinstance(rid, str) or rid == fact_id or kind not in _HOMED_KINDS:
+            continue
+        entry = entries.get(rid)
+        if entry is None:
+            continue
+        home = row.get("home")
+        if home != fact_id and not (
+                kind == "note" and not home and fact_id in _about(entry)):
+            continue
+        member = {"id": rid, "kind": kind, "title": row.get("title")}
+        field = _home_field(entry)
+        if field is not None:
+            member["field"] = field
+        out.append(member)
+    return sorted(out, key=lambda r: r["id"])
 
 
 def process_links(root: Path, entry: dict) -> list:

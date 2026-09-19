@@ -24,18 +24,22 @@ import {
 const FACTS: FactsListResponse = {
   entries: [
     {
-      id: 'F-00001', kind: 'item', key: 'ing_1', title: 'پنیر پیتزا', aliases: ['موتزارلا'],
+      id: 'F-00001', kind: 'measurement', key: 'par_cheese', title: 'پار پنیر پیتزا',
+      aliases: ['موتزارلا'],
       scope: { departments: [], branches: [] },
       status: 'confirmed', retired: false, stub: false,
       red_counts: { unknown: 0, disputed: 0 },
-      fingerprint: 'f1', confirmed: true, updated_at: '2026-09-16T14:05:00Z',
+      fingerprint: 'f1', confirmed: true, home: null,
+      updated_at: '2026-09-16T14:05:00Z',
     },
     {
-      id: 'F-00010', kind: 'item', key: 'ing_22', title: 'گوشت چرخ‌کرده', aliases: [],
+      id: 'F-00010', kind: 'measurement', key: 'par_meat', title: 'پار گوشت چرخ‌کرده',
+      aliases: [],
       scope: { departments: ['cooking'], branches: [] },
       status: 'confirmed', retired: true, stub: false,
       red_counts: { unknown: 0, disputed: 0 },
-      fingerprint: 'f2', confirmed: false, updated_at: '2026-09-02T15:40:00Z',
+      fingerprint: 'f2', confirmed: false, home: null,
+      updated_at: '2026-09-02T15:40:00Z',
     },
     {
       id: 'F-00011', kind: 'record', key: 'mande_shab_farangi_burger',
@@ -43,7 +47,8 @@ const FACTS: FactsListResponse = {
       scope: { departments: ['cooking'], branches: ['chalebagh'] },
       status: 'unknown', retired: false, stub: false,
       red_counts: { unknown: 4, disputed: 0 },
-      fingerprint: 'f3', confirmed: false, updated_at: '2026-09-16T14:05:00Z',
+      fingerprint: 'f3', confirmed: false, home: null,
+      updated_at: '2026-09-16T14:05:00Z',
     },
     {
       id: 'F-00014', kind: 'record', key: 'mavad__pizza_italian',
@@ -51,7 +56,8 @@ const FACTS: FactsListResponse = {
       scope: { departments: [], branches: [] },
       status: 'disputed', retired: false, stub: false,
       red_counts: { unknown: 1, disputed: 1 },
-      fingerprint: 'f4', confirmed: false, updated_at: '2026-09-16T14:05:00Z',
+      fingerprint: 'f4', confirmed: false, home: null,
+      updated_at: '2026-09-16T14:05:00Z',
     },
     {
       id: 'F-00021', kind: 'record', key: 'pitza_nk__end_of_night',
@@ -59,7 +65,8 @@ const FACTS: FactsListResponse = {
       scope: { departments: ['cooking'], branches: ['naharkhoran'] },
       status: 'confirmed', retired: false, stub: true,
       red_counts: { unknown: 0, disputed: 0 },
-      fingerprint: 'f5', confirmed: false, updated_at: '2026-09-16T14:05:00Z',
+      fingerprint: 'f5', confirmed: false, home: null,
+      updated_at: '2026-09-16T14:05:00Z',
     },
     {
       id: 'F-00026', kind: 'rule', key: 'tolerance_per_food_gr',
@@ -67,7 +74,8 @@ const FACTS: FactsListResponse = {
       scope: { departments: ['management'], branches: ['chalebagh'] },
       status: 'confirmed', retired: false, stub: false,
       red_counts: { unknown: 0, disputed: 0 },
-      fingerprint: 'f6', confirmed: false, updated_at: '2026-09-16T14:05:00Z',
+      fingerprint: 'f6', confirmed: false, home: null,
+      updated_at: '2026-09-16T14:05:00Z',
     },
   ],
   // Served, and drawn nowhere — the owner refused the coverage line on
@@ -168,14 +176,14 @@ test('facts — the design’s list on the violet field, at three widths', async
   }
 
   /* ---- the chip: two values, and two only (`CONF`, :4624) ---- */
-  const green = rowFor(page, 'پنیر پیتزا').getByText('تأییدشده', { exact: true })
+  const green = rowFor(page, 'پار پنیر پیتزا').getByText('تأییدشده', { exact: true })
   await expect(green).toHaveCSS('color', 'rgb(31, 138, 91)')               // --green
   const amber = row.getByText('تأییدنشده')
   await expect(amber).toHaveCSS('color', 'rgb(138, 90, 0)')                // --warn-fg
   // Asserted on both rows, because one colour alone passes for a list that
   // paints every chip the same.
   const dot = (r: ReturnType<typeof rowFor>) => r.locator('[aria-hidden].rounded-round').first()
-  await expect(dot(rowFor(page, 'پنیر پیتزا')))
+  await expect(dot(rowFor(page, 'پار پنیر پیتزا')))
     .toHaveCSS('background-color', 'rgb(31, 138, 91)')                     // --green
   await expect(dot(row)).toHaveCSS('background-color', 'rgb(232, 163, 61)') // --junction-or
   await expect(dot(row)).toHaveCSS('width', '8px')
@@ -195,8 +203,8 @@ test('facts — the design’s list on the violet field, at three widths', async
   await expect(row.getByText('۴ بی‌پاسخ')).toBeVisible()
   await expect(rowFor(page, 'مواد اولیه').getByText('۱ بی‌پاسخ · ۱ متعارض')).toBeVisible()
   await expect(rowFor(page, 'موجودی آخر شب').getByText('پیش‌ثبت')).toBeVisible()
-  await expect(rowFor(page, 'گوشت چرخ‌کرده').getByText('بازنشسته')).toBeVisible()
-  await expect(rowFor(page, 'پنیر پیتزا').getByText(/بی‌پاسخ|متعارض/)).toHaveCount(0)
+  await expect(rowFor(page, 'پار گوشت چرخ‌کرده').getByText('بازنشسته')).toBeVisible()
+  await expect(rowFor(page, 'پار پنیر پیتزا').getByText(/بی‌پاسخ|متعارض/)).toHaveCount(0)
   // The slot's own type ramp (:1064) — 10.5px in `--text-faint`, one line.
   await expect(row.getByText('۴ بی‌پاسخ')).toHaveCSS('font-size', '10.5px')
   await expect(row.getByText('۴ بی‌پاسخ')).toHaveCSS('color', 'rgb(169, 159, 196)')
@@ -247,7 +255,7 @@ test('facts — the four filters, and the link that clears them', async ({ page 
   await expect(conf.getByRole('option')).toHaveText(['وضعیت تأیید', 'تأییدشده', 'تأییدنشده'])
   await conf.getByRole('option', { name: 'تأییدشده' }).click()
   await expect(rows).toHaveCount(1)
-  await expect(rowFor(page, 'پنیر پیتزا')).toBeVisible()
+  await expect(rowFor(page, 'پار پنیر پیتزا')).toBeVisible()
 
   /* ---- R5: the clear link is ABSENT until something is set, and it is
          **ledger L-06's `--violet-mid`, not the `--conflict` the design paints**
@@ -269,7 +277,7 @@ test('facts — the four filters, and the link that clears them', async ({ page 
     .toHaveText(['دپارتمان', 'آشپزخانه', 'مدیریت', 'سراسری'])
   await dept.getByRole('option', { name: 'سراسری' }).click()
   await expect(rows).toHaveCount(2)     // the two entries bound to no department
-  await expect(rowFor(page, 'پنیر پیتزا')).toBeVisible()
+  await expect(rowFor(page, 'پار پنیر پیتزا')).toBeVisible()
   await expect(rowFor(page, 'مواد اولیه')).toBeVisible()
   await page.getByRole('button', { name: 'پاک کردن همهٔ فیلترها' }).click()
 
@@ -297,7 +305,7 @@ test('facts — the four filters, and the link that clears them', async ({ page 
   // An alias is searchable too — «نام‌های دیگر» is what the estate called the
   // thing before anybody titled it.
   await search.fill('موتزارلا')
-  await expect(rowFor(page, 'پنیر پیتزا')).toBeVisible()
+  await expect(rowFor(page, 'پار پنیر پیتزا')).toBeVisible()
   await search.fill('چیزی که نیست')
   await expect(rows).toHaveCount(0)
   const empty = page.locator('[data-r-empty]')
@@ -325,14 +333,15 @@ test('facts — the four filters, and the link that clears them', async ({ page 
 const MANY: FactsListResponse = {
   entries: Array.from({ length: 40 }, (_, i) => ({
     id: `F-${String(i + 100).padStart(5, '0')}`,
-    kind: 'item' as const,
-    key: `ing_${i}`,
+    kind: 'measurement' as const,
+    key: `par_${i}`,
     title: `قلم شمارهٔ ${i}`,
     aliases: [],
     scope: { departments: [], branches: [] },
     status: 'confirmed' as const,
     retired: false,
     stub: false,
+    home: null,
     red_counts: { unknown: 0, disputed: 0 },
     fingerprint: `p${i}`,
     confirmed: true,

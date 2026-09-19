@@ -20,7 +20,11 @@ from inja_ui_backend import db, engine, facts_store, seed
 from inja_ui_backend.access import NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
-from inja_ui_backend.fingerprint import fact_fingerprint
+from inja_ui_backend.fingerprint import (
+    FACT_EXCLUDED_TOP_LEVEL,
+    fact_canonical_json,
+    fact_fingerprint,
+)
 from inja_ui_backend.store import confirmations, users
 from inja_ui_backend.tests_helpers import cfg_for
 
@@ -108,6 +112,48 @@ def test_fact_fingerprint_drops_updated_at_top_level_only(data_root):
     c["source"] = [{"type": "sheet", "ref": "a.xlsx"}]
     d["source"] = [{"type": "sheet", "ref": "b.xlsx"}]
     assert fact_fingerprint(c) != fact_fingerprint(d)
+
+
+def test_moving_an_entry_between_tables_does_not_move_its_print(data_root):
+    """Spec §4.5 (2026-09-16): *moving an entry does not reset its tick*.
+
+    `home` says which table an entry is filed under, and a reviewer vouches for
+    what the entry SAYS. An `edit set home`, or a run adopting a derived home
+    for an entry nobody had placed, would otherwise change the print of every
+    entry it touched and throw away the signature on each — including on the
+    day the store first grows the member, which would un-confirm everything at
+    once.
+
+    A run that *disagrees* with a stored home takes the other road: it leaves
+    the home alone and writes a `placement` issue, and an issue is ordinary
+    content, so that path resets the tick exactly like any other issue.
+    """
+    base = _entry(data_root, "rules.json", RULE)
+    assert "home" not in base
+
+    placed = copy.deepcopy(base)
+    placed["home"] = {"ref": "F-00002"}
+    moved = copy.deepcopy(base)
+    moved["home"] = {"ref": "F-00002", "field": "grams"}
+    elsewhere = copy.deepcopy(base)
+    elsewhere["home"] = {"ref": "F-00099"}
+    detached = copy.deepcopy(base)
+    detached["home"] = None
+
+    prints = {fact_fingerprint(e)
+              for e in (base, placed, moved, elsewhere, detached)}
+    assert len(prints) == 1
+
+    # And the exclusion is the envelope's alone: a `data` key named `home` is
+    # payload — a record column could be called that — and still counts.
+    deep = copy.deepcopy(base)
+    deep["data"]["home"] = "خانه"
+    assert fact_fingerprint(deep) != fact_fingerprint(base)
+
+    # The control: content still moves the print.
+    changed = copy.deepcopy(placed)
+    changed["statement"] = "بیانیهٔ تازه"
+    assert fact_fingerprint(changed) != fact_fingerprint(placed)
 
 
 # --- _kind ---
@@ -452,6 +498,54 @@ def _edit_via_engine(cfg, fid, statement="بیانیهٔ تازه"):
         ensure_ascii=False), encoding="utf-8")
     engine._run(cfg, ["merge", "facts", "edit", "--id", fid,
                       "--patch", str(patch), "--run", str(run)])
+
+
+def _placement_edit(cfg, fid, ops):
+    """The real verb, in process — `merge facts edit` is imported rather than
+    shelled so the assertion reads THIS tree's engine (`engine._run` drops
+    `PYTHONPATH`, so a subprocess would read the installed one)."""
+    from merge_facts.verbs import edit
+    run = engine.facts_run_dir(cfg, "cooking", "owner")
+    patch = run / "facts-patch.json"
+    patch.write_text(json.dumps({"schema_version": 1, "ops": ops},
+                                ensure_ascii=False), encoding="utf-8")
+    edit(cfg.data_root, fid, str(patch), str(run))
+
+
+def test_a_real_move_and_a_real_detach_leave_the_stored_print_untouched(
+        data_root, tmp_path, monkeypatch):
+    """C1 — the seam nobody tested. `fact_fingerprint` ignoring `home` proves
+    only half of spec §4.5: the other half is what the VERB writes. It used to
+    union a chat citation on every `edit`, `source` is content in the print,
+    and so the one behaviour four documents promise the owner — «moving an
+    entry does not reset its tick» — was the one the branch did not deliver.
+
+    Run the real verb against the real store and hash the stored envelope
+    before and after. Both placement edits, `set` and `unset`, must leave the
+    print alone; only the members `FACT_EXCLUDED_TOP_LEVEL` names may move.
+    """
+    assert FACT_EXCLUDED_TOP_LEVEL == ("updated_at", "home", "home_detached")
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    monkeypatch.setenv("SCHEMA_DIR", str(client.cfg.schema_dir))
+    fp = client.get(f"/api/facts/{RULE}").json()["confirmation"]["fingerprint"]
+    assert client.post(f"/api/confirmations/{RULE}",
+                       json={"fingerprint": fp}).status_code == 200
+
+    before = fact_canonical_json(_entry(data_root, "rules.json", RULE))
+    _placement_edit(client.cfg, RULE,
+                    [{"op": "set", "path": "home", "value": {"ref": RECORD}}])
+    moved = _entry(data_root, "rules.json", RULE)
+    assert moved["home"] == {"ref": RECORD}
+    assert fact_canonical_json(moved) == before
+    assert {r["id"]: r for r in client.get("/api/facts").json()["entries"]
+            }[RULE]["confirmed"] is True
+
+    _placement_edit(client.cfg, RULE, [{"op": "unset", "path": "home"}])
+    detached = _entry(data_root, "rules.json", RULE)
+    assert detached.get("home") is None and detached["home_detached"] is True
+    assert fact_canonical_json(detached) == before
+    assert {r["id"]: r for r in client.get("/api/facts").json()["entries"]
+            }[RULE]["confirmed"] is True
 
 
 def test_a_chat_edit_never_confirms_and_revokes_a_stale_panel_mark(data_root,

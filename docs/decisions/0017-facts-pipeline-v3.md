@@ -207,7 +207,7 @@ reports `engine_refused: 0`, over generated estates as well as the fixture);
 **I5** — a run stops only when nothing at all can be assembled, and every other
 refusal names one candidate or one entry, holds it back into `undecided[]` and
 lets the rest land (the five kept stops are listed in runbook §10); **I6** — the
-estate's own spellings (branch tokens, item-code namespaces, placeholder header,
+estate's own spellings (branch tokens, code namespaces, placeholder header,
 month names, table prefix) are data in `attachments/sheets/manifest.json` under
 `conventions`, written by `dump-workbook --init-manifest`, and no module that
 reads the estate carries one as a literal. See the v3.6 spec.
@@ -320,3 +320,30 @@ the 2026-09-02 cooking run crashed three agents on the model's *output* limit �
 binding number and the only one the splitter reads: a unit may read far more, and still never
 answers more than the model can write. Spec:
 `docs/superpowers/specs/2026-09-15-facts-form-anchored-units-design.md`.
+
+**Owner ruling, 2026-09-16 — the table is the spine, and items are gone.** The owner wrote, in English:
+*"No, I don't want anything referencing items anymore either. Items, and any reference that was
+made to items, should be removed."* And relaying the process engineer who tested the system: the amount of quantitative data
+being generated is way too much, it is hard to check, and the relationships between the data are
+not clear enough — every measurement and rule should be tied to a table and shown in a list on that
+table's page; entries that genuinely relate to no table keep their own pages. So the store has
+**four kinds** — `record`, `measurement`, `rule`, `note`: `facts/items.json`, the `item` kind,
+`itemData` and the column type `refItems` are gone (such a column is `text`), `of` and `per` name a
+record or are text, the coded raw-materials tabs are ordinary reference tabs, and a delta that
+still carries an `item` is refused by `apply` with one line. And a rule, a measurement and a note
+carry one new envelope member, **`home`**: the record they are listed under (`{ref, field?}`, or
+`null` when none fits), written by the unit, derived at assembly from `applies_to`/`of`/`about`
+when the unit wrote none, carried in `.index.json`, severed with a note when it names no record
+(the 2026-09-13 tiers stand), and set or unset afterwards by a person through `merge facts edit`
+and the `edit-fact` playbook's move and detach. A record's page in the panel lists its rules, its
+measurements and its notes with their ticks and a «تأیید همهٔ موارد این جدول» button; the tick
+stays on the entry, and moving an entry does not reset it. Three decisions of the owner's own
+(spec §7): **(1)** a later run never changes a person's placement — the stored `home` stays, the
+run's opinion becomes a note on the entry and is named in the owner's chat message; **(2)** there
+is no separate "no table" list — unattached entries stay in the facts list pages exactly as today,
+and only the entry's page says «بدون جدول» (revised the same day after the owner saw the first run:
+an entry that has a table leaves the facts list and is read on its table's page only — the list
+keeps the records and the unattached entries); **(3)** a note that names two tables is listed under
+the first it names, unless the unit set `home`. Spec:
+`docs/superpowers/specs/2026-09-16-facts-tables-as-the-spine-design.md` (its §3 folds in
+`docs/superpowers/specs/2026-09-16-facts-no-items-design.md`).

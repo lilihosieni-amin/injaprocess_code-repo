@@ -307,26 +307,30 @@ export function Statement({ text, className = '' }: { text: string; className?: 
  * key; see `Named.id` — are both drawn as text, so nothing on this screen
  * invites a press that would 404.
  */
-export function RefLink({ named, onOpen, className = 'text-fs-body', children }: {
+export function RefLink({
+  named, onOpen, className = 'text-fs-body', underline = true, color = 'text-violet', children,
+}: {
   named: Named | undefined
   onOpen?: (id: string) => void
   /** The run's own type size — the design draws this link at five of them. */
   className?: string
+  /** The dotted underline every ref link carries; a table's subset rows drop it
+   *  (owner, 2026-09-16) — the row is a link by its colour and its place. */
+  underline?: boolean
+  /** The press's own colour token — violet on a card; on the violet field the
+   *  entry header sits on, the «جدول: …» line is white (owner, 2026-09-16). */
+  color?: string
   /** Trailing content inside the line — the design puts the raw ref beside it. */
   children?: ReactNode
 }) {
   if (named === undefined) return null
   const id = named.restricted ? undefined : named.id
-  // §17 — the estate code rides beside an item's title, as its own island.
-  const code = named.code === undefined ? null
-    : <Mono className="text-fs-micro text-faint">{named.code}</Mono>
   if (id === undefined || onOpen === undefined) {
     return (
       <span className="inline-flex items-baseline gap-s3 min-w-0">
         <span className={`font-bold ${named.restricted ? 'text-muted' : 'text-ink'} ${className}`}>
           {named.text}
         </span>
-        {code}
         {children}
       </span>
     )
@@ -335,11 +339,10 @@ export function RefLink({ named, onOpen, className = 'text-fs-body', children }:
     <span className="inline-flex items-baseline gap-s3 min-w-0">
       <button type="button" onClick={() => onOpen(id)}
         className={`border-0 bg-transparent p-0 cursor-pointer font-sans text-start
-                    font-bold text-violet underline decoration-dotted
-                    underline-offset-4 ${className}`}>
+                    font-bold ${color} ${underline
+                      ? 'underline decoration-dotted underline-offset-4' : ''} ${className}`}>
         {named.text}
       </button>
-      {code}
       {children}
     </span>
   )
@@ -395,10 +398,12 @@ export function Pill({ tone, fs = 'text-fs-xs', title, children }: {
 }
 
 /** The smaller pill that sits inside a run of type — a unit, a share (:1291). */
-export function Tag({ tone, children }: { tone: Tone; children: ReactNode }) {
+export function Tag({ tone, className = '', children }: {
+  tone: Tone; className?: string; children: ReactNode
+}) {
   return (
     <span className={`inline-flex items-center flex-none py-half px-s4 rounded-pill
-                      text-fs-caption font-semibold ${TONE[tone]}`}>
+                      text-fs-caption font-semibold ${TONE[tone]} ${className}`}>
       {children}
     </span>
   )

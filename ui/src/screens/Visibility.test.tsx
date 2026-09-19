@@ -24,12 +24,12 @@ const DEFAULTS = {
 /** The whole policy the server really serves — `store/policy.py`'s
  *  `PROCESS_FIELDS + FACT_FIELDS`, in that order. `DEFAULTS` above is only its
  *  process half, which is all the tests about flipping and refusing need; the
- *  two tests that are about the LABELS use this one, because the six fact
+ *  two tests that are about the LABELS use this one, because the fact
  *  switches are exactly the rows that reached the Editor under their storage
  *  keys before this file had wording for them. */
 const WITH_FACTS = {
   ...DEFAULTS,
-  fact_items: true, fact_records: true, fact_measurements: false,
+  fact_records: true, fact_measurements: false,
   fact_rules: true, fact_notes: false, fact_sources: true,
 }
 
@@ -231,26 +231,26 @@ describe('the visibility policy screen', () => {
     expect(boxes.map((b) => b.getAttribute('aria-label'))).toEqual([
       'خلاصهٔ فرآیند', 'نمای IDEF0 فرآیند', 'شاخص‌های کلیدی فرآیند',
       'توضیح فعالیت', 'مسئول فعالیت', 'ICOM فعالیت',
-      // The owner's ruling of 2026-09-09: the five fact switches carry the
-      // words the facts page's «نوع» dropdown shows, so a switch and the rows
-      // it governs are named the same thing on two screens. `fact_sources`
-      // has no kind of its own — it is the provenance of all five.
-      'آیتم', 'جدول', 'اندازه‌گیری', 'قاعده', 'یادداشت', 'منبع داده‌ها',
+      // The owner's ruling of 2026-09-09: the fact switches carry the words
+      // the facts page's «نوع» dropdown shows, so a switch and the rows it
+      // governs are named the same thing on two screens. `fact_sources` has
+      // no kind of its own — it is the provenance of all four.
+      'جدول', 'اندازه‌گیری', 'قاعده', 'یادداشت', 'منبع داده‌ها',
     ])
   })
 
   it('leaves no switch the server serves under the unlabelled-field hint', async () => {
-    // The bug this closes: the six `fact_*` switches fell through to the
+    // The bug this closes: the `fact_*` switches fell through to the
     // unknown-field branch and were drawn under their storage keys, each with
     // an alarmed hint telling the Editor the row had no meaning yet — about
-    // six switches the backend has been enforcing all along. The hint itself
+    // switches the backend has been enforcing all along. The hint itself
     // stays (the branch below is still the right answer for a field this file
     // has never heard of); what must not happen is a field the server ships
     // today landing in it.
     stubServer(WITH_FACTS)
     mount()
     const boxes = await screen.findAllByRole('checkbox')
-    expect(boxes).toHaveLength(12)
+    expect(boxes).toHaveLength(11)
     for (const box of boxes) expect(box).not.toHaveAccessibleDescription(UNKNOWN_HINT)
   })
 

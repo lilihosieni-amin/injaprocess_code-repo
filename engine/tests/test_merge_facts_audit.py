@@ -233,52 +233,6 @@ def test_orphan_ref_deferred_edge_becomes_checkable_when_the_stub_is_filled(tmp_
     assert len(found) == 1 and "col_x" in found[0]["message"]
 
 
-def test_dangling_ref_items_cell_whose_item_is_retired(tmp_path):
-    root = _root(tmp_path); _seed_units(root)
-    item = _entry("T-1", "item", "ing_1", "پنیر", {"category": "ingredient",
-                                                   "unit": "g"})
-    record = _entry("T-2", "record", "mavad__pizza", "ب.او.ام", {
-        "medium": "sheet", "role": "reference",
-        "location": {"spreadsheetId": "M", "sheetId": 2, "sheet": "پیتزا",
-                     "hidden": False},
-        "fields": [{"key": "ingredient", "title": "ماده", "type": "string",
-                    "refItems": {"namespace": "##", "resolved_by": "code"}},
-                   {"key": "grams", "title": "گرم", "type": "number", "unit": "g"}],
-        "primaryKey": ["ingredient"],
-        "rows": [{"ingredient": "T-1", "grams": 250}]})
-    report = _apply(root, [item, record], "1")
-    assert "dangling_ref_items" not in _codes(audit(root))
-    retire(root, report["id_map"]["T-1"], None, _run_dir(root, "2"))
-    found = _of(audit(root), "dangling_ref_items")
-    assert len(found) == 1 and "ing_1" in found[0]["message"]
-
-
-def test_a_ref_items_cell_holding_a_code_names_the_item_that_carries_it(tmp_path):
-    """The cooking recipe tables hold «مکزیکانو #13» in their item column and
-    the store's item is keyed `mekzikano` with `code: "#13"` — the content
-    pass admits the cell, so the audit must resolve it the same way."""
-    root = _root(tmp_path); _seed_units(root)
-    item = _entry("T-1", "item", "mekzikano", "مکزیکانو",
-                  {"category": "product", "unit": "pcs", "code": "#13"})
-    record = _entry("T-2", "record", "mavad__pizza", "ب.او.ام", {
-        "medium": "sheet", "role": "reference",
-        "location": {"spreadsheetId": "M", "sheetId": 2, "sheet": "پیتزا",
-                     "hidden": False},
-        "fields": [{"key": "nam", "title": "نام", "type": "string",
-                    "refItems": {"namespace": "#", "resolved_by": "title"}},
-                   {"key": "grams", "title": "گرم", "type": "number", "unit": "g"}],
-        "primaryKey": ["nam"],
-        "rows": [{"key": "food_13", "nam": "مکزیکانو #13", "grams": 250},
-                 {"key": "food_99", "nam": "ناشناخته #99", "grams": 1}]})
-    report = _apply(root, [item, record], "1")
-    found = _of(audit(root), "dangling_ref_items")
-    assert [f["message"] for f in found] == [
-        "row 'food_99' column 'nam': item 'ناشناخته #99' names no item"]
-    retire(root, report["id_map"]["T-1"], None, _run_dir(root, "2"))
-    found = _of(audit(root), "dangling_ref_items")
-    assert len(found) == 2 and any("#13' is retired" in f["message"] for f in found)
-
-
 def test_process_link_tombstoned_proposes_the_heir(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     # The citation is written while the process is live — `preconditions` now
@@ -671,17 +625,6 @@ def test_equal_expr_two_rules_stating_one_computation_in_one_scope(tmp_path):
     assert len(found) == 1 and "v = x" in found[0]["message"].replace(" ", " ")
 
 
-def test_duplicate_code_two_items_answering_to_one_code(tmp_path):
-    root = _root(tmp_path); _seed_units(root)
-    _apply(root, [_entry("T-1", "item", "ing_1", "پنیر",
-                         {"category": "ingredient", "unit": "g", "code": "##1"}),
-                  _entry("T-2", "item", "ing_1_dobare", "پنیر پیتزا",
-                         {"category": "ingredient", "unit": "g", "code": "##1"})],
-           "1")
-    found = _of(audit(root), "duplicate_code")
-    assert len(found) == 1 and "##1" in found[0]["message"]
-
-
 def test_edge_disagreement_two_answers_for_one_edge_case(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     rule = _entry("T-1", "rule", "sefaresh", "مقدار سفارش", {
@@ -694,22 +637,6 @@ def test_edge_disagreement_two_answers_for_one_edge_case(tmp_path):
     _apply(root, [rule], "1")
     found = _of(audit(root), "edge_disagreement")
     assert len(found) == 1 and "جمعه" in found[0]["message"]
-
-
-def test_no_consumer_only_for_the_item_nothing_reads(tmp_path):
-    root = _root(tmp_path); _seed_units(root)
-    read = _entry("T-1", "item", "ing_1", "پنیر", {"category": "ingredient",
-                                                   "unit": "g"})
-    lonely = _entry("T-2", "item", "ing_2", "روغن", {"category": "ingredient",
-                                                     "unit": "g"})
-    measure = _entry("T-3", "measurement", "vazn_panir", "وزن پنیر",
-                     {"of": {"ref": "T-1"}, "quantity": "mass", "unit": "g",
-                      "by": "مسئول واحد", "when": "پایان شب"})
-    _apply(root, [read, lonely, measure], "1")
-    found = _of(audit(root), "no_consumer")
-    lonely_id = [e["id"] for e in load_store(root)["item"]["entries"]
-                 if e["key"] == "ing_2"][0]
-    assert [i["id"] for i in found] == [lonely_id]
 
 
 def test_quantity_off_enum(tmp_path):
@@ -729,16 +656,18 @@ def test_quantity_off_enum(tmp_path):
 
 def test_note_targets_retired(tmp_path):
     root = _root(tmp_path); _seed_units(root)
-    item = _entry("T-1", "item", "ing_1", "پنیر", {"category": "ingredient",
-                                                   "unit": "g"})
-    report = _apply(root, [item], "1")
-    item_id = report["id_map"]["T-1"]
-    _apply(root, [_note("T-1", "note_aa11bb22cc33", "واحد این قلم روشن نیست",
-                        about=item_id)], "2")
+    rule = _entry("T-1", "rule", "tol", "تلورانس",
+                  {"inputs": [], "outputs": [{"key": "v", "title": "مقدار",
+                                              "unit": "g", "nature": "limit",
+                                              "value": 5}]})
+    report = _apply(root, [rule], "1")
+    rule_id = report["id_map"]["T-1"]
+    _apply(root, [_note("T-1", "note_aa11bb22cc33", "واحد این عدد روشن نیست",
+                        about=rule_id)], "2")
     assert "note_targets_retired" not in _codes(audit(root))
-    retire(root, item_id, None, _run_dir(root, "3"))
+    retire(root, rule_id, None, _run_dir(root, "3"))
     found = _of(audit(root), "note_targets_retired")
-    assert len(found) == 1 and item_id in found[0]["message"]
+    assert len(found) == 1 and rule_id in found[0]["message"]
 
 
 def test_import_unresolved_only_while_the_source_is_a_locator(tmp_path):

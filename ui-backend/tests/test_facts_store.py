@@ -1,8 +1,8 @@
 """The bundles a served fact entry needs (spec §17's closing ui-backend bullet).
 
 The load-bearing assertion is one sentence of the spec: *a served entry's
-`resolved`, `row_titles` and `path_labels` cover every id, item key, row key
-and red path it references, so no screen can fall back to a raw key.*
+`resolved`, `row_titles` and `path_labels` cover every id, row key and red
+path it references, so no screen can fall back to a raw key.*
 `test_served_maps_cover_every_key_an_entry_references` is that sentence,
 asserted over every entry of a store built to carry one of each shape.
 
@@ -39,28 +39,19 @@ def _entry(fact_id, kind, key, title, data, **rest):
     return entry
 
 
-def _item(fact_id, key, title, code, category):
-    return _entry(fact_id, "item", key, title,
-                  {"code": code, "category": category, "unit": "g"})
-
-
-#: Four items: §9's `prod_61__ing_41` row composes «اینجا پیتزا — قارچ».
-ITEMS = [
-    _item("F-00010", "prod_61", "اینجا پیتزا", "#61", "product"),
-    _item("F-00011", "ing_1", "پنیر پیتزا", "##1", "ingredient"),
-    _item("F-00012", "ing_26", "خمیر پیتزا", "##26", "ingredient"),
-    _item("F-00013", "ing_41", "قارچ", "##41", "ingredient"),
-    #: An item whose estate code nobody stated and whose carton count is not
-    #: printed: two `null` leaves outside the keyed groups, one at the top of
-    #: `data` and one a level down.
-    _entry("F-00015", "item", "oil_fry", "روغن سرخ‌کن",
-           {"code": None, "code_absent": False, "category": "consumable",
-            "unit": "l", "pack": {"size": None, "unit": "pcs"}},
-           status="unknown"),
-]
+#: A form whose rhythm nobody stated and whose keeper nobody named: two
+#: `null` leaves outside the keyed groups, one at the top of `data` and one a
+#: level down, which is what `_path_label`'s general branch is for.
+NULL_LEAVES = _entry(
+    "F-00015", "record", "tahvil_shift", "فرم تحویل شیفت",
+    {"medium": "paper", "role": "log", "cadence": None,
+     "location": {"kept_at": "زونکن دفتر", "holder": None}},
+    status="unknown")
 
 #: The BOM (§7's reference record): one disputed cell, one `null` cell, one
-#: reconciled cell — three distinct sources of a `path_labels` key.
+#: reconciled cell — three distinct sources of a `path_labels` key. Its two
+#: name columns are ordinary text since 2026-09-16: they held item keys, and
+#: the item kind is gone, so each row carries the title it used to compose.
 BOM = _entry(
     "F-00020", "record", "mavad__pizza_italian", "پیتزا ایتالیایی",
     {"medium": "sheet", "role": "reference",
@@ -68,19 +59,17 @@ BOM = _entry(
                   "sheet": "پیتزا ایتالیایی", "hidden": False},
      "grain": "one row per (product, ingredient)",
      "fields": [
-         {"key": "product", "title": "محصول", "type": "string",
-          "refItems": {"namespace": "#", "resolved_by": "code"}},
-         {"key": "ingredient", "title": "ماده اولیه", "type": "string",
-          "refItems": {"namespace": "##", "resolved_by": "code"}},
+         {"key": "product", "title": "محصول", "type": "string"},
+         {"key": "ingredient", "title": "ماده اولیه", "type": "string"},
          {"key": "grams", "title": "گرم", "type": "number", "unit": "g"}],
      "primaryKey": ["product", "ingredient"],
      "rows": [
-         {"key": "prod_61__ing_1", "product": "prod_61", "ingredient": "ing_1",
-          "grams": 250},
-         {"key": "prod_61__ing_26", "product": "prod_61", "ingredient": "ing_26",
-          "grams": None},
-         {"key": "prod_61__ing_41", "product": "prod_61", "ingredient": "ing_41",
-          "grams": 180}],
+         {"key": "prod_61__ing_1", "title": "اینجا پیتزا — پنیر پیتزا",
+          "product": "اینجا پیتزا", "ingredient": "پنیر پیتزا", "grams": 250},
+         {"key": "prod_61__ing_26", "title": "اینجا پیتزا — خمیر پیتزا",
+          "product": "اینجا پیتزا", "ingredient": "خمیر پیتزا", "grams": None},
+         {"key": "prod_61__ing_41", "title": "اینجا پیتزا — قارچ",
+          "product": "اینجا پیتزا", "ingredient": "قارچ", "grams": 180}],
      "reconciled_against": [
          {"cell": {"field": "grams", "row": "prod_61__ing_41"},
           "against": {"ref": "F-00031", "field": "mushroom_g"}}]},
@@ -139,22 +128,24 @@ RULE = _entry(
                   "writes_to": {"ref": "F-00021", "field": "start_stock"}}],
      "expr": "standard_use = sum over bom_g of (bom_g * 1)", "lang": "feel",
      "calls": [{"ref": "F-00033"}], "port": False, "edge_cases": []},
+    home={"ref": "F-00021", "field": "start_stock"},
     accounts=[{"id": "0f0f0f0f", "field": "data/expr",
                "statement": "روایت دوم از فرمول",
                "source": {"type": "voice", "ref": "meetings/x.md"},
                "status": "chosen"}],
     processes=[{"ref": "cooking-003"}])
 
-#: A constant, whose single output is *of* an item (§7) and whose value is
+#: A constant, whose single output is *of* a table's column (§7) and whose value is
 #: `informal` — a `field_status` line, which is never red and still needs a
 #: label (§14.8).
 CONSTANT = _entry("F-00031", "rule", "mushroom_g_per_pizza", "قارچ هر پیتزا",
                   {"inputs": [],
                    "outputs": [{"key": "mushroom_g", "title": "قارچ",
                                 "unit": "g", "nature": "standard", "value": 180,
-                                "of": {"ref": "F-00013"}}],
+                                "of": {"ref": "F-00020", "field": "grams"}}],
                    "calls": [], "port": False, "edge_cases": []},
                   status="informal",
+                  home={"ref": "F-00020"},
                   field_status={"data/outputs/mushroom_g/value": "informal"})
 VIA = _entry("F-00032", "rule", "kg_to_g", "تبدیل کیلوگرم به گرم",
              {"inputs": [{"key": "kg", "title": "کیلوگرم", "unit": "kg"}],
@@ -188,9 +179,10 @@ DERIVED = _entry("F-00034", "rule", "farangi__delta", "اختلاف روز",
 #: where a rule carries it on an output instead.
 MEASUREMENT = _entry(
     "F-00040", "measurement", "pizza_cheese__mass", "وزن پنیر پیتزا",
-    {"of": {"ref": "F-00011"}, "quantity": "mass", "unit": "g",
-     "method": "ترازو", "when": "پایان شیفت", "by": "سرلاین",
-     "writes_to": {"ref": "F-00020", "field": "grams"}})
+    {"of": {"ref": "F-00021", "field": "start_stock"}, "quantity": "mass",
+     "unit": "g", "method": "ترازو", "when": "پایان شیفت", "by": "سرلاین",
+     "writes_to": {"ref": "F-00020", "field": "grams"}},
+    home={"ref": "F-00020"})
 
 #: §11's contested scalar: the incumbent materialised beside the challenger,
 #: so the entry is disputed on an **envelope** path — QF-7 lists `title` and
@@ -198,7 +190,8 @@ MEASUREMENT = _entry(
 #: field with no prefix filter. Nothing else in this store disputes one, which
 #: is why the raw pass-through survived a round.
 DISPUTED_TITLE = _entry(
-    "F-00060", "note", "note_farangi_naming", "نام قلم در فرم انبار", {},
+    "F-00060", "note", "note_farangi_naming", "نام قلم در فرم انبار",
+    {"about": [{"ref": "F-00021"}], "question": "اسم قلم کدام است؟"},
     status="disputed",
     accounts=[{"id": "11112222", "field": "title",
                "statement": "«اسمش توی فرم انبار خمیر آماده است»",
@@ -215,8 +208,8 @@ STUB = _entry("F-00050", "record", "ext_1dmh8tcqouqn", "کاربرگ پیتزا"
               {"medium": "sheet", "role": "reference", "stub": True,
                "grain": "workbook", "location": {"spreadsheetId": PITZA}})
 
-ENTRIES = ITEMS + [BOM, FORM, MIRROR, RULE, CONSTANT, VIA, CALLED, DERIVED,
-                   INSTANCE, MEASUREMENT, DISPUTED_TITLE, STUB]
+ENTRIES = [NULL_LEAVES, BOM, FORM, MIRROR, RULE, CONSTANT, VIA, CALLED,
+           DERIVED, INSTANCE, MEASUREMENT, DISPUTED_TITLE, STUB]
 
 PROCESSES = [
     {"id": "cooking-001", "department": "cooking", "name": "پخت پیتزا",
@@ -240,9 +233,8 @@ MANIFEST = {
          "file": "Gozaresh markazi.xlsx"}],
 }
 
-_FILES = {"item": "items.json", "record": "records.json",
-          "measurement": "measurements.json", "rule": "rules.json",
-          "note": "notes.json"}
+_FILES = {"record": "records.json", "measurement": "measurements.json",
+          "rule": "rules.json", "note": "notes.json"}
 
 
 def _dump(path, doc):
@@ -263,6 +255,9 @@ def root(tmp_path):
            "entries": [{"id": e["id"], "kind": e["kind"], "key": e["key"],
                         "title": e["title"], "scope": e["scope"],
                         "status": e["status"], "retired": e["retired"],
+                        # The index's `home` column (2026-09-16) — the record
+                        # id, never the column, which is not indexed.
+                        "home": (e.get("home") or {}).get("ref"),
                         "updated_at": e["updated_at"]} for e in ENTRIES]})
     for doc in PROCESSES:
         _dump(tmp_path / "departments" / "cooking" / "processes"
@@ -297,36 +292,32 @@ _ID_RE = re.compile(r"F-[0-9]{5}|T-[0-9]+|[a-z]+-[0-9]{3}")
 
 
 def _referenced(entry):
-    """What the served maps must between them cover: ids, item keys, row keys
-    and red paths."""
+    """What the served maps must between them cover: ids, row keys and red
+    paths."""
     data = entry["data"]
     ids = {r for r in _refs_anywhere(entry, set()) if _ID_RE.fullmatch(r)}
-    ref_columns = [f["key"] for f in data.get("fields") or [] if "refItems" in f]
-    item_keys = {row[column] for row in data.get("rows") or []
-                 for column in ref_columns if isinstance(row.get(column), str)}
     row_keys = {row["key"] for row in data.get("rows") or []}
     red = {p for paths in facts_store.red_paths(entry).values() for p in paths}
     red |= set(entry.get("field_status") or {})
     red |= {a["field"] for a in entry.get("accounts") or []}
     red |= {f"data/rows/{rc['cell']['row']}/{rc['cell']['field']}"
             for rc in data.get("reconciled_against") or []}
-    return ids, item_keys, row_keys, red
+    return ids, row_keys, red
 
 
 @pytest.mark.parametrize("fact_id", [e["id"] for e in ENTRIES])
 def test_served_maps_cover_every_key_an_entry_references(root, fact_id):
     """Spec §17: «a served entry's `resolved`, `row_titles` and `path_labels`
-    cover every id, item key, row key and red path it references, so no
-    screen can fall back to a raw key»."""
+    cover every id, row key and red path it references, so no screen can fall
+    back to a raw key»."""
     entry = facts_store.load_entry(root, fact_id)
-    ids, item_keys, row_keys, red = _referenced(entry)
+    ids, row_keys, red = _referenced(entry)
 
     resolved = facts_store.resolved_map(root, entry)
     titles = facts_store.row_titles(root, entry)
     labels = facts_store.path_labels(root, entry)
 
     assert ids <= set(resolved), f"{fact_id}: ids missing from resolved"
-    assert item_keys <= set(resolved), f"{fact_id}: item keys missing"
     assert row_keys == set(titles), f"{fact_id}: row keys missing from row_titles"
     assert red <= set(labels), f"{fact_id}: red paths missing from path_labels"
 
@@ -340,11 +331,27 @@ def test_served_maps_cover_every_key_an_entry_references(root, fact_id):
         assert label and label != path, f"{fact_id}: {path} labelled with itself"
 
 
-def test_resolved_carries_kind_title_and_an_item_code(root):
+def test_resolved_carries_kind_and_title_across_both_namespaces(root):
     resolved = facts_store.resolved_map(root, facts_store.load_entry(root, "F-00020"))
-    assert resolved["ing_41"] == {"kind": "item", "title": "قارچ", "code": "##41"}
     assert resolved["F-00031"] == {"kind": "rule", "title": "قارچ هر پیتزا"}
     assert resolved["cooking-001"] == {"kind": "process", "title": "پخت پیتزا"}
+
+
+def test_resolved_flags_a_retired_target_and_nothing_else(root):
+    """A `home` reaches this map like any other reference, and the panel draws
+    «جدول بازنشسته» rather than a press into a table nobody fills in any more.
+    The flag is present only when it is true, so an ordinary neighbour's label
+    is the two keys it has always been."""
+    entry = facts_store.load_entry(root, "F-00030")
+    assert "retired" not in facts_store.resolved_map(root, entry)["F-00021"]
+
+    form = facts_store.load_entry(root, "F-00021")
+    form["retired"] = True
+    _dump(root / "facts" / "records.json",
+          {"schema_version": 2,
+           "entries": [form if e["id"] == "F-00021" else e
+                       for e in ENTRIES if e["kind"] == "record"]})
+    assert facts_store.resolved_map(root, entry)["F-00021"]["retired"] is True
 
 
 def test_resolved_omits_a_dangling_ref(root):
@@ -363,7 +370,9 @@ def test_resolved_omits_a_dangling_ref(root):
 # row_titles and path_labels
 # --------------------------------------------------------------------------- #
 
-def test_reference_rows_compose_from_ref_items_in_primary_key_order(root):
+def test_a_reference_rows_own_title_is_what_is_served(root):
+    """Composition is gone with the item kind (2026-09-16): a row that used to
+    be named by the items its cells pointed at now carries that name itself."""
     titles = facts_store.row_titles(root, facts_store.load_entry(root, "F-00020"))
     assert titles == {"prod_61__ing_1": "اینجا پیتزا — پنیر پیتزا",
                       "prod_61__ing_26": "اینجا پیتزا — خمیر پیتزا",
@@ -420,11 +429,11 @@ def test_path_label_of_a_rows_reserved_leaf_takes_the_rows_reading(root):
 
 def test_path_labels_of_leaves_outside_the_keyed_groups(root):
     """The general branch: a payload path that names no column still reads as
-    Persian. `data/code` is the canonical one — an item whose estate code
-    nobody stated — and `data/pack/size` walks a plain nested object, where
-    the whole path used to come back raw."""
+    Persian. `data/cadence` is a leaf at the top of `data`, and
+    `data/location/holder` walks a plain nested object, where the whole path
+    used to come back raw."""
     labels = facts_store.path_labels(root, facts_store.load_entry(root, "F-00015"))
-    assert labels == {"data/code": "کد", "data/pack/size": "بسته › تعداد"}
+    assert labels == {"data/cadence": "تناوب", "data/location/holder": "محل › مسئول"}
 
 
 def test_path_labels_include_a_settled_account_field(root):
@@ -584,6 +593,7 @@ def test_consumers_finds_an_inputs_from_edge(root):
     assert facts_store.consumers(root, "F-00020") == [
         {"id": "F-00022", "title": "نسخهٔ پیوندی مواد اولیه"},  # mirror_of
         {"id": "F-00030", "title": "مصرف استاندارد"},           # inputs[].from
+        {"id": "F-00031", "title": "قارچ هر پیتزا"},            # outputs[].of
         {"id": "F-00040", "title": "وزن پنیر پیتزا"}]           # writes_to
 
 
@@ -596,7 +606,8 @@ def test_consumers_finds_a_calls_edge(root):
 
 
 def test_consumers_finds_a_rule_output_writes_to_edge(root):
-    assert _consumer_ids(root, "F-00021") == ["F-00030"]
+    assert _consumer_ids(root, "F-00021") == ["F-00030",   # a rule's writes_to
+                                              "F-00040"]  # the measurement's of
 
 
 def test_consumers_finds_a_measurement_writes_to_edge(root):
@@ -609,23 +620,32 @@ def test_consumers_finds_a_fields_derived_edge(root):
     assert _consumer_ids(root, "F-00034") == ["F-00021"]
 
 
-def test_consumers_finds_a_ref_items_cell(root):
-    """A `refItems` cell holds the item's **key** (QF-37's one exception), so
-    the join is on the target's key, not on its id."""
-    assert _consumer_ids(root, "F-00013") == ["F-00020",   # a refItems cell
-                                              "F-00031"]  # an output's `of`
-
-
 def test_consumers_finds_a_rule_output_of_edge(root):
-    """`outputs[].of` names the item an output is *of* (§7) — a use, and one
-    of QF-8's typed edges."""
-    assert "F-00031" in _consumer_ids(root, "F-00013")
+    """`outputs[].of` names what an output is *of* (§7) — a table's column
+    since 2026-09-16, and one of QF-8's typed edges either way."""
+    assert "F-00031" in _consumer_ids(root, "F-00020")
 
 
 def test_consumers_finds_a_measurement_of_edge(root):
     """A measurement's `of` is at the top of `data`, like its `writes_to`."""
-    assert _consumer_ids(root, "F-00011") == ["F-00020",   # a refItems cell
-                                              "F-00040"]  # the measurement's `of`
+    assert "F-00040" in _consumer_ids(root, "F-00021")
+
+
+def test_consumers_ignores_home(root):
+    """`home` says where an entry lives, not that it reads anything the table
+    holds — and a table's page already lists what is homed on it. Counting it
+    would make every rule of a table a consumer of it and drown the one list
+    that answers «what breaks if this changes»."""
+    entry = facts_store.load_entry(root, "F-00031")
+    assert entry["home"] == {"ref": "F-00020"}
+    # It is in `consumers(F-00020)` for its `outputs[].of` alone: drop that
+    # edge and the home does not keep it there.
+    entry["data"]["outputs"][0].pop("of")
+    _dump(root / "facts" / "rules.json",
+          {"schema_version": 2,
+           "entries": [entry if e["id"] == "F-00031" else e
+                       for e in ENTRIES if e["kind"] == "rule"]})
+    assert "F-00031" not in _consumer_ids(root, "F-00020")
 
 
 def test_consumers_finds_a_mirror_of_edge(root):
@@ -662,6 +682,68 @@ def test_consumers_excludes_lifecycle_links_and_process_refs(root):
 def test_consumers_of_an_unread_entry_is_empty(root):
     assert facts_store.consumers(root, "F-00050") == []
     assert facts_store.consumers(root, "F-09999") == []
+
+
+# --------------------------------------------------------------------------- #
+# subsets — what lives in a table (2026-09-16, «tables as the spine»)
+# --------------------------------------------------------------------------- #
+
+def test_subsets_lists_what_is_homed_on_the_table(root):
+    """The BOM's own rule and its measurement, by id. The column rides along
+    only where the stored `home` names one — `.index.json` carries the record
+    id and never the column."""
+    assert facts_store.subsets(root, "F-00020") == [
+        {"id": "F-00031", "kind": "rule", "title": "قارچ هر پیتزا"},
+        {"id": "F-00040", "kind": "measurement", "title": "وزن پنیر پیتزا"}]
+
+
+def test_a_home_on_a_column_says_which_column(root):
+    assert facts_store.subsets(root, "F-00021")[0] == {
+        "id": "F-00030", "kind": "rule", "title": "مصرف استاندارد",
+        "field": "start_stock"}
+
+
+def test_a_note_about_the_table_is_listed_when_no_table_claims_it(root):
+    """A note explaining a table is part of that table's page whether or not
+    anybody placed it there — but `about` is the fallback, not a second home:
+    give the note a table of its own and it leaves this list for that one."""
+    assert [r["id"] for r in facts_store.subsets(root, "F-00021")] == \
+        ["F-00030", "F-00060"]
+
+    note = facts_store.load_entry(root, "F-00060")
+    note["home"] = {"ref": "F-00020"}
+    _dump(root / "facts" / "notes.json", {"schema_version": 2, "entries": [note]})
+    index = facts_store.load_index(root)
+    for row in index["entries"]:
+        if row["id"] == "F-00060":
+            row["home"] = "F-00020"
+    _dump(root / "facts" / ".index.json", index)
+
+    assert [r["id"] for r in facts_store.subsets(root, "F-00021")] == ["F-00030"]
+    assert "F-00060" in [r["id"] for r in facts_store.subsets(root, "F-00020")]
+
+
+def test_a_table_holds_no_tables_and_no_entry_holds_itself(root):
+    """A record never carries a `home` (§7), so the mirror — which is about
+    the BOM and points at it with `mirror_of` — is not one of its subsets."""
+    assert "F-00022" not in [r["id"] for r in facts_store.subsets(root, "F-00020")]
+    assert facts_store.subsets(root, "F-00030") == []
+
+
+def test_subsets_drop_an_index_row_with_no_entry_behind_it(root):
+    """A row whose own page would 404 is a dead link drawn by the server
+    itself — `list_facts`' rule, applied to the same index."""
+    index = facts_store.load_index(root)
+    index["entries"].append({"id": "F-00777", "kind": "rule", "key": "ghost",
+                             "title": "قاعدهٔ نبوده", "scope": {},
+                             "status": "confirmed", "retired": False,
+                             "home": "F-00020", "updated_at": NOW})
+    _dump(root / "facts" / ".index.json", index)
+    assert "F-00777" not in [r["id"] for r in facts_store.subsets(root, "F-00020")]
+
+
+def test_subsets_of_an_absent_store_is_empty(tmp_path):
+    assert facts_store.subsets(tmp_path, "F-00020") == []
 
 
 # --------------------------------------------------------------------------- #
@@ -741,17 +823,20 @@ def test_an_absent_store_and_manifest_read_as_empty(tmp_path):
     assert manifest.workbook_count(tmp_path) == 0
     assert facts_store.consumers(tmp_path, "F-00020") == []
     assert facts_store.resolved_map(tmp_path, BOM) == {}
+    # Store-independent since 2026-09-16: a row's title is its own, so an
+    # absent store changes nothing about it — a row with none falls back to
+    # its key, which is `_retired_row_entry`'s shape below.
     assert facts_store.row_titles(tmp_path, BOM) == {
-        "prod_61__ing_1": "prod_61__ing_1",
-        "prod_61__ing_26": "prod_61__ing_26",
-        "prod_61__ing_41": "prod_61__ing_41"}
+        "prod_61__ing_1": "اینجا پیتزا — پنیر پیتزا",
+        "prod_61__ing_26": "اینجا پیتزا — خمیر پیتزا",
+        "prod_61__ing_41": "اینجا پیتزا — قارچ"}
     assert set(facts_store.path_labels(tmp_path, BOM)) == {
         "data/rows/prod_61__ing_1/grams", "data/rows/prod_61__ing_26/grams",
         "data/rows/prod_61__ing_41/grams"}
 
 
 def test_a_malformed_store_file_is_skipped_not_raised(root):
-    (root / "facts" / "items.json").write_text("{ not json", encoding="utf-8")
+    (root / "facts" / "measurements.json").write_text("{ not json", encoding="utf-8")
     assert facts_store.resolved_map(root, BOM) == {
         "F-00031": {"kind": "rule", "title": "قارچ هر پیتزا"},
         "cooking-001": {"kind": "process", "title": "پخت پیتزا"},
@@ -798,9 +883,9 @@ def test_binding_labels_name_a_record_instance_and_a_rule_binding(root):
 def test_a_v2_store_file_reads_exactly_as_a_v1_one_does(root):
     """The marker moves to 2 in the same commit as the schema (§8 step 2); the
     reader has never checked it and must not start now — an entry is an entry."""
-    doc = json.loads((root / "facts" / "items.json").read_text(encoding="utf-8"))
+    doc = json.loads((root / "facts" / "records.json").read_text(encoding="utf-8"))
     doc["schema_version"] = 2
-    _dump(root / "facts" / "items.json", doc)
+    _dump(root / "facts" / "records.json", doc)
     assert facts_store.load_entry(root, doc["entries"][0]["id"]) is not None
     assert facts_store.load_index(root / "nothing") == {
         "schema_version": 2, "entries": []}

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useDepartments, useFact, useFactBranches } from '../api/hooks'
 import { refusalStatus } from '../api/client'
@@ -9,13 +10,12 @@ import { jalali } from '../lib/format'
 import { LoadFailedScreen, LoadingState } from '../ui/states'
 import { RefusalScreen } from '../screens/Refusal'
 import { isRestricted, type FactBundle, type FactEntry, type FactProcessLink } from '../api/types'
-import { resolvedTitle } from './bundle'
+import { refTitle, resolvedTitle } from './bundle'
 import { FactConfirm } from './FactConfirm'
 import { SourceRow } from './SourceRow'
-import { DetailCard, Mono, PX, Pill } from './cards/parts'
+import { DetailCard, Mono, PX, Pill, RefLink } from './cards/parts'
 import { RuleCard, RuleValueCards } from './cards/RuleCard'
 import { RecordCard } from './cards/RecordCard'
-import { ItemCard } from './cards/ItemCard'
 import { MeasurementCard } from './cards/MeasurementCard'
 import { LifecycleCard } from './cards/LifecycleCard'
 import { AccountsCard } from './cards/AccountsCard'
@@ -129,6 +129,8 @@ function Detail({ bundle, onOpen, onOpenProcess }: {
         {entry.retired && <Pill tone="danger">{label(BADGE_LABELS, 'retired')}</Pill>}
       </div>
 
+      <HomeLine bundle={bundle} onOpen={onOpen} />
+
       {/* :1118 — the title and the tick, which stack at ≤760 (`[data-r-stack]`). */}
       <div data-r-stack className="flex items-start justify-between gap-s9 mt-s6
                                    max760:flex-col max760:items-stretch max760:gap-s6">
@@ -170,7 +172,6 @@ function Detail({ bundle, onOpen, onOpenProcess }: {
       <LifecycleCard bundle={bundle} onOpen={onOpen} />
       <RuleCard bundle={bundle} onOpen={onOpen} />
       <RecordCard bundle={bundle} onOpen={onOpen} />
-      <ItemCard bundle={bundle} />
       <MeasurementCard bundle={bundle} onOpen={onOpen} />
       <AccountsCard bundle={bundle} />
       <FieldStatusCard bundle={bundle} />
@@ -178,6 +179,53 @@ function Detail({ bundle, onOpen, onOpenProcess }: {
 
       <SourcesCard bundle={bundle} onOpen={onOpen} onOpenProcess={onOpenProcess} />
     </>
+  )
+}
+
+/**
+ * «جدول: مانده شب» — which table this entry belongs to, and a press into it.
+ *
+ * **Owner ruling, 2026-09-16 («tables as the spine»).** A rule, a measurement
+ * and a note each name the table they are about or written on; a record never
+ * does, so this draws nothing on a table's own page — a table is where the
+ * others live.
+ *
+ * `home` is the store's ordinary `{ref}` shape, so it reaches the bundle's
+ * `resolved` map like every other reference and takes that map's three answers:
+ * a title and a press; «خارج از دسترسی شما» with no press for a neighbour this
+ * caller may not open (`RefLink`'s own rule, R5); and nothing at all for a
+ * target that is gone, which is `resolved`'s way of saying the reference
+ * dangles. A **retired** table is the fourth: it is still named, but as
+ * «جدول بازنشسته» and without a press, because pointing a reviewer into a table
+ * nobody fills in any more is not a link worth drawing.
+ *
+ * «بدون جدول» is not a failure and is not red: an entry no table claims is a
+ * state the store admits, and the list screen still carries it (owner
+ * decision 2, 2026-09-16).
+ */
+function HomeLine({ bundle, onOpen }: {
+  bundle: FactBundle; onOpen: (id: string) => void
+}) {
+  const { entry } = bundle
+  if (entry.kind === 'record') return null
+  const line = (children: ReactNode) => (
+    <div data-body className="mt-s4 text-fs-caption text-role-subtitle-on-field">
+      {children}
+    </div>
+  )
+  const home = entry.home ?? null
+  if (home === null) return line(label(SCREEN_LABELS, 'home_none'))
+  // A target the store dropped is absent from `resolved` — the absence IS the
+  // orphan (`facts_store.resolved_map`), and Appendix D has the word for it.
+  const named = refTitle(bundle, home)
+  if (named === undefined) return line(label(SCREEN_LABELS, 'orphan_reference'))
+  if (named.retired === true) return line(label(SCREEN_LABELS, 'home_retired'))
+  // «جدول: …» over whatever the map gave — a title, or the restricted marker,
+  // which `RefLink` then draws as text with no press (R5).
+  return line(
+    <RefLink className="text-fs-caption" color="text-role-title-on-field" onOpen={onOpen}
+      named={{ ...named,
+        text: label(SCREEN_LABELS, 'home_table').replace('{n}', named.text) }} />,
   )
 }
 

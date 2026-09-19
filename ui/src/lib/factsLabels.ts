@@ -39,9 +39,8 @@
  * from Appendix D and §7 and are guarded by review, not by the test.
  */
 
-/** The five kinds (§7). */
+/** The kinds (§7) — **four since 2026-09-16** («tables as the spine»). */
 export const KIND_LABELS: Record<string, string> = {
-  item: 'آیتم',
   record: 'جدول',
   measurement: 'اندازه‌گیری',
   rule: 'قاعده',
@@ -250,6 +249,9 @@ export const ISSUE_KIND_LABELS: Record<string, string> = {
   binding_gone: 'محل اجرا دیگر وجود ندارد',
   unread_attachment: 'فایل خوانده‌نشده',
   oversized: 'بزرگ‌تر از یک واحد',
+  // A run put this entry under another table; the stored home stayed
+  // (`merge_facts.ladder.PLACEMENT_ISSUE`, owner decision 1 of 2026-09-16).
+  placement: 'اختلاف در جدولِ این مورد',
 }
 
 /** `issues[].fix.op` — the repair the issue proposes. */
@@ -398,7 +400,6 @@ export const PAYLOAD_FIELD_LABELS: Record<string, string> = {
   derived: 'محاسبه‌شده با',
   group: 'گروه',
   filled_by: 'تکمیل‌کننده',
-  refItems: 'ارجاع به آیتم',
   enum: 'مقادیر مجاز',
   readOnly: 'فقط‌خواندنی',
   required: 'اجباری',
@@ -574,6 +575,25 @@ export const SCREEN_LABELS: Record<string, string> = {
   issue_prefix: 'نقص: {kind}',
   heading_sources: 'منابع',
   heading_processes: 'فرایندهای مرتبط',
+
+  // ── What a table holds, and which table an entry is in (2026-09-16,
+  // «tables as the spine»). The three section heads a record's page draws over
+  // its own rules, measurements and notes; the count that stands beside each
+  // one; and the button that ticks every unconfirmed row of all three at once.
+  heading_subset_rule: 'قواعد',
+  heading_subset_measurement: 'اندازه‌گیری‌ها',
+  heading_subset_note: 'یادداشت‌ها',
+  subset_confirmed_count: '{n} از {m} تأیید شده',
+  confirm_all_subsets: 'تأیید همهٔ موارد این جدول',
+  // One failure, named: the batch is per entry, so one refusal is one row's
+  // and the rest of the run stands.
+  subset_confirm_failed: 'تأیید «{n}» انجام نشد',
+  // The home line on a rule's, a measurement's or a note's own page. «بدون
+  // جدول» is an entry no table claims — a state, not a failure: the list
+  // screen still carries it (owner decision 2).
+  home_table: 'جدول: {n}',
+  home_none: 'بدون جدول',
+  home_retired: 'جدول بازنشسته',
 
   // ── The detail screen's own copy (Task 23).
   //

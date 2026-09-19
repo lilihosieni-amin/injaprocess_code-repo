@@ -392,15 +392,15 @@ def test_a_unit_symbol_the_run_never_declared_is_refused_at_the_gate(tmp_path):
     """QF-40 — the same list `skeleton.json` carries and `preconditions` checks
     against the units record. `lit` is nobody's symbol here."""
     root, run_dir = _run(tmp_path)
-    item = {"kind": "item", "key": "panir", "title": "پنیر پیتزا",
-            "statement": "پنیر پیتزا که با کیلوگرم شمرده می‌شود.",
-            "data": {"category": "ingredient", "unit": "lit"}}
+    measured = {"kind": "measurement", "key": "panir", "title": "وزن پنیر پیتزا",
+                "statement": "پنیر پیتزا که با کیلوگرم شمرده می‌شود.",
+                "data": {"quantity": "mass", "unit": "lit"}}
     assert any("new[0] panir" in p and "'lit'" in p
                for p in validate_unit(root, run_dir,
-                                      _write(run_dir, _doc(new=[item]))))
-    item["data"]["unit"] = "kg"
+                                      _write(run_dir, _doc(new=[measured]))))
+    measured["data"]["unit"] = "kg"
     assert validate_unit(root, run_dir,
-                         _write(run_dir, _doc(new=[item]), "out.2.json")) == []
+                         _write(run_dir, _doc(new=[measured]), "out.2.json")) == []
 
 
 def test_a_field_renamed_from_a_column_the_candidate_has_not_got_is_refused(tmp_path):
@@ -486,11 +486,11 @@ def test_a_symbol_this_document_adds_to_the_units_record_is_its_own(tmp_path):
                                  {"key": "dimension", "type": "string"}],
                       "rows": [{"key": "lit", "symbol": "lit",
                                 "dimension": "volume"}]}}
-    item = {"kind": "item", "key": "roghan", "title": "روغن سرخ‌کردنی",
-            "statement": "روغن سرخ‌کردنی که با لیتر شمرده می‌شود.",
-            "data": {"category": "ingredient", "unit": "lit"}}
+    measured = {"kind": "measurement", "key": "roghan", "title": "حجم روغن",
+                "statement": "روغن سرخ‌کردنی که با لیتر شمرده می‌شود.",
+                "data": {"quantity": "volume", "unit": "lit"}}
     assert validate_unit(root, run_dir,
-                         _write(run_dir, _doc(new=[units, item]))) == []
+                         _write(run_dir, _doc(new=[units, measured]))) == []
 
 
 def test_one_prose_nit_and_one_shape_error_are_one_line_each(tmp_path):

@@ -1,5 +1,6 @@
 from facts_helpers import (_root, _seed_units, _const_delta, _write, _run_dir,
                            _meta)
+from engine_common import read_json
 from merge_facts import is_open, load_store
 from merge_facts.apply import apply
 from merge_facts.revert import revert
@@ -88,23 +89,24 @@ def _bare_note(root, note_id, key, run_n, data=None):
     return r["id_map"]["T-1"]
 
 
-def test_promote_to_item_refuses_missing_category_and_unit_nothing_written(tmp_path, capsys):
+def test_promote_to_measurement_refuses_missing_quantity_and_unit_nothing_written(
+        tmp_path, capsys):
     root = _root(tmp_path); _seed_units(root)
     nid = _bare_note(root, "dn2", "note_ab12cd34ef57", "1")
     before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
     with pytest.raises(SystemExit) as exc:
-        promote(root, nid, "item", "ing_new", _run_dir(root, "2"))
+        promote(root, nid, "measurement", "vazn_new", _run_dir(root, "2"))
     assert exc.value.code == 2
     err = capsys.readouterr().err
-    assert "category" in err and "unit" in err           # message names the missing keys
+    assert "quantity" in err and "unit" in err           # message names the missing keys
     after = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
-    assert before == after                               # five files byte-identical
+    assert before == after                               # every file byte-identical
 
 
 def test_a_note_cannot_carry_another_kinds_payload(tmp_path):
     # QF-9 closes the note payload to `about[]` + `question`, so the keys
-    # `promote` requires for item/record/measurement can never sit on one: those
-    # three promotions are now always refused for want of them, and `rule` —
+    # `promote` requires for record and measurement can never sit on one: those
+    # two promotions are now always refused for want of them, and `rule` —
     # whose stubs are empty containers — is the only reachable target.
     root = _root(tmp_path); _seed_units(root)
     note = {"schema_version": 2, "entries": [{
@@ -113,14 +115,14 @@ def test_a_note_cannot_carry_another_kinds_payload(tmp_path):
         "scope": {"departments": ["cooking"], "branches": []},
         "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "9"}],
         "retired": False, "data": {"about": [{"ref": "F-00001"}], "question": "؟",
-                                   "category": "ingredient", "unit": "g"}}]}
+                                   "quantity": "mass", "unit": "g"}}]}
     # spec 2026-09-13 C5: the foreign keys leave the payload for `extra`, so
     # the note lands and its payload is still only `about` + `question`.
     r = apply(root, _write(root, "dn3.json", note), _run_dir(root, "1"))
     stored = [e for e in load_store(root)["note"]["entries"]
               if e["id"] == r["id_map"]["T-1"]][0]
     assert set(stored["data"]) == {"about", "question"}
-    assert stored["extra"] == {"data/category": "ingredient", "data/unit": "g"}
+    assert stored["extra"] == {"data/quantity": "mass", "data/unit": "g"}
 
 
 def test_promote_note_to_note_is_a_rekey_that_keeps_the_payload(tmp_path):
@@ -677,3 +679,140 @@ def test_edit_drops_a_citation_naming_no_file_while_the_chat_one_remains(tmp_pat
     assert [s["type"] for s in e2["source"]] == ["chat"]
     assert json.loads(json.dumps(e2["extra"]))["source/0"]["ref"] == \
         "meetings/transcripts/nope.txt"
+
+
+# --------------------------------------------------------------------------- #
+# `edit` moves an entry between tables (2026-09-16) — the panel has no move
+# action, so this verb is the only one
+# --------------------------------------------------------------------------- #
+
+def _table(root, key, title, n):
+    """A stored record — somewhere to put an entry."""
+    delta = {"schema_version": 2, "entries": [{
+        "id": "T-9", "kind": "record", "key": key, "title": title,
+        "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+        "source": [{"type": "photo", "ref": "departments/cooking/attachments/p.jpg"}],
+        "retired": False,
+        "data": {"medium": "paper", "role": "log",
+                 "location": {"kept_at": "زونکن دفتر", "holder": "سرآشپز"},
+                 "fields": [{"key": "vazn", "title": "وزن", "type": "number",
+                             "unit": "g"}]}}]}
+    return apply(root, _write(root, f"{key}.json", delta),
+                 _run_dir(root, n))["id_map"]["T-9"]
+
+
+def _placed_rule(root):
+    """`(root, rule, first table, second table)` — the rule under the first."""
+    _seed_units(root)
+    first, second = _table(root, "mande_shab", "مانده شب", "t1"), \
+        _table(root, "mande_sobh", "مانده صبح", "t2")
+    delta = _const_delta(5)
+    delta["entries"][0]["home"] = {"ref": first}
+    apply(root, _write(root, "d1.json", delta), _run_dir(root, "1"))
+    return _rule_entry(root), first, second
+
+
+def test_edit_moves_an_entry_and_keeps_its_history(tmp_path, monkeypatch):
+    root = _root(tmp_path)
+    e, first, second = _placed_rule(root)
+    assert e["home"] == {"ref": first}
+    monkeypatch.setattr("merge_facts.verbs._now", lambda: "2030-01-01T00:00:00Z")
+    edit(root, e["id"], _patch(root, "p.json",
+         [{"op": "set", "path": "home", "value": {"ref": second, "field": "vazn"}}]),
+         _chat_run(root, "2"))
+    moved = _rule_entry(root)
+    assert moved["home"] == {"ref": second, "field": "vazn"}
+    assert moved["updated_at"] > e["updated_at"]
+    # NOTHING but the placement and the stamp moved — C1, spec §4.5: a move is
+    # not a content change, and the panel's tick is a hash of the content. The
+    # chat citation every other `edit` unions in is content too (it is the
+    # account trail a reviewer vouches for), so a placement-only patch leaves
+    # it off; the run directory's delta and `facts-before/` are the move's
+    # record.
+    assert {k: v for k, v in moved.items() if k not in ("home", "updated_at")} \
+        == {k: v for k, v in e.items() if k not in ("home", "updated_at")}
+    assert [s["type"] for s in moved["source"]] == ["voice"]
+    assert read_json(root / "facts" / ".index.json")["entries"][-1]["home"] == second
+
+
+def test_a_patch_that_also_changes_content_still_cites_the_chat(tmp_path):
+    """The exemption is the placement-ONLY patch's. One op on `statement`
+    beside the move and the entry is telling a different story, which is the
+    reviewer's to re-read and the citation's to account for."""
+    root = _root(tmp_path)
+    e, _first, second = _placed_rule(root)
+    edit(root, e["id"], _patch(root, "p.json", [
+        {"op": "set", "path": "home", "value": {"ref": second}},
+        {"op": "set", "path": "statement",
+         "value": "سقف ضایعات هر شب از روی گزارش خط محاسبه می‌شود."}]),
+        _chat_run(root, "2"))
+    assert [s["type"] for s in _rule_entry(root)["source"]] == ["voice", "chat"]
+
+
+def test_edit_detaches_an_entry(tmp_path):
+    root = _root(tmp_path)
+    e, _first, _second = _placed_rule(root)
+    edit(root, e["id"], _patch(root, "p.json", [{"op": "unset", "path": "home"}]),
+         _chat_run(root, "2"))
+    assert _rule_entry(root).get("home") is None
+    assert next(r for r in read_json(root / "facts" / ".index.json")["entries"]
+                if r["id"] == e["id"])["home"] is None
+
+
+def test_unset_home_on_an_entry_that_never_had_one_is_a_no_op_success(tmp_path):
+    """Every entry written before 2026-09-16 carries no `home` key at all, and
+    «از جدولش جدا کن» over one of those used to be refused with `op 1 unset
+    home: not found ('home')` — the playbook's detach case failing on exactly
+    the entries that most need it. The op removes nothing and succeeds; the
+    decision is still recorded (`home_detached`)."""
+    root = _root(tmp_path)
+    _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    e = _rule_entry(root)
+    assert "home" not in e
+    report = edit(root, e["id"], _patch(root, "p.json",
+                  [{"op": "unset", "path": "home"}]), _chat_run(root, "2"))
+    assert report["problems"] == []
+    after = _rule_entry(root)
+    assert after.get("home") is None and after["home_detached"] is True
+
+
+def test_unset_home_marks_the_detach_and_set_home_clears_it(tmp_path):
+    """I2 — a person's detach is a decision the next run honours, so `edit`
+    leaves the marker `ladder.merge_home` reads. A later move is a NEW
+    decision about the same question and replaces it."""
+    root = _root(tmp_path)
+    e, first, _second = _placed_rule(root)
+    edit(root, e["id"], _patch(root, "p.json", [{"op": "unset", "path": "home"}]),
+         _chat_run(root, "2"))
+    assert _rule_entry(root)["home_detached"] is True
+    edit(root, e["id"], _patch(root, "p2.json",
+         [{"op": "set", "path": "home", "value": {"ref": first}}]),
+         _chat_run(root, "3"))
+    back = _rule_entry(root)
+    assert back["home"] == {"ref": first} and "home_detached" not in back
+
+
+def test_edit_refuses_a_home_that_is_not_a_table(tmp_path, capsys):
+    root = _root(tmp_path)
+    e, _first, _second = _placed_rule(root)
+    before = _five(root)
+    for value, line in ((e["id"], f"home: {e['id']} is not a record"),
+                        ("F-09999", "home: F-09999 names no entry")):
+        with pytest.raises(SystemExit) as exc:
+            edit(root, e["id"], _patch(root, "p.json",
+                 [{"op": "set", "path": "home", "value": {"ref": value}}]),
+                 _chat_run(root, f"r{value}"))
+        assert exc.value.code == 2
+        assert line in capsys.readouterr().err
+    assert _five(root) == before
+
+
+def test_a_table_has_no_home(tmp_path, capsys):
+    root = _root(tmp_path)
+    _e, first, second = _placed_rule(root)
+    with pytest.raises(SystemExit):
+        edit(root, first, _patch(root, "p.json",
+             [{"op": "set", "path": "home", "value": {"ref": second}}]),
+             _chat_run(root, "3"))
+    assert "home: a table has no home" in capsys.readouterr().err

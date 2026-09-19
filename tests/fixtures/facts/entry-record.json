@@ -31,7 +31,7 @@
     "header_fields": [ { "key": "date", "title": "تاریخ" }, { "key": "operator", "title": "نام متصدی" } ],
     "fields": [
       { "key": "row_no", "title": "ردیف", "type": "integer" },
-      { "key": "item", "title": "نام کالا", "type": "string", "refItems": { "namespace": "##", "resolved_by": "title" } },
+      { "key": "item", "title": "نام کالا", "type": "string" },
       { "key": "start_stock", "title": "مانده اول شب", "type": "number", "unit": null, "filled_by": "مسئول واحد" },
       { "key": "received", "title": "درخواست دریافتی", "type": "number", "unit": null,
         "constraints": { "readOnly": true }, "description": "خانه‌ی سایه‌دار — «چیزی ننویسید»" },

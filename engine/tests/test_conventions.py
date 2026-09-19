@@ -82,7 +82,6 @@ def test_a_declared_namespace_replaces_the_hash_codes(tmp_path):
     assert conventions.code_key("@12") == "sku_12"
     assert conventions.code_slug("@12") == "sku12"
     assert conventions.code_in_cell["@"].search("پنیر @12")
-    assert conventions.item_namespace == "@"
     # every other member is still the default: a manifest declares what it
     # differs in, never the whole object.
     assert conventions.table_prefix == "Table_"

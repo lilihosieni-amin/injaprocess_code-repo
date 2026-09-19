@@ -98,8 +98,10 @@ entries lack it, and the panel is organised by kind rather than by table.
   the index (title, aliases, id), show the owner the one-line plan in Persian, and apply on «بله».
   Ambiguous names are asked back with lettered choices, as the playbook already does.
 
-### 4.4 The panel (data pages unchanged)
-- The facts list pages stay as they are.
+### 4.4 The panel
+- The facts list pages keep their shape (filters, search, columns) and list the records and the
+  entries that belong under no table; a rule, measurement or note with a `home` is listed on its
+  table's page and not in the list (owner ruling 2 as revised on 2026-09-16 after the first run).
 - A record's page gains three sections after its own cards: «قواعد این جدول», «اندازه‌گیری‌های این
   جدول», «یادداشت‌های این جدول» — each a list of the entries whose `home` is this record (and, for a
   note, whose `about` names it and whose `home` is empty), each row showing title, tick state and
@@ -150,5 +152,8 @@ entries lack it, and the panel is organised by kind rather than by table.
    recorded as a note on the entry **and mentioned in the owner's chat message** (the report names
    the entry and the table the run would have put it under).
 2. Unattached entries have no separate list: they stay in the facts list pages exactly as today; only
-   the entry's page says «بدون جدول». The report's «بدون جدول» block stays.
+   the entry's page says «بدون جدول». The report's «بدون جدول» block stays. **Revised later the
+   same day, after the owner saw the first run in the panel:** an entry that has a table leaves
+   the facts list — it is read on its table's page only; the list keeps the records and the
+   unattached entries.
 3. A note that mentions two tables is listed under the first it names, unless the unit set `home`.

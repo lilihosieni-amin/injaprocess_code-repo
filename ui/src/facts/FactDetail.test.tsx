@@ -166,3 +166,46 @@ describe('the fact detail screen', () => {
     expect(screen.queryByText('چه چیزهایی لازم دارد')).toBeNull()
   })
 })
+
+/**
+ * «جدول: …» — the home line a rule, a measurement and a note carry since
+ * 2026-09-16 («tables as the spine»). `home` is the store's ordinary `{ref}`
+ * shape, so it reaches the bundle's `resolved` map like every other reference
+ * and takes that map's rules: a target that is gone has no entry, a retired one
+ * says so, and one the caller may not open is «خارج از دسترسی شما» with no press.
+ */
+const HOMED = (
+  home: { ref: string; field?: string } | null,
+  over: Partial<FactBundle> = {},
+) => bundleOf('rule', { inputs: [], outputs: [] }, {
+  resolved: { 'F-00011': { kind: 'record', title: 'مانده شب فرنگی و برگر' } },
+  ...over,
+}, { id: 'F-00042', kind: 'rule', title: 'سقف ضایعات', home })
+
+describe('the table an entry belongs to', () => {
+  it('names the table and opens it', async () => {
+    draw(HOMED({ ref: 'F-00011' }))
+    const link = screen.getByRole('button', { name: 'جدول: مانده شب فرنگی و برگر' })
+    await userEvent.click(link)
+    expect(navigate).toHaveBeenCalledWith('/facts/F-00011')
+  })
+
+  it('says «بدون جدول» for an entry nothing placed', () => {
+    draw(HOMED(null))
+    expect(screen.getByText('بدون جدول')).toBeInTheDocument()
+  })
+
+  it('says «جدول بازنشسته» when the table it names is retired', () => {
+    draw(HOMED({ ref: 'F-00011' }, {
+      resolved: { 'F-00011': { kind: 'record', title: 'مانده شب فرنگی و برگر', retired: true } },
+    }))
+    expect(screen.getByText('جدول بازنشسته')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /مانده شب/ })).toBeNull()
+  })
+
+  it('draws no home line on a table’s own page', () => {
+    draw(PAPER)
+    expect(screen.queryByText('بدون جدول')).toBeNull()
+    expect(screen.queryByText(/^جدول: /)).toBeNull()
+  })
+})

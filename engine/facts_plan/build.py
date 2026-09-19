@@ -10,7 +10,6 @@ must come out as a **parameter**, so one concept is one entry with many
 bindings (QF-47) instead of one entry per cell.
 """
 import collections
-import copy
 import functools
 import hashlib
 import json
@@ -232,7 +231,7 @@ def normalise(formula, *, table_refs, conventions=DEFAULT_CONVENTIONS):
 
 
 # --------------------------------------------------------------------------
-# the candidates: record templates, their reference rows, and the items
+# the candidates: record templates and their reference rows
 
 # `formulas.tsv`'s columns, in the order `dump_workbook._formula_rows` writes
 # them — `_tsv` hands a row back as a dict, and `is_mirror_tab` reads the list.
@@ -307,8 +306,8 @@ def strip_branch(name, conventions=DEFAULT_CONVENTIONS):
 
 def code_key(code, conventions=DEFAULT_CONVENTIONS):
     """`##1` → `ing_1` through the estate's namespaces (§3.1). A store key is
-    ASCII and matches `SEGMENT_RE`; `#` does not (QF-32), so the code itself
-    lives in `item.data.code` and this is what a row is keyed by."""
+    ASCII and matches `SEGMENT_RE`; `#` does not (QF-32), so this is what a
+    reference tab's row is keyed by."""
     return conventions.code_key(code)
 
 
@@ -683,45 +682,6 @@ def record_templates(estate, department, conventions=DEFAULT_CONVENTIONS):
     return candidates, instances, issues
 
 
-def item_candidates(estate, department, instances,
-                    conventions=DEFAULT_CONVENTIONS):
-    """One per distinct code across the department's header rows, its row labels
-    and its reference rows' key column. Labels are ordered by how many instances
-    carry each, so the unit's first choice is the estate's."""
-    seen = collections.defaultdict(lambda: (collections.Counter(), []))
-    for inst in instances:
-        dump = estate[inst["spreadsheetId"]]
-        sheet = dump["sheets"][inst["sheet"]]
-        header = sheet["head"][sheet["header_row"] - 1]
-        cells = [(_letters(col), fold(cell))
-                 for col, cell in enumerate(header, start=1)]
-        label_col = _label_column(sheet)
-        cells += [(_letters(label_col), fold(text))
-                  for text in (sheet.get("row_labels") or {}).values()
-                  if label_col]
-        cells += [(None, fold(str(v))) for line in dump["rows"]
-                  if line.get("sheet") == inst["sheet"] for v in line.values()]
-        for letter, text in cells:
-            for code in conventions.code_in_text.findall(text):
-                labels, sites = seen[code]
-                labels[fold(text.replace(code, ""))] += 1
-                if letter and (inst["key"], letter) not in sites:
-                    sites.append((inst["key"], letter))
-    out = []
-    for code in sorted(seen, key=lambda c: (len(conventions.split_code(c)[0]),
-                                            int(conventions.split_code(c)[1]))):
-        labels, sites = seen[code]
-        namespace, digits = conventions.split_code(code)
-        out.append({"id": _sid("i", "item", namespace, digits),
-                    "kind": "item", "unit": None,
-                    "payload": {"code": code},
-                    "render": {"labels": [t for t, _ in
-                                          sorted(labels.items(),
-                                                 key=lambda p: (-p[1], p[0])) if t],
-                               "sites": sites}})
-    return out
-
-
 # --------------------------------------------------------------------------
 # the candidates: rule columns — one per output header, with their variants,
 # their bindings and the exclusions (§2.3)
@@ -762,10 +722,6 @@ def _table_reader_re(prefix):
     alternative, never an empty one that matches everywhere."""
     return re.compile((f"{re.escape(prefix)}|" if prefix else "")
                       + _TABLE_READER)
-
-
-# §2.3: the estate names a row's ingredient exactly once, as this LET local.
-ITEM_PARAM = "ingredientId"
 
 
 def _bodies(estate):
@@ -896,12 +852,6 @@ def rule_columns(estate, department, templates, instances, table_functions,
                                               conventions=conventions)))
             except ValueError:      # a LET binding one name twice: no shape
                 shaped.append((row, None))
-        items = {}
-        for row, shape in shaped:
-            if shape and ITEM_PARAM in shape.params:
-                for number in _rows_of(row["range"]):
-                    items.setdefault(number, {})[_column_of(row["range"])] = \
-                        conventions.item_namespace + str(shape.params[ITEM_PARAM])
         for row, shape in shaped:
             letter = _column_of(row["range"])
             title = titles.get(letter, "")
@@ -920,11 +870,11 @@ def rule_columns(estate, department, templates, instances, table_functions,
                                      error=_REBOUND))
                 continue
             columns[title].append((inst, row, shape, letter,
-                                   _rows_of(row["range"]), labels, items))
+                                   _rows_of(row["range"]), labels))
     candidates = []
     for title in sorted(columns):
         bindings, variants, blocks = [], [], []
-        for inst, row, shape, letter, rows, labels, items in columns[title]:
+        for inst, row, shape, letter, rows, labels in columns[title]:
             error = (row.get("error") or "").strip()
             span = f"{inst['sheet']}!{letter}"
             if error in _BROKEN:
@@ -969,9 +919,7 @@ def rule_columns(estate, department, templates, instances, table_functions,
                 "variant": variant["key"], "range": row["range"],
                 "params": params,
                 "rows": [{"key": f"r{n}", "row": n,
-                          "label": labels.get(str(n)),
-                          "item": next((items.get(n, {})[c] for c in
-                                        sorted(items.get(n, {}))), None)}
+                          "label": labels.get(str(n))}
                          for n in rows] if labels else []})
         if not bindings:
             continue
@@ -1341,11 +1289,11 @@ def rank(rows, tokens, cap, text):
     return [row for _, row in scored[:cap]]
 
 
-def reuse_slice(own, index, item_units, department, tokens, cap=40):
-    """This run's own record and item candidates first, unranked, then the
-    store's open entries in this department or the universal scope, ranked and
-    capped. The unit reuses a key off these lines or mints a new one; it never
-    searches (§2.4)."""
+def reuse_slice(own, index, department, tokens, cap=40):
+    """This run's own record candidates first, unranked, then the store's open
+    entries in this department or the universal scope, ranked and capped. The
+    unit reuses a key off these lines or mints a new one; it never searches
+    (§2.4)."""
     lines = [f'{c["id"]} · {c["kind"]} · {c["label"]}' for c in own]
     rows = sorted((r for r in index
                    if not r.get("retired")
@@ -1357,7 +1305,7 @@ def reuse_slice(own, index, item_units, department, tokens, cap=40):
                                        + (r.get("aliases") or []))):
         lines.append(" · ".join(x for x in [
             row["id"], row["kind"], row["key"], row["title"],
-            "، ".join(row.get("aliases") or []), item_units.get(row["id"])] if x))
+            "، ".join(row.get("aliases") or [])] if x))
     return lines
 
 
@@ -1465,16 +1413,16 @@ def write_skeleton(run_dir, department, run, symbols, candidates, instances,
 
 IN_BUDGET, OUT_BUDGET = 50000, 20000    # owner 2026-09-15: core 50K; output stays the binding cap
 MAX_LINES, MAX_LINE = 4500, 1900
-EST_OUT = {"item": 120, "rule": 250, "script": 250}
+EST_OUT = {"rule": 250, "script": 250}
 
-#: §3's phase 1 reads the forms — the workbooks, the items and the photographed
-#: paper — with the meeting passages about each beside it; phase 2 reads the
+#: §3's phase 1 reads the forms — the workbooks and the photographed paper —
+#: with the meeting passages about each beside it; phase 2 reads the
 #: transcripts knowing what phase 1 recorded.
 TALK_BUDGET, RECORDED_BUDGET = 80000, 20000
 TALK_WINDOW, TALK_STEP = 40, 20
 TALK_HEADING = "## گفت‌وگوهای مرتبط"
 RECORDED_HEADING = "## آنچه تا کنون ثبت شده"
-PHASE_OF = {"workbook": 1, "items": 1, "attachment": 1, "transcript": 2}
+PHASE_OF = {"workbook": 1, "attachment": 1, "transcript": 2}
 
 
 def group_key(row, conventions=DEFAULT_CONVENTIONS):
@@ -1552,21 +1500,18 @@ def est_tokens_out(candidates, est_tokens_in, is_transcript):
 def _view(candidate):
     """A candidate's `payload` laid over its `render` extras. The payload is
     exactly the mechanical `data` subset §2.5 leaves to the engine, so a rule's
-    output header and variants and an item's labels live in `render` — only
-    `input.md` needs them. Everything that reads one candidate *as a person
-    sees it* wants the two merged, the payload winning."""
+    output header and variants live in `render` — only `input.md` needs them.
+    Everything that reads one candidate *as a person sees it* wants the two
+    merged, the payload winning."""
     return {**(candidate.get("render") or {}), **candidate["payload"]}
 
 
 def label_of(candidate):
     """The candidate as a person reads it in a list — a record by its tab, a
-    rule by the column header it computes, an item by its code."""
+    rule by the column header it computes."""
     payload = _view(candidate)
     if candidate["kind"] == "record":
         return (payload.get("instances") or [{}])[0].get("sheet", "")
-    if candidate["kind"] == "item":
-        return f'{payload.get("code", "")} ' \
-               f'{(payload.get("labels") or [""])[0]}'.strip()
     return payload.get("output") or payload.get("name") or ""
 
 
@@ -1580,12 +1525,6 @@ def candidate_instances(candidate):
             for m in payload.get("applies_to") or []]
 
 
-def _code_slug(code, conventions=DEFAULT_CONVENTIONS):
-    """`##1` → `ing1`, `#1` → `food1` — a unit id becomes a directory name and a
-    log line, and `#` belongs in neither."""
-    return conventions.code_slug(code)
-
-
 def fits(unit, text):
     lines = text.split("\n")
     return (estimate_tokens(text) <= IN_BUDGET
@@ -1595,8 +1534,8 @@ def fits(unit, text):
 
 def _axis_parts(unit, skeleton, conventions=DEFAULT_CONVENTIONS):
     """`[(axis, [candidate ids])]` — the natural sub-axis of a unit over
-    budget: a workbook by the tab its candidates sit on, items by half their
-    code range, a transcript by half its line range."""
+    budget: a workbook by the tab its candidates sit on, a transcript by half
+    its line range."""
     by_id = {c["id"]: c for c in skeleton["candidates"]}
     if unit["type"] == "workbook":
         sheet_of = {i["key"]: i["sheetId"] for i in skeleton["instances"]}
@@ -1606,13 +1545,6 @@ def _axis_parts(unit, skeleton, conventions=DEFAULT_CONVENTIONS):
             axis = f's{min((sheet_of.get(k, 0) for k in keys), default=0)}'
             parts.setdefault(axis, []).append(cid)
         return sorted(parts.items())
-    if unit["type"] == "items":
-        ids = sorted(unit["candidates"])
-        half = len(ids) // 2
-        if not half:
-            return []
-        return [(_code_slug(by_id[part[0]]["payload"]["code"], conventions),
-                 part) for part in (ids[:half], ids[half:])]
     if "#" not in (unit["inputs"] or [""])[0]:
         return []
     first, last = (int(n[1:]) for n in
@@ -1679,8 +1611,6 @@ def split_unit(unit, skeleton, render, conventions=DEFAULT_CONVENTIONS):
     for axis, members in parts:
         if unit["type"] == "workbook":
             part = dict(unit, id=f'{unit["id"]}-{axis}', candidates=members)
-        elif unit["type"] == "items":
-            part = dict(unit, id=f"u-items-{axis}", candidates=members)
         else:
             head = unit["id"].rsplit("-l", 1)[0]
             part = dict(unit, id=f"{head}-{axis}", inputs=members)
@@ -1694,16 +1624,16 @@ def split_unit(unit, skeleton, render, conventions=DEFAULT_CONVENTIONS):
     return out
 
 
-def plan_units(skeleton, groups, chunks, items, attachments,
+def plan_units(skeleton, groups, chunks, attachments,
                render=lambda u: "", conventions=DEFAULT_CONVENTIONS):
     """`plan.json`'s `units[]` (§2.3) and, as a side effect, each candidate's
     `unit` — the two have to agree, so one function writes both.
 
-    `chunks` is `[(recording, path, (first, last), text)]`, `items` the item
-    candidate ids in code order, `attachments` the cached `.text`/`.md` paths;
-    they become `attachment` units of their own (`u-att-1`, … in input order),
-    packed to the budget. Until 2026-09-13 they rode on the last transcript
-    unit, and when that unit split on its line range every one of them was
+    `chunks` is `[(recording, path, (first, last), text)]` and `attachments`
+    the cached `.text`/`.md` paths; they become `attachment` units of their own
+    (`u-att-1`, … in input order), packed to the budget. Until 2026-09-13
+    they rode on the last transcript unit, and when that unit split on its
+    line range every one of them was
     dropped: 13 form photos of the preparation run reached no unit (F4).
     """
     by_id = {c["id"]: c for c in skeleton["candidates"]}
@@ -1769,12 +1699,6 @@ def plan_units(skeleton, groups, chunks, items, attachments,
                       "inputs": [f"{path}#L{first}-L{last}"], "candidates": [],
                       "nodes": [], "est_tokens_in": estimate_tokens(text),
                       "est_tokens_out": 0})
-    if items:
-        slug = _code_slug(by_id[items[0]]["payload"]["code"], conventions)
-        units.append({"id": f"u-items-{slug}", "type": "items",
-                      "phase": PHASE_OF["items"], "inputs": [],
-                      "candidates": list(items),
-                      "nodes": [], "est_tokens_in": 0, "est_tokens_out": 0})
     packed = None
     for path in attachments:
         # A file joins the unit before it while the two still fit; one too big
@@ -1840,11 +1764,21 @@ def plan_units(skeleton, groups, chunks, items, attachments,
     return out
 
 
+#: The date of the contract this engine plans against. A constant, stamped
+#: into every `plan.json` it writes, so `assemble` can tell a run built by
+#: THIS engine from a run that was sitting on disk before the contract
+#: changed — the only question the tolerance for old runs has to answer
+#: (2026-09-16 I1). Deterministic: it moves when the contract moves, never
+#: with the clock.
+PLAN_CONTRACT = "2026-09-16"
+
+
 def write_plan(run_dir, department, hashes, units):
     """`plan.json` — immutable build output: ids, budgets, and the digests
     `status` re-checks to report `plan_stale`."""
     path = pathlib.Path(run_dir) / "plan.json"
-    write_json_atomic(path, {"schema_version": 1, "department": department,
+    write_json_atomic(path, {"schema_version": 1, "contract": PLAN_CONTRACT,
+                             "department": department,
                              "hashes": hashes, "units": units})
     return path
 
@@ -1904,19 +1838,18 @@ def cards():
 # a release, so this is generated and the test holds it to the schema.
 
 #: The `$defs` name of each kind's payload, in the order the card prints them.
-KIND_DATA = {"item": "itemData", "record": "recordData",
-             "measurement": "measurementData", "rule": "ruleData",
-             "note": "noteData"}
+KIND_DATA = {"record": "recordData", "measurement": "measurementData",
+             "rule": "ruleData", "note": "noteData"}
 
 #: The Persian word for each kind — the section headings are read by a model
 #: writing Persian prose, so the heading names the thing in both languages.
-KIND_FA = {"item": "قلم", "record": "جدول یا فرم", "measurement": "اندازه‌گیری",
+KIND_FA = {"record": "جدول یا فرم", "measurement": "اندازه‌گیری",
            "rule": "قاعده", "note": "یادداشت"}
 
 #: Every kind a unit may write. §2.5's `new[]` row restricts no unit to a kind
-#: — the frozen `u-wb-fried.json` mints two `place` items from a workbook unit —
-#: so every unit is shown all five.
-WRITABLE_KINDS = ("item", "record", "measurement", "rule", "note")
+#: — a workbook unit mints the paper form a meeting described — so every unit is
+#: shown all four.
+WRITABLE_KINDS = ("record", "measurement", "rule", "note")
 
 #: `$defs` that are one line wherever they appear. Spelling `ref` out at each of
 #: its twenty sites tripled the card and taught nothing the first site did not.
@@ -2022,16 +1955,14 @@ def _location_lines(record, indent):
 
 
 #: What the schema shows the *shape* of but never the content of, one sentence
-#: per kind (§3.3). The first run typed a column of ingredient names as
-#: `refItems`, which asks the gate to resolve every cell as an item: about a
+#: per kind (§3.3). The first run typed a column of ingredient names as a
+#: column of references, which asks the gate to resolve every cell: about a
 #: thousand cells refused and the unit dead at the cap.
-#: `{namespace}` is the estate's own item-code namespace (§3.1): a card for a
-#: new estate names the codes that estate's sheets actually carry.
 KIND_NOTE = {
-    "record": "ستونی که خانه‌هایش نام هستند `type: string` است؛ `refItems` فقط "
-              "برای خانه‌هایی است که کد `{namespace}` فهرست اقلام یا کلید یک "
-              "قلم را دارند.",
-    "rule": "`per` در خروجی یک قاعده کلید یک قلم است، نه یک نام. "
+    "record": "ستونی که خانه‌هایش نام هستند `type: string` است؛ هر ستون دیگری "
+              "هم با همان چیزی که در خانه‌ها نوشته می‌شود نوع می‌گیرد.",
+    "rule": "`per` در خروجی یک قاعده می‌گوید این عدد به ازای چیست و یک عبارت "
+            "کوتاه است، نه یک ارجاع. "
             "چهار شکل قاعده پذیرفته می‌شود: فرمول — `lang: feel` با `expr` و "
             "`inputs[]`؛ عدد ثابت — `inputs: []`، بدون `expr`، و هر خروجی با "
             "`value` یا `range`؛ سیاست بی‌فرمول — `lang: text`، `inputs[]` را "
@@ -2042,13 +1973,35 @@ KIND_NOTE = {
             "`nature: standard` یعنی عدد ثابت و `value` یا `range` می‌خواهد."}
 
 
+#: A fact lives on a table (agent §«A fact lives on a table»). `home` is a
+#: sibling of `data`, so the generated block below never showed it, and the
+#: 2026-09-16 run wrote it on 0 of 120 new rules, measurements and notes — the
+#: unit writes what its card prints. One line per homed kind, at the head of
+#: the kind's own card.
+HOME_LINE = (
+    '`home` کنار `data` می‌آید: `{"ref": "<handle>", "field"?: "<column key>"}` '
+    "— جدولی که این نوشته دربارهٔ آن یا روی آن است، با شناسه‌ای که همین ورودی "
+    "چاپ کرده: `S-…` از «نامزدها» یا «آنچه تا کنون ثبت شده»، `F-…` از همان "
+    "فهرست، یا `N-<این واحد>-<n>` برای جدولی که همین واحد در `new[]` می‌سازد "
+    "(`n` از صفر). `field` فقط برای یک ستون آن جدول، با کلید چاپ‌شده. اگر هیچ "
+    "جدول فهرست‌شده‌ای جا نبود، `home` را ننویس و در یک عبارت از `statement` "
+    "بگو چرا. رکورد `home` ندارد.")
+
+KIND_HOME = {
+    "measurement": HOME_LINE + " اندازه‌گیری‌ای که در واقع یک ستون از یک فرم "
+                   "فهرست‌شده است، یک اندازه‌گیری با `home.field` است، نه یک "
+                   "جدول تازه.",
+    "rule": HOME_LINE + " `home` یک فرمول، جدولی است که نخستین عضو "
+            "`applies_to` آن نام می‌برد.",
+    "note": HOME_LINE}
+
+
 #: Four `new[]` entries a unit can copy — a paper form (the case the first run
 #: had no shape for), a measurement, a rule reading its parameters, and a
 #: decision table (whose row shape the schema cannot state, §4/I8). A test
 #: validates all four against `facts-delta.schema.json`, so an example the
-#: schema would refuse cannot ship. The one estate-specific leaf, the item-code
-#: namespace of the paper form's column, is rendered per estate by
-#: `_with_namespace` — the card is the one place a unit copies a shape from.
+#: schema would refuse cannot ship — the card is the one place a unit copies a
+#: shape from.
 EXAMPLES = [
     {"kind": "record", "key": "form_tahvil_anbar",
      "title": "فرم تحویل کالا از انبار",
@@ -2061,9 +2014,7 @@ EXAMPLES = [
               "blank_master": True,
               "fields": [
                   {"key": "tarikh", "title": "تاریخ", "type": "date"},
-                  {"key": "qalam", "title": "نام کالا", "type": "string",
-                   "refItems": {"namespace": DEFAULT_CONVENTIONS.item_namespace,
-                                "resolved_by": "title"}},
+                  {"key": "qalam", "title": "نام کالا", "type": "string"},
                   {"key": "meqdar", "title": "مقدار", "type": "number",
                    "unit": "kg"},
                   {"key": "tahvil_girande", "title": "تحویل‌گیرنده",
@@ -2072,7 +2023,7 @@ EXAMPLES = [
                              {"role": "سرپرست آشپزخانه"}],
               "primaryKey": ["tarikh", "qalam"]}},
     {"kind": "measurement", "key": "vazn_morgh_vorudi",
-     "title": "وزن مرغ ورودی",
+     "title": "وزن مرغ ورودی", "home": {"ref": "N-…-0", "field": "meqdar"},
      "statement": "وزن هر محموله مرغ هنگام تحویل با ترازوی انبار اندازه گرفته "
                   "می‌شود و در فرم تحویل ثبت می‌شود.",
      "data": {"quantity": "mass", "unit": "kg",
@@ -2081,7 +2032,7 @@ EXAMPLES = [
               "exceptions": "محموله‌های بسته‌بندی‌شده با وزن چاپی دوباره وزن "
                             "نمی‌شوند."}},
     {"kind": "rule", "key": "enheraf_ba_tolerance",
-     "title": "انحراف مصرف با تلورانس",
+     "title": "انحراف مصرف با تلورانس", "home": {"ref": "S-rec-…"},
      "statement": "انحراف مصرف هر ماده اولیه پس از کسر تلورانس مجاز به دست "
                   "می‌آید؛ مقدار مثبت یعنی مصرف بیش از انتظار بوده است.",
      "data": {"lang": "feel",
@@ -2096,7 +2047,7 @@ EXAMPLES = [
                            "title": "انحراف با تلورانس", "unit": "kg",
                            "nature": "observed"}]}},
     {"kind": "rule", "key": "mabnaye_sabt_mande",
-     "title": "مبنای ثبت ماندهٔ پایان شب",
+     "title": "مبنای ثبت ماندهٔ پایان شب", "home": {"ref": "S-rec-…"},
      "statement": "مبنای ثبت ماندهٔ پایان شب برای هر گروه از اقلام متفاوت است: "
                   "گروهی با وزن و گروهی با تعداد ثبت می‌شوند.",
      "data": {"lang": "table", "expr": None,
@@ -2109,17 +2060,6 @@ EXAMPLES = [
                                   "mabnaye_sabt": "فقط وزن"},
                                  {"goruh_qalam": "نوشیدنی‌های کانتر",
                                   "mabnaye_sabt": "تعداد"}]}}}]
-
-
-def _with_namespace(example, conventions):
-    """The example as this estate reads it: `refItems.namespace` is the
-    estate's own item-code namespace (§3.1), the way `KIND_NOTE` already
-    renders it. Everything else in `EXAMPLES` is estate-neutral."""
-    example = copy.deepcopy(example)
-    for field in example["data"].get("fields") or []:
-        if isinstance(field.get("refItems"), dict):
-            field["refItems"]["namespace"] = conventions.item_namespace
-    return example
 
 
 def shape_card(kinds, schema, conventions=DEFAULT_CONVENTIONS):
@@ -2144,12 +2084,13 @@ def shape_card(kinds, schema, conventions=DEFAULT_CONVENTIONS):
             continue
         data = defs[data_def]
         out += [f"## {kind} — data ({KIND_FA[kind]})", ""]
+        if kind in KIND_HOME:
+            out += [KIND_HOME[kind], ""]
         out += _block(data, defs, "", {data_def})
         if kind == "record":
             out += [""] + _location_lines(data, "")
         if kind in KIND_NOTE:
-            out += ["", KIND_NOTE[kind].format(
-                namespace=conventions.item_namespace)]
+            out += ["", KIND_NOTE[kind]]
         out.append("")
     # The artefact rule the prose lint enforces (`artefact_re`), in the
     # estate's own terms: the unit prompt points here for the table prefix,
@@ -2164,9 +2105,7 @@ def shape_card(kinds, schema, conventions=DEFAULT_CONVENTIONS):
     out += ["## نمونه‌های کامل `new[]`", ""]
     for example in EXAMPLES:
         if example["kind"] in wanted:
-            out += ["```json",
-                    json.dumps(_with_namespace(example, conventions),
-                               ensure_ascii=False, indent=2),
+            out += ["```json", json.dumps(example, ensure_ascii=False, indent=2),
                     "```", ""]
     return "\n".join(out)
 
@@ -2476,8 +2415,6 @@ def recorded_slice(entries, store_rows, budget=RECORDED_BUDGET):
                               + (f'، {f["unit"]}' if f.get("unit") else "") + ")"
                               for f in data["fields"])
             parts.append(f"ستون‌ها: {cols}")
-        elif e["kind"] == "item" and data.get("code"):
-            parts.insert(2, data["code"])
         elif e.get("statement"):
             parts.append(e["statement"][:200])
         line = " · ".join(p for p in parts if p)
@@ -2642,19 +2579,13 @@ def _unit_text(root, unit):
 
 
 def _store_slice(root):
-    """`(the index rows, {item id: its unit})` — the only two things §2.3 lets
-    `build` read off the store, and a store that does not exist yet lends
-    neither."""
-    def load(name):
-        try:
-            return read_json(pathlib.Path(root) / "facts" / name)
-        except (OSError, ValueError):
-            return {}
-    index = load(".index.json").get("entries") or []
-    units = {e["id"]: (e.get("data") or {}).get("unit")
-             for e in load("items.json").get("entries") or []
-             if (e.get("data") or {}).get("unit")}
-    return index, units
+    """The store's index rows — the only thing §2.3 lets `build` read off the
+    store, and a store that does not exist yet lends none."""
+    try:
+        index = read_json(pathlib.Path(root) / "facts" / ".index.json")
+    except (OSError, ValueError):
+        return []
+    return index.get("entries") or []
 
 
 def _field_tables(unit, skeleton):
@@ -2712,11 +2643,11 @@ def _renderer(root, department, estate, skeleton, rendered,
     already on disk, which is the only way a card added mid-run reaches a run
     whose units have started (§4).
     """
-    index, item_units = _store_slice(root)
+    index = _store_slice(root)
     nodes = process_index(root, department)
     sections = library_sections(estate)
     own = [{"id": c["id"], "kind": c["kind"], "label": label_of(c)}
-           for c in skeleton["candidates"] if c["kind"] in ("record", "item")]
+           for c in skeleton["candidates"] if c["kind"] == "record"]
     instance_by_key = {i["key"]: i for i in skeleton["instances"]}
     by_id = {c["id"]: c for c in skeleton["candidates"]}
 
@@ -2742,8 +2673,7 @@ def _renderer(root, department, estate, skeleton, rendered,
             "context": context_items(estate, sids),
             "field_tables": _field_tables(unit, skeleton),
             "reuse": (recorded if recorded is not None
-                      else reuse_slice(own, index, item_units, department,
-                                       tokens)),
+                      else reuse_slice(own, index, department, tokens)),
             "processes": [f'{n["process"]} · {n["node"]} · {n["label"]}'
                           for n in ranked]}, conventions,
             recorded=recorded is not None)
@@ -2819,9 +2749,9 @@ def _recorded_slices(root, run_dir, plan, department, units):
     entries = phase_entries(root, run_dir,
                             [u["id"] for u in plan["units"]
                              if u.get("phase", 1) == 1])
-    index, item_units = _store_slice(root)
+    index = _store_slice(root)
     return {u["id"]: recorded_slice(
-                entries, reuse_slice([], index, item_units, department,
+                entries, reuse_slice([], index, department,
                                      _tokens(_unit_text(root, u))))
             for u in units}
 
@@ -2919,7 +2849,6 @@ def build(root, department, run_dir, recordings, *, rebuild=False):
     conventions = load_conventions(root)
     templates, instances, issues = record_templates(estate, department,
                                                     conventions)
-    items = item_candidates(estate, department, instances, conventions)
     rules, rule_issues = rule_columns(
         estate, department, templates, instances,
         table_reading_functions(estate, conventions), conventions)
@@ -2933,7 +2862,7 @@ def build(root, department, run_dir, recordings, *, rebuild=False):
     attachments, unread = _attachment_state(root, department)
     issues += (rule_issues + import_issues
                + reference_tab_issues(estate, department) + unread)
-    candidates = templates + items + rules + scripts
+    candidates = templates + rules + scripts
     skeleton = {"unit_symbols": unit_symbols(root), "candidates": candidates,
                 "instances": instances, "imports": imports}
 
@@ -2946,8 +2875,7 @@ def build(root, department, run_dir, recordings, *, rebuild=False):
         w["short"] for w in manifest["workbooks"]
         if w["spreadsheetId"] in estate
         and is_reference_workbook(w, estate[w["spreadsheetId"]])], conventions),
-        chunks, [c["id"] for c in items], attachments, render=render,
-        conventions=conventions)
+        chunks, attachments, render=render, conventions=conventions)
 
     # After `plan_units`, not before: `skeleton.json`'s candidates carry the
     # unit they were planned into, and that is what `plan_units` assigns — and

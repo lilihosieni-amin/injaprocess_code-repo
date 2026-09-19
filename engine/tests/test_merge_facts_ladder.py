@@ -1,5 +1,5 @@
 import copy
-from merge_facts.ladder import merge_entry
+from merge_facts.ladder import PLACEMENT_FA, merge_entry, merge_home
 
 SRC_A = {"type": "sheet", "ref": "a.xlsx", "sheet": "پیتزا", "cell": "H6"}
 SRC_B = {"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "40"}
@@ -104,6 +104,35 @@ def test_scope_merges_leaf_by_leaf_not_as_whole_dict_blob():
     assert disputes == [("scope/branches", "dispute")]
     accounts = e.get("accounts") or []
     assert all("{'" not in a["statement"] for a in accounts)  # not a dict repr
+
+def test_an_object_field_over_words_disputes_instead_of_recursing():
+    """`of` is a ref **or the words** for what is measured (spec 2026-09-16
+    §3.2). A run that names a table for what the store holds as words offers
+    one value against another — not a member merge to walk into, which is where
+    the ladder used to die on `'str' object has no attribute 'get'`."""
+    e = _base()
+    e["kind"] = "measurement"
+    e["data"] = {"quantity": "mass", "unit": "kg", "of": "وزن مرغ"}
+    inc = copy.deepcopy(e)
+    inc["data"]["of"] = {"ref": "F-00002"}
+    changes = merge_entry(e, inc, SRC_B)
+    assert e["data"]["of"] == "وزن مرغ"                 # NEVER overwrite
+    assert ("data/of", "dispute") in changes
+    assert [a["value"] for a in e["accounts"]] == ["وزن مرغ", {"ref": "F-00002"}]
+
+
+def test_an_object_field_over_a_null_fills_it():
+    """The same guard's other half: a `null` is unknown (C10), so the object
+    that arrives fills it rather than being merged into nothing."""
+    e = _base()
+    e["kind"] = "measurement"
+    e["data"] = {"quantity": "mass", "unit": "kg", "of": None}
+    inc = copy.deepcopy(e)
+    inc["data"]["of"] = {"ref": "F-00002"}
+    changes = merge_entry(e, inc, SRC_B)
+    assert e["data"]["of"] == {"ref": "F-00002"}
+    assert ("data/of", "fill") in changes
+
 
 def test_prose_leaf_nested_in_object_field_is_never_disputed():
     # F2: PROSE_LEAVES applies by leaf name at any depth, including inside
@@ -232,3 +261,76 @@ def test_an_incoming_null_never_challenges_a_known_value():
     changes = merge_entry(e, inc, SRC_B)
     assert e == before
     assert all(action == "noop" for _, action in changes)
+
+
+# --------------------------------------------------------------------------- #
+# `home` — placement, not a fact (owner decision 1, 2026-09-16)
+# --------------------------------------------------------------------------- #
+
+def _placed(ref):
+    e = _base()
+    e["home"] = {"ref": ref} if ref else None
+    return e
+
+
+def test_a_run_never_moves_an_entry_a_person_placed():
+    existing, incoming = _placed("F-00025"), _placed("F-00031")
+    assert merge_home(existing, incoming) == "F-00031"
+    assert existing["home"] == {"ref": "F-00025"}
+    assert {"kind": "placement", "description": PLACEMENT_FA,
+            "affects": []} in existing["issues"]
+
+
+def test_an_unplaced_entry_adopts_the_runs_home():
+    existing = _placed(None)
+    assert merge_home(existing, _placed("F-00031")) is None
+    assert existing["home"] == {"ref": "F-00031"}
+    assert existing["home"] is not _placed("F-00031")["home"]   # a copy, not the delta's
+
+
+def test_the_same_home_read_twice_is_not_a_disagreement():
+    existing = _placed("F-00025")
+    assert merge_home(existing, _placed("F-00025")) is None
+    assert merge_home(existing, _placed(None)) is None
+    assert "issues" not in existing
+
+
+def test_a_run_never_re_files_an_entry_a_person_detached():
+    """I2: `edit unset home` leaves `home_detached`, and owner decision 1
+    covers the detach as it covers the move — «این قاعده به هیچ جدولی مربوط
+    نیست» is a placement a run may disagree with, never one it may overwrite.
+    The disagreement is reported: the issue on the entry, the id back to
+    `apply` for `moved-home.json`, the line in `report.md`."""
+    existing = _placed(None)
+    existing["home_detached"] = True
+    assert merge_home(existing, _placed("F-00031")) == "F-00031"
+    assert existing.get("home") is None
+    assert {"kind": "placement", "description": PLACEMENT_FA,
+            "affects": []} in existing["issues"]
+    fresh = _placed(None)
+    fresh["home_detached"] = True
+    assert ("home", "placement") in merge_entry(fresh, _placed("F-00031"), SRC_B)
+    assert fresh.get("home") is None
+
+
+def test_a_record_never_adopts_a_home():
+    """Unreachable today — both schemas forbid a record a `home` and no
+    assembly writes one — but one that somehow arrived would be adopted here
+    and only then refused by `save_store`, which is a crash instead of a
+    severed link."""
+    existing = _placed(None)
+    existing["kind"] = "record"
+    assert merge_home(existing, _placed("F-00031")) is None
+    assert existing.get("home") is None and "issues" not in existing
+
+
+def test_merge_entry_notes_the_placement_once_and_unions_an_adoption():
+    existing, incoming = _placed("F-00025"), _placed("F-00031")
+    assert ("home", "placement") in merge_entry(existing, incoming, SRC_B)
+    # a second run reading the same disagreement changes nothing: one issue,
+    # and a `noop` so the entry is not re-stamped
+    changes = merge_entry(existing, copy.deepcopy(incoming), SRC_B)
+    assert ("home", "noop") in changes and ("home", "placement") not in changes
+    assert len([i for i in existing["issues"] if i["kind"] == "placement"]) == 1
+    unplaced = _placed(None)
+    assert ("home", "union") in merge_entry(unplaced, incoming, SRC_B)

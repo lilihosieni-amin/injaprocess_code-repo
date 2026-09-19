@@ -45,7 +45,7 @@ FACT_ID_RE = re.compile(r"^F-[0-9]{5}$")
 TEMP_ID_RE = re.compile(r"^T-[0-9]+$")
 UNITS_KEY = "units"
 UNKNOWN_UNIT = "—"
-# §10: `pack` and `item.units[]` carry pack sizes, not units — "which the unit
+# §10: `pack` and `units[]` carry pack sizes, not units — "which the unit
 # check does not walk". The audit's `unit_raw` walk skips the same pair.
 PACK_KEYS = frozenset({"pack", "units"})
 
@@ -255,9 +255,8 @@ def _sever(entry, path, label, why):
 # --------------------------------------------------------------------------- #
 
 OPEN = "x-open"
-DATA_DEFS = {"item": "itemData", "record": "recordData",
-             "measurement": "measurementData", "rule": "ruleData",
-             "note": "noteData"}
+DATA_DEFS = {"record": "recordData", "measurement": "measurementData",
+             "rule": "ruleData", "note": "noteData"}
 _VALIDATORS = {}
 
 #: C13's fixed synonym map — applied only when the word is outside its
@@ -269,7 +268,7 @@ SYNONYMS = {"int": "integer", "float": "number", "decimal": "number",
 #: C8: a member of the wrong type here is refused, not moved — code iterates
 #: or indexes it (spec §6).
 CONTAINERS = frozenset({"data", "location", "table", "default", "movement",
-                        "constraints", "refItems", "pack", "range", "scope",
+                        "constraints", "pack", "range", "scope",
                         "field_status", "extra", "columns", "params",
                         "identifier_scheme"})
 
@@ -766,6 +765,12 @@ def reference_findings(store, by_temp, entry, label, fields=True):
         if target is None:
             dangling.append((path, f"reference {ref!r} names no entry in the store "
                                    f"or in this delta"))
+            continue
+        if path == ["home"] and target.get("kind") != "record":
+            # 2026-09-16: a home is a TABLE. The schema can say the shape but
+            # not the target's kind, so the kind is read here and a home on
+            # anything else severs like any other reference that names nothing.
+            dangling.append((path, f"reference {ref!r} is not a record"))
             continue
         if _is_stub(target) or not fields:
             continue

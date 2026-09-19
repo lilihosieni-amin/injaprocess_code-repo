@@ -10,9 +10,9 @@ the store untouched, so a pipeline that retries on exit 2 cannot double-apply.
 Idempotency (§17): `updated_at` is stamped only on the entries the run actually
 changed — any ladder action other than `noop`, a creation, or a supersession.
 Re-reading the same material yields nothing but `noop` actions, so applying one
-delta twice leaves the five files byte-identical.
+delta twice leaves the four files byte-identical.
 
-`revert` (§12) restores from `{run_dir}/facts-before/`, the snapshot of the five
+`revert` (§12) restores from `{run_dir}/facts-before/`, the snapshot of the four
 files this verb takes before it writes (once per run directory — see
 `_snapshot`'s own docstring); the run directory is the provenance (QF-7) and
 also keeps `facts-delta.json`, `id-map.json`, and `adopted.json` — the ids of
@@ -30,7 +30,7 @@ the now-already-written store and silently erase the first call's true
 record — every entry would now read as a hit, not a miss, and an
 already-adopted stub has nothing left to adopt.
 
-ponytail: five shared files, one writer, no lock. If concurrency ever becomes
+ponytail: four shared files, one writer, no lock. If concurrency ever becomes
 real, shard by a hash of the key (`facts/{kind}/{NN}.json`) so one key always
 lands in one file — never by department, which would reinstate the silent
 contradiction QF-2 exists to prevent.
@@ -64,7 +64,7 @@ from merge_facts.conventions import load as load_conventions
 from merge_facts.normalise import normalise_entry
 # The precondition pass and the helpers that moved with it (v3 §4). Imported,
 # not re-declared — and re-exported by being imported.
-from merge_facts.preconditions import (FACT_ID_RE, PACK_KEYS, TEMP_ID_RE,
+from merge_facts.preconditions import (PACK_KEYS,
                                        UNITS_KEY, UNKNOWN_UNIT,
                                        _declared_fields, _declared_rows,
                                        _is_stub, _lookup,
@@ -98,6 +98,9 @@ def apply(root, delta_path, run_dir):
         print("precondition failed: a delta is an object with schema_version 2 "
               "and an entries list", file=sys.stderr)
         raise SystemExit(2)
+    if _has_item(entries):
+        print(ITEM_GONE, file=sys.stderr)
+        raise SystemExit(2)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     store, live, found, held, _ = _gate(root, entries, run_dir, now)   # 1-2
     for finding in notes(found):
@@ -115,16 +118,27 @@ def apply(root, delta_path, run_dir):
     plans, id_map, resolution = _plan(root, store, [e for _, e in live],
                                       partial(next_fact_id, root))   # 3
     _rewrite_refs([e for _, e in live], resolution)                  # 4
-    touched, adopted = _upsert(store, plans)                         # 6
+    touched, adopted, moved = _upsert(store, plans)                  # 6
     _stamp(root, store, touched, now)                                # 7
     originals = [(root / t["original_ref"], t["original"]) for t in touched
                  if t.get("original_ref")]
     _write(root, store, run_dir, delta_path, id_map, touched, adopted,
-           originals, held)                                          # 8-9
+           originals, held, moved)                                   # 8-9
     return {"created": [t["id"] for t in touched if t["changed"] and t["created"]],
             "updated": [t["id"] for t in touched
                         if t["changed"] and not t["created"]],
             "id_map": id_map}
+
+
+#: Spec 2026-09-16: the `item` kind is gone from the store. A delta still
+#: carrying one was assembled against the old contract, and merging the rest of
+#: it would write half a reading — so the whole delta is refused, before the
+#: snapshot, with this one line.
+ITEM_GONE = "facts: kind item is no longer stored (spec 2026-09-16)"
+
+
+def _has_item(entries):
+    return any(isinstance(e, dict) and e.get("kind") == "item" for e in entries)
 
 
 def _delta_entries(delta):
@@ -242,7 +256,7 @@ def _dry_run(root, store, live, now):
     label_of = {id(e): label for (label, _), e in zip(live, incoming)}
     plans, _id_map, resolution = _plan(root, store, incoming, _MemoryMinter(root))
     _rewrite_refs(incoming, resolution)
-    touched, _adopted = _upsert(store, plans)
+    touched, _adopted, _moved = _upsert(store, plans)
     _stamp(root, store, touched, now)
     refused = {}
     for _action, _match, entry, fid in plans:
@@ -336,6 +350,8 @@ def simulate(root, delta_path, run_dir, now="2026-01-01T00:00:00Z"):
     if entries is None:
         return load_store(root), [refuse("", "a delta is an object with "
                                              "schema_version 2 and an entries list")]
+    if _has_item(entries):
+        return load_store(root), [refuse("", ITEM_GONE)]
     _store, _live, found, held, after = _gate(root, entries, run_dir, now)
     return after, found + [f for fs in held.values() for f in fs]
 
@@ -348,37 +364,16 @@ def simulate(root, delta_path, run_dir, now="2026-01-01T00:00:00Z"):
 def _derive_keys(store, entries):
     """QF-32: the two keys `merge` owns, not the agent — a measurement's, and a
     record's row keys. A row key that fails the condition (a paper log's
-    `["date", "item"]`) is minted by the agent and kept as written."""
+    `["date", "sharh"]`) is minted by the agent and kept as written."""
     by_temp = {e["id"]: e for e in entries if e.get("id")}
     for e in entries:
         data = e.get("data") or {}
         if e["kind"] == "record":
-            # A refItems cell holds the target item's *key*, not a `{ref}`
-            # (QF-37's one exception) — substituted before the row keys are
-            # joined, because a primaryKey member may be such a column.
-            _substitute_ref_items(store, by_temp, data)
             _derive_row_keys(data)
         elif e["kind"] == "measurement":
             derived = _measurement_key(store, by_temp, data)
             if derived:
                 e["key"] = derived
-
-
-def _substitute_ref_items(store, by_temp, data):
-    rows = data.get("rows")
-    if not isinstance(rows, list):
-        return
-    for field in data.get("fields") or []:
-        if not (isinstance(field, dict) and field.get("refItems")):
-            continue
-        name = field.get("key")
-        for row in rows:
-            cell = row.get(name) if isinstance(row, dict) else None
-            if isinstance(cell, str) and (TEMP_ID_RE.fullmatch(cell)
-                                          or FACT_ID_RE.fullmatch(cell)):
-                target = _lookup(store, by_temp, cell)
-                if target is not None:
-                    row[name] = target["key"]
 
 
 def _derive_row_keys(data):
@@ -425,11 +420,11 @@ def _measurement_key(store, by_temp, data):
     if not (isinstance(of, dict) and isinstance(writes_to, dict)
             and writes_to.get("field")):
         return None
-    item = _lookup(store, by_temp, of.get("ref"))
+    of_entry = _lookup(store, by_temp, of.get("ref"))
     record = _lookup(store, by_temp, writes_to.get("ref"))
-    if item is None or record is None:
+    if of_entry is None or record is None:
         return None
-    return f"{item['key']}__{record['key']}__{writes_to['field']}"
+    return f"{of_entry['key']}__{record['key']}__{writes_to['field']}"
 
 
 # --------------------------------------------------------------------------- #
@@ -578,9 +573,9 @@ def _plan(root, store, entries, minter):
 
 
 def _rewrite_refs(entries, resolution):
-    """Second pass: every `{ref}` holding a temp id becomes the real one. The
-    `refItems` cells were substituted in `_derive_keys`, where the row keys that
-    may be joined out of them are derived."""
+    """Second pass: every `{ref}` holding a temp id becomes the real one —
+    `home` among them, so a delta may place an entry under a table it creates
+    in the same run."""
     for entry in entries:
         for obj in iter_ref_objects(entry):
             ref = obj.get("ref")
@@ -665,13 +660,15 @@ def _successor(match, incoming, fid):
 
 
 def _upsert(store, plans):
-    """Create, merge or supersede. Returns `(touched, adopted)`: one record
+    """Create, merge or supersede. Returns `(touched, adopted, moved)`: one record
     per touched entry — the `original` payload rides along to `_stamp`,
     lifted out of the incoming entry before the ladder could install it
     inline (QF-31) — and `adopted`, the ids of every workbook stub (QF-20)
     this run adopted, which `_write` writes to `{run_dir}/adopted.json`
-    so `revert` can refuse an adoption without ever re-deriving it."""
-    touched, adopted = [], []
+    so `revert` can refuse an adoption without ever re-deriving it — and
+    `moved`, one row per entry this run would have placed under another table
+    and did not (owner decision 1, 2026-09-16), for `moved-home.json`."""
+    touched, adopted, moved = [], [], []
     for action, match, incoming, fid in plans:
         original = (incoming.get("data") or {}).pop("original", None)
         if action == "create":
@@ -707,6 +704,13 @@ def _upsert(store, plans):
             _strip_stub_markers(incoming)
             changes = merge_entry(match, incoming, _first_source(incoming))
             changed = filled or any(act != "noop" for _, act in changes)
+            if any(path == "home" and act != "union" for path, act in changes):
+                moved.append({"id": fid, "title": match["title"],
+                              # `null` when the person DETACHED it: there is
+                              # no stored table to name, and the report's line
+                              # names the run's one either way (I2).
+                              "stored": (match.get("home") or {}).get("ref"),
+                              "seen": incoming["home"]["ref"]})
         if _recompute_location(entry):
             changed = True
         touched.append({"entry": entry, "id": fid,
@@ -720,11 +724,11 @@ def _upsert(store, plans):
             if id(m) not in known:
                 touched.append({"entry": m, "id": m["id"], "created": False,
                                 "changed": True, "original": None})
-    return touched, adopted
+    return touched, adopted, sorted(moved, key=lambda m: m["id"])
 
 
 # --------------------------------------------------------------------------- #
-# 7-9. originals, hashes, status, updated_at, the five files, the run directory
+# 7-9. originals, hashes, status, updated_at, the four files, the run directory
 # --------------------------------------------------------------------------- #
 
 def _hash_of(root, ref):
@@ -749,7 +753,7 @@ def _stamp_sources(root, entry, run_ref):
 
 
 def _snapshot(root, run_dir):
-    """The five files as they stand before this run writes — `revert` reads
+    """The four files as they stand before this run writes — `revert` reads
     them back (§12). The directory is made even when the store is empty.
 
     Once per run directory (Task 7 review, C1): `verbs.py`'s writing verbs
@@ -827,9 +831,9 @@ def _stamp(root, store, touched, now):
 
 
 def _write(root, store, run_dir, delta_path, id_map, touched, adopted, originals,
-           held=None):
+           held=None, moved=None):
     """The writing half: the originals `_stamp` named, the source stamps, the
-    snapshot, the five files, and the run directory's own records. Nothing
+    snapshot, the four files, and the run directory's own records. Nothing
     here derives anything — `_stamp` has run, and `validate --store --run`
     stops before this line is reached."""
     run_ref = _run_ref(root, run_dir)
@@ -873,3 +877,9 @@ def _write(root, store, run_dir, delta_path, id_map, touched, adopted, originals
     _write_once(run_dir / "held.json",
                 [{"label": label, "lines": [f.message for f in stops]}
                  for label, stops in (held or {}).items()])
+    # Owner decision 1 (2026-09-16): where this run would have put an entry a
+    # person had already placed. Written every run, `[]` when the run and the
+    # store agreed about every entry, so `facts-plan report` can read it
+    # without asking whether the file's absence means "nothing moved" or "a
+    # run that predates it".
+    _write_once(run_dir / "moved-home.json", moved or [])

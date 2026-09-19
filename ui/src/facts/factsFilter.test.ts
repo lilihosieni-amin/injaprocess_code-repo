@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { NO_FILTERS, UNIVERSAL, anyActive, matches, type FactFilters } from './factsFilter'
+import { NO_FILTERS, UNIVERSAL, anyActive, matches, onList, type FactFilters } from './factsFilter'
 import type { FactListRow } from '../api/types'
 
 /**
@@ -12,11 +12,11 @@ import type { FactListRow } from '../api/types'
  * field the two rows happen to agree about.
  */
 const row = (over: Partial<FactListRow>): FactListRow => ({
-  id: 'F-00001', kind: 'item', key: 'ing_1', title: 'پنیر پیتزا', aliases: [],
+  id: 'F-00001', kind: 'measurement', key: 'par_cheese', title: 'پار پنیر پیتزا', aliases: [],
   scope: { departments: [], branches: [] },
   status: 'confirmed', retired: false, stub: false,
   red_counts: { unknown: 0, disputed: 0 },
-  fingerprint: 'a1', confirmed: true, updated_at: '2026-09-16T14:05:00Z',
+  fingerprint: 'a1', confirmed: true, updated_at: '2026-09-16T14:05:00Z', home: null,
   ...over,
 })
 
@@ -49,7 +49,7 @@ describe('anyActive', () => {
     expect(anyActive({ ...NO_FILTERS, dept: 'cooking' }, '')).toBe(true)
     expect(anyActive({ ...NO_FILTERS, branch: 'chalebagh' }, '')).toBe(true)
     expect(anyActive({ ...NO_FILTERS, confirmation: 'confirmed' }, '')).toBe(true)
-    expect(anyActive(NO_FILTERS, 'پنیر')).toBe(true)
+    expect(anyActive(NO_FILTERS, 'پار')).toBe(true)
   })
 
   it('reads a query of nothing but spaces as no query', () => {
@@ -105,6 +105,14 @@ describe('matches — the four filters', () => {
   it('ANDs the filters together', () => {
     expect(kept('', { ...NO_FILTERS, kind: 'record', dept: 'cooking' })).toEqual(['F-00011'])
     expect(kept('', { ...NO_FILTERS, kind: 'record', dept: 'management' })).toEqual([])
+  })
+})
+
+describe('onList — an entry that lives under a table is read on the table, not here', () => {
+  it('keeps a record and an unattached entry, drops an entry with a home', () => {
+    const homed = row({ id: 'F-00040', kind: 'rule', key: 'burger_mass', title: 'تطبیق مایهٔ برگر', home: 'F-00007' })
+    expect([CHEESE, NIGHT, TOLERANCE, homed].filter(onList).map((r) => r.id))
+      .toEqual(['F-00001', 'F-00011', 'F-00026'])
   })
 })
 
