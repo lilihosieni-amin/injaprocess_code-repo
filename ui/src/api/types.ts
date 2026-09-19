@@ -277,6 +277,9 @@ export interface RecordField {
    *  red — conformance note 3, which is where the design got this wrong. */
   unit?: string | null
   unit_raw?: string
+  /** One printed heading over `repeat` unnamed columns the staff fill in by
+   *  hand — ONE field, never N fields with N invented titles (2026-09-19). */
+  repeat?: number
   description?: string
   filled_by?: string
   group?: { key?: string; title?: string }

@@ -261,6 +261,18 @@ describe('the record card', () => {
     expect(hint.className).toContain('text-fs-micro')
   })
 
+  it('says how many blank columns one printed heading spans', () => {
+    // 2026-09-19 — «نیمه ساخته برگر»: fourteen blank hand-filled columns under
+    // one printed heading. One field, and the count beside its title; a field
+    // without `repeat` is one column and says nothing.
+    draw(PAPER({}, [
+      { key: 'nimesakhte', title: 'نیمه ساخته برگر', type: 'number', unit: 'kg', repeat: 14 },
+      { key: 'jam', title: 'جمع', type: 'number', unit: 'kg' },
+    ]))
+    expect(screen.getByText('نیمه ساخته برگر (۱۴ ستون)')).toBeInTheDocument()
+    expect(screen.getByText('جمع')).toBeInTheDocument()
+  })
+
   it('draws a column’s unit badge as the units record’s word once the bundle serves it', () => {
     draw(TEMPLATE({ unit_titles: { kg: 'کیلوگرم' } }))
     expect(screen.getByText('کیلوگرم')).toBeInTheDocument()

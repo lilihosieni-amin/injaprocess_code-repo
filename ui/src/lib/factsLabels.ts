@@ -609,6 +609,10 @@ export const SCREEN_LABELS: Record<string, string> = {
   row_count: '{n} ردیف',                                   // :1345
   row_count_live: '{n} فعال از {m}',                       // :4893
   column_count: '{n} ستون',                                // :1371
+  // 2026-09-19 — one printed heading over a block of blank hand-filled
+  // columns. It sits after the column's own title, so it carries its own
+  // parentheses; the count is prose and takes Persian digits (QF-42).
+  column_repeat: '({n} ستون)',
   grid_legend: 'خانهٔ قرمز یعنی مقدارش در منبع ثبت نشده یا سرِ آن اختلاف است', // :1347
   row_key_column: 'کلید ردیف',                             // :4898
   column_title_head: 'عنوان ستون',                         // :1375

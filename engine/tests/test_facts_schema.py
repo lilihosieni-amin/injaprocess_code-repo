@@ -152,3 +152,26 @@ def test_what_a_measurement_is_of_is_a_record_or_text(tmp_path):
         assert not validates(schema, build(7))
     assert validates("facts", entry(kind="rule", data={
         "inputs": [], "outputs": [{"key": "v", "title": "مقدار", "of": "کاهو"}]}))
+
+
+def test_a_block_of_blank_columns_under_one_heading_is_one_field():
+    """Bug 2a, 2026-09-19 — «نیمه ساخته برگر»: fourteen blank hand-filled
+    columns under one printed heading. Without a way to say "N unnamed
+    columns", the unit wrote fourteen fields and invented fourteen titles
+    (INV-3). A field with `repeat` is ONE field: the printed heading is its
+    title and the printed unit is its unit."""
+    def with_field(field):
+        return entry(kind="record",
+                     data={"medium": "paper", "role": "log",
+                           "location": {"kept_at": "انبار", "holder": "انباردار"},
+                           "fields": [field]})
+    ok = {"key": "nimesakhte", "title": "نیمه ساخته برگر",
+          "type": "number", "unit": "kg", "repeat": 14}
+    for schema in ("facts", "facts-delta"):
+        build = with_field if schema == "facts" else (
+            lambda f: {k: v for k, v in with_field(f).items()
+                       if k not in ("status", "updated_at")} | {"id": "T-1"})
+        assert validates(schema, build(ok)), schema
+        assert validates(schema, build({"key": "tarikh", "title": "تاریخ"})), schema
+        for bad in (1, 0, -2, "14", 2.5, None):
+            assert not validates(schema, build(dict(ok, repeat=bad))), (schema, bad)

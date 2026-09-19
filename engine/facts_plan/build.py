@@ -10,6 +10,7 @@ must come out as a **parameter**, so one concept is one entry with many
 bindings (QF-47) instead of one entry per cell.
 """
 import collections
+import copy
 import functools
 import hashlib
 import json
@@ -1958,9 +1959,26 @@ def _location_lines(record, indent):
 #: per kind (§3.3). The first run typed a column of ingredient names as a
 #: column of references, which asks the gate to resolve every cell: about a
 #: thousand cells refused and the unit dead at the cap.
+#: Bug 2, 2026-09-19 — «مادهٔ اول»…«مادهٔ چهاردهم». Fourteen blank hand-filled
+#: columns under one printed heading «نیمه ساخته برگر» were written as fourteen
+#: fields with fourteen invented titles (INV-3), because `field` requires a key
+#: per column and the card never said what to do with a block that has none.
+BLANK_BLOCK_LINE = (
+    "هیچ عنوان ستونی ساخته نمی‌شود: عنوان هر ستون همان چیزی است که روی فرم یا "
+    "برگه چاپ شده. دسته‌ای از ستون‌های کنار هم که نام چاپ‌شدهٔ خودشان را "
+    "ندارند و با دست پر می‌شوند، یک `field` است — با عنوان سربرگ چاپ‌شدهٔ بالای "
+    "آن دسته، `repeat: <شمار ستون‌ها>` و واحد چاپ‌شده — نه چند ستون شماره‌گذاری‌شده.")
+#: …and its other half: the same form's printed «عدد» / «کیلو» came back as
+#: «تعداد» / «وزن», which is the same invention one column over.
+UNIT_HEADING_LINE = (
+    "ستونی که تنها سربرگ چاپ‌شده‌اش یک واحد است (مثل «کیلو» یا «عدد») همان کلمه "
+    "را به‌عنوان `title` نگه می‌دارد؛ دو ستون با سربرگ یکسان کلید متفاوت و "
+    "عنوان یکسان می‌گیرند.")
+
 KIND_NOTE = {
     "record": "ستونی که خانه‌هایش نام هستند `type: string` است؛ هر ستون دیگری "
-              "هم با همان چیزی که در خانه‌ها نوشته می‌شود نوع می‌گیرد.",
+              "هم با همان چیزی که در خانه‌ها نوشته می‌شود نوع می‌گیرد. "
+              + BLANK_BLOCK_LINE + " " + UNIT_HEADING_LINE,
     "rule": "`per` در خروجی یک قاعده می‌گوید این عدد به ازای چیست و یک عبارت "
             "کوتاه است، نه یک ارجاع. "
             "چهار شکل قاعده پذیرفته می‌شود: فرمول — `lang: feel` با `expr` و "
@@ -1996,6 +2014,25 @@ KIND_HOME = {
     "note": HOME_LINE}
 
 
+#: Bug 1a, 2026-09-19 — the same gap `home` had. The rule lived only in the
+#: data repo's agent file, so the server run's attachment unit wrote `from` on
+#: 0 of 28 entries and `assemble` credited every one of them to all fourteen
+#: photos. One line at the head of every card an attachment unit reads (a paper
+#: form is read off a photo, so the record card too); a workbook or transcript
+#: unit is shown no file headings and never sees it.
+FROM_LINE = (
+    '`from` کنار `data` می‌آید: `from: ["<path exactly as printed>"]` — مسیر '
+    "همان فایلی که این نوشته از روی آن خوانده شده، دقیقاً همان‌طور که در سربرگ "
+    "آن فایل چاپ شده (`### <name> · <path> · عکس: …`): یک مسیر، و بیش از یکی "
+    "فقط وقتی که این نوشته روی چند فایل کشیده شده است. مسیری که در همین ورودی "
+    "چاپ نشده باشد کنار گذاشته می‌شود. بدون آن، این نوشته به حساب همهٔ "
+    "فایل‌هایی که این واحد خوانده گذاشته می‌شود.")
+
+#: The path an attachment unit's examples cite — the shape of a sidecar heading,
+#: never a real file: the unit copies the member, and the path it writes is one
+#: its own input printed.
+FROM_EXAMPLE = ["departments/<بخش>/attachments/.text/photo-….image.md"]
+
 #: Four `new[]` entries a unit can copy — a paper form (the case the first run
 #: had no shape for), a measurement, a rule reading its parameters, and a
 #: decision table (whose row shape the schema cannot state, §4/I8). A test
@@ -2017,6 +2054,10 @@ EXAMPLES = [
                   {"key": "qalam", "title": "نام کالا", "type": "string"},
                   {"key": "meqdar", "title": "مقدار", "type": "number",
                    "unit": "kg"},
+                  # The blank block: one printed heading over fourteen unnamed
+                  # columns the staff fill in by hand (`BLANK_BLOCK_LINE`).
+                  {"key": "nimesakhte", "title": "نیمه ساخته برگر",
+                   "type": "number", "unit": "kg", "repeat": 14},
                   {"key": "tahvil_girande", "title": "تحویل‌گیرنده",
                    "type": "string"}],
               "signatures": [{"role": "انباردار"},
@@ -2062,7 +2103,16 @@ EXAMPLES = [
                                   "mabnaye_sabt": "تعداد"}]}}}]
 
 
-def shape_card(kinds, schema, conventions=DEFAULT_CONVENTIONS):
+def examples_for(attachment=False):
+    """`EXAMPLES`, with `from` on the paper form and on the measurement read off
+    it when the unit reading them was handed files to cite (bug 1a)."""
+    if not attachment:
+        return copy.deepcopy(EXAMPLES)
+    return [dict(example, **({"from": list(FROM_EXAMPLE)} if n < 2 else {}))
+            for n, example in enumerate(copy.deepcopy(EXAMPLES))]
+
+
+def shape_card(kinds, schema, conventions=DEFAULT_CONVENTIONS, attachment=False):
     """The shape section (§3.2) for `kinds`, rendered from `schema`.
 
     The agent's rule, stated at the top of the card: a key not listed here is
@@ -2084,6 +2134,8 @@ def shape_card(kinds, schema, conventions=DEFAULT_CONVENTIONS):
             continue
         data = defs[data_def]
         out += [f"## {kind} — data ({KIND_FA[kind]})", ""]
+        if attachment:
+            out += [FROM_LINE, ""]
         if kind in KIND_HOME:
             out += [KIND_HOME[kind], ""]
         out += _block(data, defs, "", {data_def})
@@ -2103,7 +2155,7 @@ def shape_card(kinds, schema, conventions=DEFAULT_CONVENTIONS):
             "`statement` یا `description` نمی‌آیند؛ جای آن‌ها `source[]` است.",
             ""]
     out += ["## نمونه‌های کامل `new[]`", ""]
-    for example in EXAMPLES:
+    for example in examples_for(attachment):
         if example["kind"] in wanted:
             out += ["```json", json.dumps(example, ensure_ascii=False, indent=2),
                     "```", ""]
@@ -2126,7 +2178,7 @@ def _symbols_lines(symbols):
             "، ".join(f"`{symbol}`" for symbol in symbols)]
 
 
-def shape_section(symbols=(), conventions=DEFAULT_CONVENTIONS):
+def shape_section(symbols=(), conventions=DEFAULT_CONVENTIONS, attachment=False):
     """`shape_card` over the schema on disk, for every kind a unit may write,
     plus the run's `unit_symbols` (§3.3).
 
@@ -2146,7 +2198,7 @@ def shape_section(symbols=(), conventions=DEFAULT_CONVENTIONS):
     """
     card = shape_card(
         WRITABLE_KINDS, read_json(schema_dir() / "facts-delta.schema.json"),
-        conventions)
+        conventions, attachment)
     return "\n".join([card] + _symbols_lines(symbols))
 
 
@@ -2258,7 +2310,8 @@ def render_input(unit, skeleton, extras, conventions=DEFAULT_CONVENTIONS,
     # card — how to write the value, then what the shape may be, then how the
     # prose beside it reads.
     out += ["", expression, "",
-            shape_section(skeleton.get("unit_symbols") or (), conventions),
+            shape_section(skeleton.get("unit_symbols") or (), conventions,
+                          unit["type"] == "attachment"),
             "", style]
     return "\n".join(out)
 

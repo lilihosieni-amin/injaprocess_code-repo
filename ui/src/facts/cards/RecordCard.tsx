@@ -270,7 +270,15 @@ function ColumnsTable({ bundle, data, onOpen }: {
               {
                 node: (
                   <div>
-                    <div className="text-fs-body font-bold text-ink">{f.title}</div>
+                    {/* 2026-09-19 — a block of blank hand-filled columns is
+                        ONE field, and the count is the only thing that says
+                        the form has fourteen of them. */}
+                    <div className="text-fs-body font-bold text-ink">
+                      {f.repeat === undefined
+                        ? f.title
+                        : `${f.title} ${label(SCREEN_LABELS, 'column_repeat')
+                          .replace('{n}', toFa(f.repeat))}`}
+                    </div>
                     {notes !== '' && (
                       <div className="text-fs-caption text-muted leading-loose mt-s2
                                       [text-wrap:pretty]">{notes}</div>

@@ -2467,3 +2467,136 @@ def test_a_decision_about_an_item_candidate_goes_the_same_way(tmp_path):
     assert result["undecided"] == 0
     delta = json.loads((run / "facts-delta.json").read_text(encoding="utf-8"))
     assert {e["kind"] for e in delta["entries"]} == {"record", "rule"}
+
+
+# --------------------------------------------------------------------------- #
+# Bug 1b (2026-09-19) — a unit handed fourteen photos wrote `from` on none of
+# its twenty-eight entries, and every one of them was credited to all fourteen.
+# The ladder replaces "no `from` → every file": a written citation, else the
+# citation of the form the entry is homed on, else the file whose text carries
+# the entry's own words, and only then every file.
+# --------------------------------------------------------------------------- #
+
+def _photo(n):
+    return f"departments/cooking/attachments/.text/photo-{n}.image.md"
+
+
+def _read(*names, unit="u-att-1", kind="record", skeleton="N-u-att-1-0",
+          title="عنوان", **kw):
+    """One assembled entry as `_entry` leaves it when it cited every file."""
+    refs = [_photo(n) for n in names]
+    entry = {"kind": kind, "key": "k", "title": title, "_unit": unit,
+             "_skeleton": skeleton, "_cite_all": refs,
+             "source": [{"type": "photo", "ref": r} for r in refs]}
+    entry.update(kw)
+    return entry
+
+
+#: Three photo texts whose words decide the ladder's third rung.
+TEXTS = {_photo(1): "فرم تحویل کالا از انبار مرکزی",
+         _photo(2): "فرم شمارش یخچال شیفت شب",
+         _photo(3): "شمارش یخچال شیفت روز"}
+
+
+def _cited(entry):
+    return [s["ref"] for s in entry["source"]]
+
+
+def test_a_written_citation_stands_and_never_reaches_the_ladder():
+    """Rung 1 — `_entry` already narrowed to what the unit wrote, so the entry
+    carries no marker at all and the pass leaves it alone."""
+    from facts_plan.assemble import _narrow_citations
+    entry = _read(1, 2, 3, title="فرم تحویل کالا از انبار")
+    entry.pop("_cite_all")
+    entry["source"] = [{"type": "photo", "ref": _photo(2)}]
+    _narrow_citations({"N-u-att-1-0": entry}, TEXTS)
+    assert _cited(entry) == [_photo(2)]
+
+
+def test_a_rule_read_off_a_form_cites_the_form_s_own_photo():
+    """Rung 2 — «تراز مایه برگر» and «وزن استاندارد برگر» are homed on the
+    burger form and say nothing about a photo of their own."""
+    from facts_plan.assemble import _narrow_citations
+    form = _read(1, 2, 3, title="فرم تحویل کالا از انبار")
+    rule = _read(1, 2, 3, kind="rule", skeleton="N-u-att-1-1",
+                 title="قاعدهٔ بی‌نشان", home={"ref": "N-u-att-1-0"})
+    _narrow_citations({"N-u-att-1-0": form, "N-u-att-1-1": rule}, TEXTS)
+    assert _cited(form) == [_photo(1)]                 # rung 3 settled the form
+    assert _cited(rule) == [_photo(1)]                 # …and the rule took it
+    # A home in another unit is no inheritance: that record cites files this
+    # unit never read.
+    far = _read(1, 2, 3, kind="rule", skeleton="N-u-att-2-0", unit="u-att-2",
+                title="قاعدهٔ بی‌نشان", home={"ref": "N-u-att-1-0"})
+    _narrow_citations({"N-u-att-1-0": form, "N-u-att-2-0": far}, TEXTS)
+    assert _cited(far) == [_photo(1), _photo(2), _photo(3)]
+
+
+def test_the_file_whose_text_carries_the_entry_s_own_words_is_the_one_cited():
+    """Rung 3, and the tie: two files scoring alike cite both and no more."""
+    from facts_plan.assemble import _narrow_citations
+    form = _read(1, 2, 3, title="فرم تحویل کالا از انبار")
+    tied = _read(1, 2, 3, skeleton="N-u-att-1-1", title="شمارش یخچال")
+    _narrow_citations({"N-u-att-1-0": form, "N-u-att-1-1": tied}, TEXTS)
+    assert _cited(form) == [_photo(1)]
+    assert _cited(tied) == [_photo(2), _photo(3)]
+
+
+def test_one_word_in_common_is_not_a_citation_and_every_file_stands():
+    """Rung 4 — the threshold. «فرم» alone is every form in the department, so
+    a single shared word decides nothing and the honest answer is all of
+    them: citing too much is a smaller loss than citing the wrong one."""
+    from facts_plan.assemble import _narrow_citations
+    vague = _read(1, 2, 3, title="فرم تازه")
+    unknown = _read(1, 2, 3, skeleton="N-u-att-1-1", title="چیز دیگری")
+    _narrow_citations({"N-u-att-1-0": vague, "N-u-att-1-1": unknown}, TEXTS)
+    assert _cited(vague) == [_photo(1), _photo(2), _photo(3)]
+    assert _cited(unknown) == [_photo(1), _photo(2), _photo(3)]
+    # …and the marker is gone either way: it is private bookkeeping and the
+    # delta carries no key that starts with `_`.
+    assert "_cite_all" not in vague and "_cite_all" not in unknown
+
+
+def test_the_ladder_leaves_the_talk_and_the_process_citations_alone():
+    """Only the files the unit read are narrowed; a `voice` member and a
+    process citation sit beside them and stay."""
+    from facts_plan.assemble import _narrow_citations
+    form = _read(1, 2, 3, title="فرم تحویل کالا از انبار")
+    form["source"] += [{"type": "voice", "ref": "meetings/transcripts/c.txt",
+                        "lines": "1-9"},
+                       {"type": "process", "ref": "departments/cooking/"
+                        "processes/cooking-001.json", "node": "n1"}]
+    _narrow_citations({"N-u-att-1-0": form}, TEXTS)
+    assert _cited(form) == [_photo(1), "meetings/transcripts/c.txt",
+                            "departments/cooking/processes/cooking-001.json"]
+
+
+def test_a_photographed_form_and_its_rule_cite_one_photo_through_assemble(tmp_path):
+    """The wiring, end to end: two photos, a form written off one of them and a
+    rule homed on the form, and neither document says `from`."""
+    root = _root(tmp_path)
+    text_dir = root / "departments" / "cooking" / "attachments" / ".text"
+    text_dir.mkdir(parents=True)
+    for n, body in ((1, "فرم تحویل کالا از انبار مرکزی"),
+                    (2, "فرم شمارش یخچال شیفت شب")):
+        (text_dir / f"photo-{n}.image.md").write_text(body, encoding="utf-8")
+    plan, rule = _plan(), _rule_out()
+    plan["units"][1]["inputs"] = [_photo(1), _photo(2)]
+    rule["new"] = [
+        _second_record(key="form_tahvil", medium="paper",
+                       location={"kept_at": "دفتر انبار",
+                                 "holder": "سرپرست انبار"}),
+        {"kind": "rule", "key": "tavan_tahvil",
+         "title": "توان تحویل روزانهٔ انبار",
+         "statement": "توان تحویل روزانه برابر است با مجموع مقدارهای نوشته‌شده "
+                      "در آن برگه.",
+         "home": {"ref": "N-u-b-0"},
+         "data": {"inputs": [], "outputs": [
+             {"key": "tavan", "title": "توان تحویل", "unit": "kg",
+              "value": 120, "nature": "standard"}]}}]
+    rule["new"][0]["title"] = "فرم تحویل کالا از انبار"
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule}, plan=plan)
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    by_key = {e["key"]: e for e in delta["entries"]}
+    assert [s["ref"] for s in by_key["form_tahvil"]["source"]] == [_photo(1)]
+    assert [s["ref"] for s in by_key["tavan_tahvil"]["source"]] == [_photo(1)]

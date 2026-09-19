@@ -1021,6 +1021,59 @@ above. So «۵ از ۸ تأیید شده» on a section is the honest count, and
 finished only when the record and every entry under it are ticked. Moving an
 entry between tables does not reset any of them.
 
+### Photo citations and blank column blocks — added 2026-09-19
+
+The owner's first zero-start run of «tables as the spine» on the server
+(`/quantify preparation`) found two defects in the paper form «فرم تبدیل
+آماده‌سازی برگر», and both were the same thing: what the unit was never told, it
+never wrote.
+
+**The `from` line is on the cards now.** The rule «say which file an entry was
+read off» lived only in the data repo's agent file, and the unit's own
+`units/<u>/input.md` never mentioned it — so the attachment unit wrote `from` on
+**0 of 28** `new[]` entries and every one of them was credited to all fourteen
+photos: the owner opening one form saw fourteen citations. `build` now prints
+the rule under each of the four `## <kind> — data` headings of an **attachment**
+unit's shape card (a paper form is read off a photo, so the record card too),
+and that unit's worked examples carry `from` on the form and on the measurement
+read off it. A workbook or transcript unit is shown no file headings and gets
+neither. The card costs an attachment unit ~864 tokens more and every unit ~303
+more (the blank-column pair below); the alarm in
+`test_the_shape_card_stays_inside_a_unit_s_budget` went 4000 → 5500.
+
+**…and a fallback that finds the photo anyway.** "No `from` → every file" is
+replaced by a deterministic ladder in `facts_plan.assemble._narrow_citations`,
+pure over the entry, the unit's files and their texts:
+
+1. a valid written `from` stands;
+2. **inherit** — an entry whose `home` names a record **this same unit** wrote
+   takes that record's citation, so a rule read off a form cites the form's
+   photo;
+3. **title match** — the file whose text carries the most of the entry's title
+   and alias words, when it carries at least two of them; a tie at the top cites
+   the tied files only;
+4. otherwise every file, as before.
+
+Records are settled first, so an entry homed on one takes the answer rather than
+the guess. Re-assembling the server's own run: **before, 28 entries cited all 14
+photos; after, 14 cite exactly one, 7 cite two or three, 2 cite four or five and
+1 still cites all fourteen** («ضایعات کاهو بر حسب فصل», which shares one word
+with every form there is). Nothing changes for a workbook or a transcript unit —
+they read one file or none.
+
+**A block of blank columns is one field.** The photo text said «14 columns
+grouped under the heading "نیمه ساخته برگر", each headed "کیلو"» — blank on the
+paper, the ingredient written in by hand. `field` required a key per column and
+could not say "N unnamed columns", so the unit wrote fourteen fields and invented
+fourteen titles «مادهٔ اول»…«مادهٔ چهاردهم» (INV-3), and retitled the lower
+table's printed «عدد» / «کیلو» as «تعداد» / «وزن». `field` now takes an optional
+`repeat` (integer ≥ 2) in both schema halves: one field, the printed heading as
+its `title`, the printed unit as its `unit`. The record data card — for every
+unit type, a sheet can have the same shape — says never to invent a column title
+and that a unit word which is the whole printed heading stays the title; the
+agent file says the same in English. The panel draws such a column as «نیمه
+ساخته برگر (۱۴ ستون)».
+
 ### Running the playbook headless
 
 The playbook can be driven without Telegram, one turn per `docker exec`, which is
