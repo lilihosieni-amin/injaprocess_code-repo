@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { Comment } from '../api/comments'
-import { STATUS, ageText, statusLabel } from '../lib/comments'
+import { STATUS, ageText, roleLabel, statusLabel } from '../lib/comments'
 import { useSurface } from '../ui/surface'
 
 /**
@@ -10,7 +10,8 @@ import { useSurface } from '../ui/surface'
  *
  * `flow` — the flow drawers, Reader L637–652 (= Reader L625–653, Panel L977–991).
  * `panelDept` — the Panel department drawer, Panel L2895–2907.
- * The design's « · {authorRole}» is not drawn: the comment JSON carries no role.
+ * « · {authorRole}» is drawn on the Panel only (Panel L987–989, L2903); the
+ * Reader's flow drawer draws the name alone (Reader L645).
  * Leadings follow ledger L-17: 1.85 → --lh-sub, 1.9 → --lh-loose.
  */
 const PLACE = {
@@ -30,6 +31,7 @@ export function MiniCard({ c, place = 'flow' }: { c: Comment; place?: keyof type
   const surface = useSurface()
   const z = PLACE[place]
   const st = STATUS[c.state]
+  const role = surface === 'panel' ? roleLabel(c.author.role) : ''
   return (
     <div className={`border border-border-current rounded-button mb-s5 ${z.card}`}>
       <div className={`flex items-center flex-wrap mb-s4 ${z.head}`}>
@@ -40,6 +42,7 @@ export function MiniCard({ c, place = 'flow' }: { c: Comment; place?: keyof type
       <div className={`text-ink whitespace-pre-line [text-wrap:pretty] ${z.text}`}>{c.text}</div>
       <div className={`flex items-center mt-option text-muted ${z.by}`}>
         <span className="font-semibold text-ink-current">{c.author.name}</span>
+        {role && <><span className="text-faint">·</span><span>{role}</span></>}
       </div>
       <Link to={`/comments?c=${encodeURIComponent(c.id)}`}
         className={`block w-fit mt-s5 font-bold text-violet underline underline-offset-4 ${z.open}`}>

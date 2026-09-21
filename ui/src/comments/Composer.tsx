@@ -8,7 +8,7 @@ import { TextField } from '../ui/TextField'
 import { Icon } from '../ui/Icon'
 import { useSurface } from '../ui/surface'
 import { useToast } from '../write/ToastProvider'
-import { useComments } from './state'
+import { useComments, useEscape } from './state'
 
 /**
  * The fixed 380px pane both the composer and the department drawer are drawn
@@ -16,17 +16,19 @@ import { useComments } from './state'
  * a bottom sheet over the scrim — Reader L76–77 (`data-r-composewrap`,
  * `data-r-composebox`).
  */
-export function FixedPane({ title, className, children }: {
+export function FixedPane({ title, className, onClose, children }: {
   title: (id: string) => ReactNode
   className: string
+  onClose: () => void
   children: ReactNode
 }) {
   const id = useId()
+  useEscape(onClose)
   return (
     <div data-r-composewrap className={
       'fixed inset-y-0 end-0 w-composer z-drawer flex items-stretch '
       + 'max760:inset-0 max760:w-auto max760:bg-scrim max760:items-end'}>
-      <div data-r-composebox role="dialog" aria-labelledby={id} className={
+      <div data-r-composebox role="dialog" aria-modal="true" aria-labelledby={id} className={
         `w-full overflow-auto bg-card border-s border-warm ${className} `
         + 'max760:max-h-[88vh] max760:rounded-t-sheet max760:border-s-0'}>
         {title(id)}
@@ -118,7 +120,7 @@ export function Composer({ anchor }: { anchor: ComposeAnchor }) {
   }
 
   return (
-    <FixedPane className={look.pane} title={(id) => (
+    <FixedPane className={look.pane} onClose={comments.closeCompose} title={(id) => (
       <div className={`flex items-start justify-between gap-s6 ${look.head}`}>
         <div id={id} className={`font-extrabold text-ink ${look.title}`}>{look.heading}</div>
         <CloseX at={look.close} onClick={comments.closeCompose} />

@@ -1,4 +1,5 @@
-import { createContext, useContext, useMemo } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef } from 'react'
+import { isTopDismissible, popDismissible, pushDismissible } from '../ui/dismissibleStack'
 import type { ComposeAnchor } from '../lib/comments'
 import { useSession } from '../auth/useSession'
 import { useCan } from '../auth/can'
@@ -46,4 +47,22 @@ export function useNodeCommentCounts(pid: string): Record<string, number> {
     for (const c of data ?? []) if (c.anchor.kind === 'node') m[c.anchor.id] = (m[c.anchor.id] ?? 0) + 1
     return m
   }, [data])
+}
+
+/**
+ * Escape closes a comment drawer or the composer. It joins the shared
+ * dismissible stack (I7, as FlowScreen's ⋯ does), so a dialog opened over the
+ * pane answers the Escape first. Pushed once on open: a re-render must not lift
+ * the pane above a dialog opened after it.
+ */
+export function useEscape(onClose: () => void) {
+  const latest = useRef(onClose)
+  useEffect(() => { latest.current = onClose })
+  useEffect(() => {
+    const me = Symbol('comments-pane')
+    pushDismissible(me)
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && isTopDismissible(me)) latest.current() }
+    document.addEventListener('keydown', onKey)
+    return () => { popDismissible(me); document.removeEventListener('keydown', onKey) }
+  }, [])
 }

@@ -40,11 +40,11 @@ function stub(proc: Comment[] = [], dept: Comment[] = []) {
   })
 }
 
-const flow = (session: SessionDescriptor) => renderAt('/processes/:pid/flow', (
-  <CommentsProvider>
+const flow = (session: SessionDescriptor, surface: Surface = 'panel') => renderAt('/processes/:pid/flow', (
+  <SurfaceProvider surface={surface}><CommentsProvider>
     <ProcessFab pid="dining-001" />
     <ProcessDrawer pid="dining-001" department="dining" />
-  </CommentsProvider>
+  </CommentsProvider></SurfaceProvider>
 ), '/processes/dining-001/flow', session)
 
 const dept = (session: SessionDescriptor, surface: Surface = 'reader') => renderAt('/departments/:code', (
@@ -73,6 +73,19 @@ describe('process drawer', () => {
       .toHaveAttribute('href', '/comments?c=CMT-1')
     // the FAB hides while its drawer is open (design showFab)
     expect(screen.queryByRole('button', { name: /^کامنت‌های این صفحه/ })).toBeNull()
+  })
+
+  it('Escape closes it; it is modal; the Reader card draws no author role (Reader L645)', async () => {
+    stub([cmt(1)])
+    flow(VIEWER, 'reader')
+    fireEvent.click(await fab())
+    const drawer = screen.getByRole('dialog', { name: 'کامنت‌های این فرآیند' })
+    expect(drawer).toHaveAttribute('aria-modal', 'true')
+    expect(await within(drawer).findByText('متن نویسنده 1')).toBeInTheDocument()
+    expect(within(drawer).queryByText('خواننده')).toBeNull()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(await fab()).toBeInTheDocument()
   })
 
   it('shows the design empty state', async () => {
@@ -116,7 +129,7 @@ describe('process drawer', () => {
 })
 
 describe('department drawer', () => {
-  it('Reader: title, subtitle, at most three simplified cards (no id, no author)', async () => {
+  it('Reader: title, subtitle, the three newest simplified cards (no id, no author)', async () => {
     const d = (n: number) => cmt(n, {}, { kind: 'department', id: 'dining', processId: null })
     stub([], [d(1), d(2), d(3), d(4)])
     dept(VIEWER)
@@ -124,8 +137,9 @@ describe('department drawer', () => {
     fireEvent.click(await fab())
     const drawer = screen.getByRole('dialog', { name: 'کامنت‌های این اطلاعات' })
     expect(await within(drawer).findByText('دربارهٔ سالن، نه یک فرآیند خاص')).toBeInTheDocument()
-    expect(within(drawer).getByText('متن نویسنده 3')).toBeInTheDocument()
-    expect(within(drawer).queryByText('متن نویسنده 4')).toBeNull()
+    expect(within(drawer).getByText('متن نویسنده 4')).toBeInTheDocument()
+    expect(within(drawer).getByText('متن نویسنده 2')).toBeInTheDocument()
+    expect(within(drawer).queryByText('متن نویسنده 1')).toBeNull()
     expect(within(drawer).queryByText('CMT-1')).toBeNull()
     expect(within(drawer).queryByText('سمیرا احمدی')).toBeNull()
     expect(within(drawer).getByRole('button', { name: 'کامنت تازه' })).toBeInTheDocument()
@@ -160,7 +174,18 @@ describe('department drawer', () => {
     expect(await screen.findByText('CMT-7')).toBeInTheDocument()
     expect(screen.getByText('رسیدگی‌شده')).toBeInTheDocument()
     expect(screen.getByText('سمیرا احمدی')).toBeInTheDocument()
+    expect(screen.getByText('خواننده')).toBeInTheDocument() // Panel L2903: « · {authorRole}»
     expect(screen.getByRole('link', { name: 'باز کردن در صندوق کامنت‌ها' })).toHaveAttribute('href', '/comments?c=CMT-7')
+  })
+
+  it('Escape closes it; it is modal', async () => {
+    stub([], [])
+    dept(VIEWER)
+    fireEvent.click(await fab())
+    expect(screen.getByRole('dialog', { name: 'کامنت‌های این اطلاعات' })).toHaveAttribute('aria-modal', 'true')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(await fab()).toBeInTheDocument()
   })
 })
 

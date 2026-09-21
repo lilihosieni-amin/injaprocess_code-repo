@@ -174,6 +174,62 @@ describe('reader inbox', () => {
     expect(await screen.findByText('چیزی اینجا نیست')).toBeInTheDocument()
   })
 
+  it('gives the approver tabs to anyone comments can wait on, flag or not', async () => {
+    stub({})
+    const { unmount } = open({ ...VIEWER, supervisor: null, pendingApprovals: 1 })
+    expect(await screen.findByRole('tablist')).toBeInTheDocument()
+    unmount()
+    open({ ...VIEWER, supervisor: null, scopes: ['*'] })
+    expect(await screen.findByRole('tablist')).toBeInTheDocument()
+  })
+
+  it('an orphan anchor draws its name but no link', async () => {
+    stub({ own: [cmt(4, { anchor: { ...cmt(4).anchor, orphan: true } })] })
+    open(VIEWER)
+    expect(await screen.findByText('گام «خوشامد»')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /دربارهٔ/ })).toBeNull()
+  })
+
+  describe('?c=CMT-n', () => {
+    const at = (session: SessionDescriptor, ref: string) => renderAt('/comments', (
+      <ToastProvider><SurfaceProvider surface="reader"><CommentsScreen /></SurfaceProvider></ToastProvider>
+    ), `/comments?c=${ref}`, session)
+
+    function stubWith(one: Comment, tabs: Partial<Record<InboxTab, Comment[]>>) {
+      return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+        const url = String(input)
+        const m = url.match(/^\/api\/comments\/inbox\?tab=(\w+)/)
+        if (m) return json(page(tabs[m[1] as InboxTab] ?? []))
+        if (url === `/api/comments/${one.id}`) return json({ ...one, trail: [] })
+        return json({})
+      })
+    }
+
+    it("opens «کامنت‌های من» on the viewer's own comment and scrolls it into view once", async () => {
+      const scroll = vi.fn()
+      Element.prototype.scrollIntoView = scroll
+      const mine = cmt(5, { author: { name: 'حسین مازندرانی', isMe: true, role: 'reader' } })
+      stubWith(mine, { waiting: [waiting()], own: [cmt(9), mine] })
+      at(HEAD, 'CMT-5')
+      await waitFor(() => expect(screen.getByRole('tab', { name: 'کامنت‌های من' })).toHaveAttribute('aria-selected', 'true'))
+      await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1))
+      expect(scroll.mock.contexts[0]).toBe(document.getElementById('cmt-CMT-5'))
+      fireEvent.click(screen.getByRole('tab', { name: 'در انتظار تأیید شما' }))
+      fireEvent.click(screen.getByRole('tab', { name: 'کامنت‌های من' }))
+      await screen.findByText('متن نویسنده 5')
+      expect(scroll).toHaveBeenCalledTimes(1)
+    })
+
+    it("opens the approver's «همه» on someone else's comment", async () => {
+      Element.prototype.scrollIntoView = vi.fn()
+      const theirs = cmt(6)
+      stubWith(theirs, { all: [theirs] })
+      at(HEAD, 'CMT-6')
+      await waitFor(() => expect(screen.getByRole('tab', { name: 'همه' })).toHaveAttribute('aria-selected', 'true'))
+      expect(await screen.findByText('متن نویسنده 6')).toBeInTheDocument()
+    })
+  })
+
   it('never renders the word «اصلاح» — an approver adds a note, never an amendment', async () => {
     stub({ waiting: [waiting()] })
     open(HEAD)

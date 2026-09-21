@@ -48,7 +48,7 @@ export function DeptDrawer({ code }: { code: string }) {
   const name = useDepartments().data?.find((d) => d.code === code)?.name ?? ''
 
   return (
-    <FixedPane className="p-s10 shadow-composer" title={(id) => (
+    <FixedPane className="p-s10 shadow-composer" onClose={c.closeDrawer} title={(id) => (
       <div className={`flex items-start justify-between gap-s5 ${look.head}`}>
         <div>
           <div id={id} className={`font-extrabold text-ink ${look.titleCls}`}>{look.title}</div>
@@ -67,13 +67,17 @@ export function DeptDrawer({ code }: { code: string }) {
             : (
               <div className="mt-s7">
                 {surface === 'reader'
-                  ? data.slice(0, 3).map((x) => <ReaderCard key={x.id} c={x} />)
+                  ? newestFirst(data).slice(0, 3).map((x) => <ReaderCard key={x.id} c={x} />)
                   : data.map((x) => <MiniCard key={x.id} c={x} place="panelDept" />)}
               </div>
             )}
     </FixedPane>
   )
 }
+
+/** The server lists oldest first; the Reader drawer shows the three newest. */
+const newestFirst = (xs: Comment[]) =>
+  [...xs].sort((a, b) => Number(b.id.slice(4)) - Number(a.id.slice(4)))
 
 /** Reader L926–933: the simplified card — status, age and the author's text only. Leading 1.95 → --lh-loose (L-17). */
 function ReaderCard({ c }: { c: Comment }) {

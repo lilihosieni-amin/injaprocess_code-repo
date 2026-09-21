@@ -60,8 +60,8 @@ export const useDeptComments = (code: string) =>
 export const useInbox = (tab: InboxTab, page: number) =>
   useQuery({ queryKey: ['comments', 'inbox', tab, page], placeholderData: keepPreviousData, queryFn: () => fetchJson<InboxPage>(`/api/comments/inbox?tab=${tab}&page=${page}`) })
 
-export const useComment = (ref: string) =>
-  useQuery({ queryKey: ['comments', 'one', ref], queryFn: () => fetchJson<CommentDetail>(`/api/comments/${encodeURIComponent(ref)}`) })
+export const useComment = (ref: string, enabled = true) =>
+  useQuery({ queryKey: ['comments', 'one', ref], enabled, queryFn: () => fetchJson<CommentDetail>(`/api/comments/${encodeURIComponent(ref)}`) })
 
 /** Every write moves a comment and the viewer's pending count (D68, in the session). */
 function useCommentMutation<V>(send: (v: V) => Promise<CommentDetail>) {

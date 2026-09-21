@@ -106,6 +106,15 @@ describe('Composer', () => {
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'کامنت‌های این خلاصه' })).toBeInTheDocument())
     expect(screen.queryByRole('textbox')).toBeNull()
   })
+
+  it('is modal, and Escape closes it back to the drawer it came from', async () => {
+    stub(() => json({}, 201))
+    openComposer()
+    expect(screen.getByRole('dialog', { name: 'کامنت تازه' })).toHaveAttribute('aria-modal', 'true')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'کامنت تازه' })).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'کامنت‌های این خلاصه' })).toBeInTheDocument()
+  })
 })
 
 /**

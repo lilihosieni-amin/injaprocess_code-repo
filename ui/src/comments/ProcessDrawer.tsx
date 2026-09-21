@@ -4,7 +4,7 @@ import { FAB } from '../ui/FAB'
 import { EmptyState, ErrorState, LoadingState } from '../ui/states'
 import { CloseX, NewButton } from './Composer'
 import { MiniCard } from './MiniCard'
-import { useComments, useMayComment } from './state'
+import { useComments, useEscape, useMayComment } from './state'
 
 /** Process-anchored comments only: a step's comments live in that step's detail. */
 function useProcessOnly(pid: string) {
@@ -43,8 +43,9 @@ function ProcessDrawerOpen({ pid, department }: { pid: string; department: strin
   const id = useId()
   const may = useMayComment(department)
   const { data, error, refetch } = useProcessOnly(pid)
+  useEscape(c.closeDrawer)
   return (
-    <div data-r-drawer role="dialog" aria-labelledby={id} className={
+    <div data-r-drawer role="dialog" aria-modal="true" aria-labelledby={id} className={
       'absolute inset-y-0 end-0 w-full max-w-drawer bg-card border-s border-warm shadow-drawer '
       + 'flex flex-col z-canvas-overlay '
       + 'max760:inset-x-0 max760:top-auto max760:bottom-0 max760:max-w-none max760:h-[64%] '

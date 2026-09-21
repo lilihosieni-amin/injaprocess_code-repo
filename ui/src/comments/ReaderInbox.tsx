@@ -1,7 +1,7 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
-  useApproveComment, useEditComment, useInbox, useRejectComment, useWithdrawComment,
+  useApproveComment, useComment, useEditComment, useInbox, useRejectComment, useWithdrawComment,
   type Comment, type InboxTab,
 } from '../api/comments'
 import { ApiError } from '../api/client'
@@ -32,15 +32,29 @@ const INTRO = {
 
 /**
  * The reader's comments screen, Reader L724–830. Tabs only for an approver
- * (Reader L1999); the server's `actions` decide every button.
+ * (Reader L1999) — anyone a comment can wait on: the flag, something waiting
+ * now, or a `*` scope; the server's `actions` decide every button.
+ *
+ * `?c=CMT-n` (a drawer's «باز کردن در صندوق کامنت‌ها») opens the tab that
+ * holds it — «کامنت‌های من» for the viewer's own, else «همه» — and scrolls
+ * its card into view once.
  */
 export function ReaderInbox() {
   const session = useSession().data
-  const approver = !!session?.canSupervise
-  const [tab, setTab] = useState<InboxTab>('waiting')
+  const approver = !!session && (session.canSupervise || session.pendingApprovals > 0 || !!session.scopes?.includes('*'))
+  const cref = useSearchParams()[0].get('c')
+  const { data: target } = useComment(cref ?? '', !!cref)
+  const [picked, setPicked] = useState<InboxTab | null>(null)
   const [page, setPage] = useState(1)
+  const tab: InboxTab = picked ?? (target ? (target.author.isMe ? 'own' : 'all') : 'waiting')
   const shown: InboxTab = approver ? tab : 'own'
   const { data, error, refetch } = useInbox(shown, shown === 'all' ? page : 1)
+  const scrolled = useRef<string | null>(null)
+  useEffect(() => {
+    if (!cref || scrolled.current === cref) return
+    const el = document.getElementById(`cmt-${cref}`)
+    if (el) { el.scrollIntoView({ block: 'center' }); scrolled.current = cref }
+  }, [cref, data])
 
   if (error) return <LoadFailedScreen message="کامنت‌ها بارگذاری نشد." error={error} onRetry={() => { void refetch() }} />
   // Only the first load draws a skeleton: `useInbox` keeps the previous page
@@ -57,7 +71,7 @@ export function ReaderInbox() {
         </p>
         {approver && (
           <NavTabTray halfOnMobile tabs={TABS} value={tab} label="کامنت‌ها" className="mt-s10"
-            onChange={(id) => { setTab(id as InboxTab); setPage(1) }} />
+            onChange={(id) => { setPicked(id as InboxTab); setPage(1) }} />
         )}
         <div className="flex flex-col gap-s7 mt-s8">
           {data.items.length === 0 && (
@@ -162,7 +176,7 @@ function InboxCard({ c }: { c: Comment }) {
   )
 
   return (
-    <div className="bg-card border border-border-card rounded-feature overflow-hidden shadow-card">
+    <div id={`cmt-${c.id}`} className="bg-card border border-border-card rounded-feature overflow-hidden shadow-card">
       <div className={`flex items-center gap-s5 py-s7 px-s9 ${st.bg}`}>
         <span aria-hidden className={`w-dot h-dot rounded-round flex-none bg-current ${st.fg}`} />
         <span className={`text-fs-body font-bold ${st.fg}`}>{st.label}</span>
@@ -170,10 +184,17 @@ function InboxCard({ c }: { c: Comment }) {
       </div>
 
       <div className="p-s9">
-        <Link to={anchorHref(c)} className="inline-flex items-center gap-s2 text-fs-xs text-faint font-semibold text-start leading-snug no-underline">
-          <Icon d="M15 18l-6-6 6-6" px={11} stroke={2.4} className="flex-none" />
-          دربارهٔ <span className="text-violet font-bold underline decoration-dotted underline-offset-anchor">{anchorText(c)}</span>
-        </Link>
+        {c.anchor.orphan ? (
+          // D31: the anchor no longer stands, so there is nothing to open (as the Panel).
+          <div className="text-fs-xs text-faint font-semibold leading-snug">
+            دربارهٔ <span className="text-violet font-bold">{anchorText(c)}</span>
+          </div>
+        ) : (
+          <Link to={anchorHref(c)} className="inline-flex items-center gap-s2 text-fs-xs text-faint font-semibold text-start leading-snug no-underline">
+            <Icon d="M15 18l-6-6 6-6" px={11} stroke={2.4} className="flex-none" />
+            دربارهٔ <span className="text-violet font-bold underline decoration-dotted underline-offset-anchor">{anchorText(c)}</span>
+          </Link>
+        )}
 
         {mode === 'edit'
           ? area('حرفتان را ساده بنویسید…', 4)
