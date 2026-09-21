@@ -5,7 +5,7 @@
 | **Date** | 2026-09-21 |
 | **Status** | Approved by lili, 2026-09-21 (routing and visibility; then notes, anchors and design resolutions in a second round the same day) |
 | **Amends** | `2026-08-04-multi-user-rbac-design.md` — replaces D34, D35, D37 and D40; adjusts D30, D31, D33, D38, D42 and §1.2 |
-| **Unchanged** | D32, D36, D39, D59 and the rest of §7 |
+| **Unchanged** | D32, D39, D59 and the rest of §7 (D36 adjusted by D73) |
 | **Design** | `ui/design/Inja Reader.dc.html`, `ui/design/Inja Panel.dc.html` (at `3e5794e`), with the resolutions of §7 |
 
 ---
@@ -103,8 +103,8 @@ and all notes are kept**, in the order they were added: a supervisor's note and
 then an Admin's note both reach the Editor with the original. A note is capped
 at 2,000 characters and must be non-empty after trimming, like a comment.
 
-When a comment is rejected and the author revises it, routing restarts at hop
-one; notes from the earlier pass stay in the trail as history, attached to the
+A rejected comment is closed (D73); notes given before the rejection stay in
+the trail as history, attached to the
 approvals they were given with.
 
 ## 5. Visibility
@@ -217,6 +217,27 @@ the rules above. lili decided each contradiction:
    variant; the facts table pasted inside the Panel's department drawer is
    ignored; the Reader's two composers are one (the §1.10 design, the fixed
    380px composer).
+
+### D73 — A rejected comment is closed (adjusts D36)
+
+`rejected` is final, like `addressed`: the author may neither edit nor withdraw
+it — the design's rule («نه ویرایش، نه پس گرفتن؛ اگر لازم است کامنت تازه
+بگذارد»). With no per-anchor limit (D71) a new comment costs the author
+nothing. D36's table therefore reads: edit and withdraw only while `awaiting`
+with no approvals. An edit restarts routing at hop one («اصلاح شد و زنجیره از
+اول شروع شد»). The *revise and restart* path of D35 is gone.
+
+### D74 — The server refuses an Editor author
+
+Creating a comment as a holder of `edit` answers 403 (`access.denied`). The
+hidden composer (§7.2) is the UI's half; D48 requires the server's.
+
+### D75 — The «همه» tab pages by ten
+
+Every inbox tab named «همه» / «همهٔ کامنت‌ها» is paged on the server, **ten
+comments per page**, with the app's shared `Pager`. The other tabs (what waits
+for the viewer, the viewer's own) and the per-process and per-department lists
+behind the drawers and badges are not paged.
 
 ## 8. Decomposition (adjusts §1.2)
 
