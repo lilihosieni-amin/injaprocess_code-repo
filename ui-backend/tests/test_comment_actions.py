@@ -144,6 +144,19 @@ def test_disabling_the_supervisor_moves_the_comment(people):
     assert people["admin"].get(f"/api/comments/{cid}").json()["waitingWith"] == {"kind": "pool"}
 
 
+def test_a_failing_reconcile_never_loses_the_user_change(people, monkeypatch):
+    from inja_ui_backend import comment_rules
+
+    def boom(*a, **k):
+        raise RuntimeError("comments.db locked")
+
+    monkeypatch.setattr(comment_rules, "reconcile", boom)
+    r = people["editor"].post(f"/api/users/{_user_id(people, 'head')}/disabled",
+                              json={"disabled": True})
+    assert r.status_code == 200, r.text
+    assert [e["target"] for e in _events(people["editor"], "user.disabled")] == ["09150000003"]
+
+
 def test_promoting_the_supervisor_moves_the_comment(people):
     cid = _new(people)
     r = people["editor"].patch(f"/api/users/{_user_id(people, 'head')}",

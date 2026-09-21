@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import functools
 import json
+import logging
 import sqlite3
 import time
 from contextlib import contextmanager
@@ -95,6 +96,7 @@ from ..scopes import SCOPE_RE
 from ..store import sessions, users
 from .comments import write as comments_write
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/users")
 #: Its own router because the path is `/api/roles` and this module's prefix is
 #: not. Both are registered in `app.py`, and both before the SPA mount.
@@ -239,9 +241,15 @@ def _reconcile_comments(request: Request) -> None:
 
     Called after the users transaction has committed, so reconcile sees the
     change; on comments.db's own write connection.
+
+    Never raises: the user change is committed and audited by now, and a 500
+    would hide that. A stranded comment is picked up by the next reconcile.
     """
-    with comments_write(request) as cc:
-        comment_rules.reconcile(request.app.state.db, cc, now=int(time.time()))
+    try:
+        with comments_write(request) as cc:
+            comment_rules.reconcile(request.app.state.db, cc, now=int(time.time()))
+    except Exception:
+        log.exception("comment reconcile after a user change failed")
 
 
 def _actor(conn: sqlite3.Connection, user: sqlite3.Row) -> sqlite3.Row:
@@ -680,8 +688,6 @@ def modify_user(user_id: int, body: PatchUserBody, request: Request,
         if scopes != before_scopes:
             changed["scopes"] = {"before": before_scopes, "after": scopes}
 
-    if "roleId" in changed or "scopes" in changed:
-        _reconcile_comments(request)
     conn = request.app.state.db
     who = username
     if changed:
@@ -720,6 +726,8 @@ def modify_user(user_id: int, body: PatchUserBody, request: Request,
                session_id=request.state.session_id, target=who,
                detail={"before": changed["canSupervise"]["before"],
                        "after": changed["canSupervise"]["after"]})
+    if "roleId" in changed or "scopes" in changed:
+        _reconcile_comments(request)
     return _user(conn, users.by_id(conn, target["id"]))
 
 
@@ -758,13 +766,13 @@ def set_user_disabled(user_id: int, body: DisabledBody, request: Request,
                 # that call passes `except_session` and this one does not).
                 sessions.revoke_all_for_user(conn, target["id"], now)
 
-    if changed:
-        _reconcile_comments(request)
     conn = request.app.state.db
     if changed:
         record(request, "user.disabled" if body.disabled else "user.enabled",
                actor=user["username"], session_id=request.state.session_id,
                target=target["username"], detail={"at": now})
+    if changed:
+        _reconcile_comments(request)
     return _user(conn, users.by_id(conn, user_id))
 
 
