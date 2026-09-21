@@ -68,6 +68,12 @@ def test_the_whole_chain_with_notes(people):
     r = people["editor"].post(f"/api/comments/{cid}/address", json={"note": "اصلاح شد"})
     assert r.json()["state"] == "addressed"
     assert _events(people["editor"], "comment.addressed")[-1]["target"] == cid
+    # each person's kind is snapshotted onto their event (D62); system moves have none
+    trail = r.json()["trail"]
+    assert [(t["kind"], t["role"]) for t in trail] == [
+        ("submitted", "reader"), ("assigned", "reader"), ("approved", "reader"),
+        ("pooled", None), ("approved", "admin"), ("addressed", "editor")]
+    assert r.json()["author"]["role"] == "reader"
 
 
 def test_an_empty_note_is_no_note(people):
@@ -141,7 +147,11 @@ def test_disabling_the_supervisor_moves_the_comment(people):
     head_id = _user_id(people, "head")
     r = people["editor"].post(f"/api/users/{head_id}/disabled", json={"disabled": True})
     assert r.status_code == 200, r.text
-    assert people["admin"].get(f"/api/comments/{cid}").json()["waitingWith"] == {"kind": "pool"}
+    c = people["admin"].get(f"/api/comments/{cid}").json()
+    assert c["waitingWith"] == {"kind": "pool"}
+    # the role is merged beside the reason, never in place of it
+    skipped = [t for t in c["trail"] if t["kind"] == "skipped"]
+    assert [(t["reason"], t["role"]) for t in skipped] == [("disabled", "reader")]
 
 
 def test_a_failing_reconcile_never_loses_the_user_change(people, monkeypatch):

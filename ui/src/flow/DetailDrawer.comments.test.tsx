@@ -39,7 +39,7 @@ function cmt(n: number, nodeId: string | null): Comment {
       ? { kind: 'node', id: nodeId, processId: 'cooking-001', department: 'cooking', departmentName: 'آشپزخانه', processName: 'پخت', nodeLabel: 'ثبت', orphan: false }
       : { kind: 'process', id: 'cooking-001', processId: 'cooking-001', department: 'cooking', departmentName: 'آشپزخانه', processName: 'پخت', nodeLabel: null, orphan: false },
     text: `متن ${n}`, state: 'awaiting', stage: 'reader', waitingWith: null,
-    author: { name: 'سمیرا احمدی', isMe: true },
+    author: { name: 'سمیرا احمدی', isMe: true, role: 'reader' },
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     approvals: 0, notes: [], rejectReason: null, addressed: null,
     actions: { approve: false, reject: false, edit: true, withdraw: true, address: false },

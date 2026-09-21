@@ -87,14 +87,15 @@ def advance(app: sqlite3.Connection, cc: sqlite3.Connection, cid: int, *,
         sup = users.by_id(app, sup_id)
         if sup["disabled_at"] is not None:
             S.event(cc, cid, kind="skipped", now=now, user_id=sup["id"],
-                    user_name=sup["display_name"], detail={"reason": "disabled"})
+                    user_name=sup["display_name"], role=kind_of(app, sup),
+                    detail={"reason": "disabled"})
             visited.add(sup["id"])
             cur = sup
             continue
         if kind_of(app, sup) != "reader":
             return _pool(app, cc, c, now=now)
         S.event(cc, cid, kind="assigned", now=now, user_id=sup["id"],
-                user_name=sup["display_name"])
+                user_name=sup["display_name"], role=kind_of(app, sup))
         S.set_state(cc, cid, state="awaiting", stage="reader", approver_id=sup["id"],
                     now=now)
         return
@@ -130,7 +131,8 @@ def reconcile(app: sqlite3.Connection, cc: sqlite3.Connection, *, now: int) -> i
                 continue
             if who is not None and who["disabled_at"] is not None:
                 S.event(cc, c["id"], kind="skipped", now=now, user_id=who["id"],
-                        user_name=who["display_name"], detail={"reason": "disabled"})
+                        user_name=who["display_name"], role=kind_of(app, who),
+                        detail={"reason": "disabled"})
                 advance(app, cc, c["id"], from_user_id=c["approver_id"], now=now)
             else:
                 _pool(app, cc, c, now=now)

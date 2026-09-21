@@ -16,7 +16,7 @@ const json = (body: unknown) =>
 const NO = { approve: false, reject: false, edit: false, withdraw: false, address: false }
 const AT = '2026-09-20T08:00:00Z'
 const ev = (kind: CommentTrailItem['kind'], name: string, over: Partial<CommentTrailItem> = {}): CommentTrailItem =>
-  ({ kind, name, note: null, reason: null, commit: null, at: AT, ...over })
+  ({ kind, name, note: null, reason: null, commit: null, role: kind === 'pooled' || kind === 'delivered' ? null : 'reader', at: AT, ...over })
 
 function cmt(n: number, over: Partial<CommentDetail> = {}): CommentDetail {
   return {
@@ -24,7 +24,7 @@ function cmt(n: number, over: Partial<CommentDetail> = {}): CommentDetail {
     anchor: { kind: 'node', id: 'dining-001-n010', processId: 'dining-001', department: 'dining',
       departmentName: 'سالن', processName: 'پذیرش', nodeLabel: 'خوشامد', orphan: false },
     text: `متن نویسنده ${n}`, state: 'awaiting', stage: 'pool', waitingWith: { kind: 'pool' },
-    author: { name: 'سمیرا احمدی', isMe: false },
+    author: { name: 'سمیرا احمدی', isMe: false, role: 'reader' },
     createdAt: AT, updatedAt: AT,
     approvals: 1, notes: [], rejectReason: null, addressed: null, actions: NO,
     trail: [ev('submitted', 'سمیرا احمدی'), ev('assigned', 'حسین مازندرانی'),
@@ -111,6 +111,9 @@ describe('panel inbox', () => {
     expect(within(trail).getByText('سمیرا احمدی')).toBeInTheDocument()
     expect(within(trail).getByText(/^نویسنده/)).toBeInTheDocument()
     expect(within(trail).getByText(/^تأیید شد/)).toBeInTheDocument()
+    // the role beside each person (Panel L1853), and under the author (L1841)
+    expect(within(trail).getAllByText('خواننده')).toHaveLength(2)
+    expect(screen.getAllByText('خواننده').length).toBe(3)
     // the no-action box for an Admin who has nothing to do here
     expect(screen.getByText('در این سطح کاری لازم نیست')).toBeInTheDocument()
   })
@@ -177,5 +180,30 @@ describe('panel inbox', () => {
     expect(screen.getByText(/این کامنت به فرآیندی اشاره دارد که بعداً جایگزین شده است/)).toBeInTheDocument()
     expect(screen.getByText(/^ادمینی نبود — مستقیم به ادیتور/)).toBeInTheDocument()
     expect(screen.queryByText('در این سطح کاری لازم نیست')).toBeNull()
+    // the anchor's process is gone: nothing to open
+    expect(screen.queryByRole('link', { name: 'مشاهده در فلوچارت' })).toBeNull()
+  })
+
+  it('ends an approved comment’s chain with the Editor hop, worded for the viewer', async () => {
+    const approved = cmt(6, { state: 'approved', stage: null, waitingWith: { kind: 'editors' },
+      trail: [ev('submitted', 'سمیرا احمدی'), ev('delivered', 'system', { reason: 'no_admin' })] })
+    stub({ all: [approved] }, [approved], EDITOR)
+    const { unmount } = open(EDITOR, '/comments?c=CMT-6')
+    let trail = await screen.findByRole('list', { name: 'زنجیرهٔ تأیید' })
+    expect(within(trail).getByText('ادیتور')).toBeInTheDocument()
+    expect(within(trail).getByText('رسیده به شما')).toBeInTheDocument()
+    unmount()
+    stub({ all: [approved] }, [approved], ADMIN)
+    open(ADMIN, '/comments?c=CMT-6')
+    trail = await screen.findByRole('list', { name: 'زنجیرهٔ تأیید' })
+    expect(within(trail).getByText('در انتظار رسیدگی ادیتور')).toBeInTheDocument()
+  })
+
+  it('opens the flowchart on the anchored step', async () => {
+    const pool = cmt(7)
+    stub({ waiting: [pool] }, [pool])
+    open(ADMIN, '/comments?c=CMT-7')
+    expect(await screen.findByRole('link', { name: 'مشاهده در فلوچارت' }))
+      .toHaveAttribute('href', '/processes/dining-001/flow?node=dining-001-n010')
   })
 })

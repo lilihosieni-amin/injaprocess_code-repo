@@ -23,7 +23,11 @@ def get(cc: sqlite3.Connection, cid: int) -> sqlite3.Row | None:
 
 def event(cc: sqlite3.Connection, cid: int, *, kind: str, now: int,
           user_id: int | None = None, user_name: str, note: str | None = None,
-          detail: dict | None = None) -> None:
+          detail: dict | None = None, role: str | None = None) -> None:
+    """`role` is the acting person's kind at that moment (D62), snapshotted into
+    `detail` beside any other key; a system move passes none."""
+    if role is not None:
+        detail = {**(detail or {}), "role": role}
     cc.execute(
         "INSERT INTO comment_events (comment_id, at, kind, user_id, user_name, note,"
         " detail) VALUES (?, ?, ?, ?, ?, ?, ?)",

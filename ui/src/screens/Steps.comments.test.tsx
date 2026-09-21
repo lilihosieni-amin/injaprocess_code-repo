@@ -38,7 +38,7 @@ const PROC = {
 const cmt = (n: number, node: string): Comment => ({
   id: `CMT-${n}`,
   anchor: { kind: 'node', id: node, processId: 'dining-003', department: 'dining', departmentName: 'سالن', processName: PROC.name, nodeLabel: '', orphan: false },
-  text: `متن ${n}`, state: 'awaiting', stage: 'reader', waitingWith: null, author: { name: 'x', isMe: true },
+  text: `متن ${n}`, state: 'awaiting', stage: 'reader', waitingWith: null, author: { name: 'x', isMe: true, role: 'reader' },
   createdAt: '', updatedAt: '', approvals: 0, notes: [], rejectReason: null, addressed: null,
   actions: { approve: false, reject: false, edit: true, withdraw: true, address: false },
 })

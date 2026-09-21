@@ -64,6 +64,13 @@ describe('FlowScreen drawer', () => {
    * under half F11's 44px floor, and the least likely thing on the canvas to be
    * hit on a phone.
    */
+  it('opens the step ?node= names — the comments inbox’s «مشاهده در فلوچارت» (Panel L4228)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(proc), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow?node=cooking-001-n010', READER)
+    expect(await screen.findByTitle('بستن')).toBeInTheDocument()
+  })
+
   it('opens the drawer when a viewer presses the node itself', async () => {
     mount(proc, READER)
     // The label inside the node, not the `⋯`: the point of the ruling is that

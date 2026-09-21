@@ -23,7 +23,7 @@ def test_create_on_a_node_routes_and_snapshots(people):
                            "processName": "خرید و پرداخت هزینه",
                            "nodeLabel": "دریافت درخواست خرید", "orphan": False}
     assert c["state"] == "awaiting" and c["waitingWith"] == {"kind": "person", "name": "head"}
-    assert c["author"] == {"name": "viewer", "isMe": True}
+    assert c["author"] == {"name": "viewer", "isMe": True, "role": "reader"}
 
 
 def test_the_editor_may_not_author(people):

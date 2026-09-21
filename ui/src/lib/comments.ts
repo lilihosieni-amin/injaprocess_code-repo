@@ -1,4 +1,4 @@
-import type { Comment, CommentState } from '../api/comments'
+import type { Comment, CommentRole, CommentState } from '../api/comments'
 import type { SessionDescriptor } from '../auth/session'
 import { can } from '../auth/session'
 import { toFa } from './format'
@@ -14,6 +14,10 @@ export const STATUS: Record<CommentState, { label: string; bg: string; fg: strin
 
 /** Panel design `ST` (Inja Panel.dc.html L3870) words two states differently. */
 const PANEL_LABEL: Partial<Record<CommentState, string>> = { addressed: 'رسیدگی‌شده', rejected: 'رد شده' }
+
+/** The design's `authorRole` / trail `role` (Panel L1841, L1853). */
+const ROLE: Record<CommentRole, string> = { reader: 'خواننده', admin: 'ادمین', editor: 'ادیتور' }
+export const roleLabel = (r: CommentRole | null) => (r ? ROLE[r] : '')
 
 export const statusLabel = (state: CommentState, surface: 'reader' | 'panel') =>
   (surface === 'panel' && PANEL_LABEL[state]) || STATUS[state].label

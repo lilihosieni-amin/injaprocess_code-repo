@@ -21,7 +21,7 @@ function cmt(n: number, over: Partial<Comment> = {}, anchor: Partial<Comment['an
     anchor: { kind: 'process', id: 'dining-001', processId: 'dining-001', department: 'dining',
       departmentName: 'سالن', processName: 'پذیرش', nodeLabel: null, orphan: false, ...anchor },
     text: `متن نویسنده ${n}`, state: 'awaiting', stage: 'reader', waitingWith: null,
-    author: { name: 'سمیرا احمدی', isMe: true },
+    author: { name: 'سمیرا احمدی', isMe: true, role: 'reader' },
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     approvals: 0, notes: [{ by: 'حسین', text: 'یادداشت تأییدکننده', at: '' }], rejectReason: null,
     addressed: null, actions: { approve: false, reject: false, edit: true, withdraw: true, address: false },

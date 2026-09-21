@@ -7,7 +7,7 @@ import {
 import { ApiError } from '../api/client'
 import { can } from '../auth/session'
 import { useSession } from '../auth/useSession'
-import { STATUS, ageText, statusLabel } from '../lib/comments'
+import { STATUS, ageText, roleLabel, statusLabel } from '../lib/comments'
 import { jalali, toFa } from '../lib/format'
 import { Icon } from '../ui/Icon'
 import { NavTabTray } from '../ui/NavTabTray'
@@ -120,11 +120,17 @@ function Row({ c }: { c: Comment }) {
   )
 }
 
-/** Panel L4219 `openFlow`: the process's flowchart, or a department's list. */
-function flowHref(c: Comment): string {
-  return c.anchor.processId
-    ? `/processes/${encodeURIComponent(c.anchor.processId)}/flow`
-    : `/departments/${encodeURIComponent(c.anchor.department)}`
+/**
+ * Panel L4228 `openFlow`: the process's flowchart opened on the anchored step,
+ * or a department's list. None for an orphan: its anchor no longer stands
+ * (D31), so there is nothing to open.
+ */
+function flowHref(c: Comment): string | null {
+  const a = c.anchor
+  if (a.orphan) return null
+  if (!a.processId) return `/departments/${encodeURIComponent(a.department)}`
+  const flow = `/processes/${encodeURIComponent(a.processId)}/flow`
+  return a.kind === 'node' ? `${flow}?node=${encodeURIComponent(a.id)}` : flow
 }
 
 const DAY = 86_400_000
@@ -134,13 +140,13 @@ const DAY = 86_400_000
  * the hop it waits on now. `assigned`, `pooled` without a reason and `edited`
  * are routing, not people deciding, so they draw nothing of their own.
  */
-function chain(c: CommentDetail, now: Date = new Date()): TimelineNode[] {
+function chain(c: CommentDetail, viewerEdits: boolean, now: Date = new Date()): TimelineNode[] {
   const out: TimelineNode[] = []
   const muted = 'text-muted'
   c.trail.forEach((e, i) => {
     const id = String(i)
     const at = ` · ${jalali(e.at)}`
-    const push = (n: Omit<TimelineNode, 'id' | 'role'>) => out.push({ id, role: '', ...n, stateLabel: n.stateLabel + at })
+    const push = (n: Omit<TimelineNode, 'id' | 'role'>) => out.push({ id, role: roleLabel(e.role), ...n, stateLabel: n.stateLabel + at })
     if (e.kind === 'submitted') push({ name: e.name, state: 'done', mark: '✓', stateLabel: 'نویسنده', tone: 'text-violet' })
     else if (e.kind === 'approved') push({ name: e.name, state: 'done', mark: '✓', stateLabel: e.note ? 'تأیید با یادداشت' : 'تأیید شد' })
     else if (e.kind === 'rejected') push({ name: e.name, state: 'rejected', mark: '×', stateLabel: 'رد شد', tone: 'text-danger' })
@@ -158,6 +164,10 @@ function chain(c: CommentDetail, now: Date = new Date()): TimelineNode[] {
       stateLabel: days >= 1 ? `در انتظار تأیید — ${toFa(days)} روز` : 'در انتظار تأیید' })
   } else if (w?.kind === 'pool') {
     out.push({ id: 'wait', role: '', name: 'ادمین‌ها', state: 'awaiting', mark: '…', tone: muted, stateLabel: 'در انتظار تأیید یکی از ادمین‌ها' })
+  } else if (w?.kind === 'editors') {
+    // The design's chain always ends with the Editor (Panel L3264, L3273).
+    out.push({ id: 'wait', role: '', name: 'ادیتور', state: 'awaiting', mark: '…', tone: muted,
+      stateLabel: viewerEdits ? 'رسیده به شما' : 'در انتظار رسیدگی ادیتور' })
   }
   return out
 }
@@ -172,6 +182,8 @@ type Mode = null | 'note' | 'reject'
 
 function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
   const { data: c, error } = useComment(cref)
+  const session = useSession().data
+  const viewerEdits = !!session && can(session, 'edit')
   const toast = useToast()
   const approve = useApproveComment()
   const reject = useRejectComment()
@@ -229,6 +241,7 @@ function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
       : null
   const noAction = !c.actions.approve && !c.actions.address && (c.state === 'awaiting' || c.state === 'approved')
   const desk = c.waitingWith?.kind === 'person' ? c.waitingWith.name : 'یکی از ادمین‌ها'
+  const flow = flowHref(c)
 
   return pane(
     <>
@@ -255,14 +268,18 @@ function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
             این کامنت به فرآیندی اشاره دارد که بعداً جایگزین شده است. متن اصلی و عکس لحظه‌ای آن نگه داشته شده و به‌طور خودکار به چیز دیگری وصل نمی‌شود.
           </div>
         )}
-        <Link to={flowHref(c)}
+        {flow && <Link to={flow}
           className="mt-s7 inline-flex items-center gap-button-icon py-option px-s7 rounded-input font-bold text-fs-sm2 no-underline bg-card text-violet border-hairline border-line">
           مشاهده در فلوچارت
-        </Link>
+        </Link>}
       </div>
 
       <div className={`${BOX} mb-s7`}>
-        <div className="mb-s6 text-fs-sm font-bold text-ink">{c.author.name}</div>
+        {/* Panel L1837–1842 */}
+        <div className="mb-s6 min-w-0">
+          <div className="text-fs-sm font-bold text-ink">{c.author.name}</div>
+          {c.author.role && <div className="text-fs-xxs text-muted mt-half">{roleLabel(c.author.role)}</div>}
+        </div>
         <div className="text-fs-body-lead text-ink leading-loose whitespace-pre-line [text-wrap:pretty]">{c.text}</div>
         {c.notes.map((n, i) => (
           <div key={i} className="mt-s7 border-t border-dashed border-border-current pt-s7">
@@ -274,7 +291,7 @@ function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
 
       <div className={`${BOX} mb-s7`}>
         <div className={`${LABEL} mb-s7`}>زنجیرهٔ تأیید</div>
-        <Timeline label="زنجیرهٔ تأیید" nodes={chain(c)} />
+        <Timeline label="زنجیرهٔ تأیید" nodes={chain(c, viewerEdits)} />
       </div>
 
       {c.actions.approve && (
@@ -319,7 +336,7 @@ function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
           <div data-r-actions className={ROW}>
             {/* The design's green shadow on this violet button (L1909) is a drift. */}
             <button type="button" onClick={() => setAsk('resolve')} className={`${BTN} min-w-cmt-resolve border-0 bg-violet text-card shadow-violet`}>ثبت به‌عنوان رسیدگی‌شده</button>
-            <Link to={flowHref(c)} className={`${GHOST} min-w-cmt-resolve no-underline text-center`}>رفتن به فرآیند</Link>
+            {flow && <Link to={flow} className={`${GHOST} min-w-cmt-resolve no-underline text-center`}>رفتن به فرآیند</Link>}
           </div>
         </div>
       )}

@@ -1,4 +1,4 @@
-import { useNavigate, useParams, useLocation, Link } from 'react-router-dom'
+import { useNavigate, useParams, useLocation, useSearchParams, Link } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
 import { ReactFlowProvider, useReactFlow, type Connection } from '@xyflow/react'
 import { useConfirmations, useDepartments, useProcess, useProcesses, usePutProcess, useRelayout, useCreateProcess, useResolvePending } from '../api/hooks'
@@ -108,7 +108,10 @@ function FlowEditor() {
   const createProcess = useCreateProcess()
   const resolve = useResolvePending(pid)
   const [pendingDel, setPendingDel] = useState<string | null>(null)
-  const [detailId, setDetailId] = useState<string | null>(null)
+  // `?node=` opens that step's detail — the comments inbox's «مشاهده در
+  // فلوچارت» (Panel L4228 `openFlow` passes `node: anchorId`).
+  const initialNode = useSearchParams()[0].get('node')
+  const [detailId, setDetailId] = useState<string | null>(initialNode)
   // A step's detail replaces the process's comment drawer — Reader L1846–1847,
   // `set({ node: n.id, cmtDrawer: false })`.
   const comments = useComments()

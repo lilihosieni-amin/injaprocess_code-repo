@@ -24,7 +24,7 @@ function cmt(n: number, over: Partial<Comment> = {}): Comment {
     anchor: { kind: 'node', id: 'dining-001-n010', processId: 'dining-001', department: 'dining',
       departmentName: 'سالن', processName: 'پذیرش', nodeLabel: 'خوشامد', orphan: false },
     text: `متن نویسنده ${n}`, state: 'awaiting', stage: 'reader', waitingWith: null,
-    author: { name: 'سمیرا احمدی', isMe: false },
+    author: { name: 'سمیرا احمدی', isMe: false, role: 'reader' },
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     approvals: 0, notes: [], rejectReason: null, addressed: null, actions: NO,
     ...over,
@@ -100,7 +100,7 @@ describe('reader inbox', () => {
   })
 
   it('shows a non-approver no tabs, only their own comments, with the author controls', async () => {
-    const spy = stub({ own: [cmt(2, { author: { name: 'سمیرا احمدی', isMe: true }, actions: { ...NO, edit: true, withdraw: true } })] })
+    const spy = stub({ own: [cmt(2, { author: { name: 'سمیرا احمدی', isMe: true, role: 'reader' }, actions: { ...NO, edit: true, withdraw: true } })] })
     open(VIEWER)
     expect(await screen.findByText('متن نویسنده 2')).toBeInTheDocument()
     expect(screen.queryByRole('tablist')).toBeNull()
@@ -152,7 +152,7 @@ describe('reader inbox', () => {
   })
 
   it('«عوض کردن متن» → «دوباره بفرست» PUTs the edited text', async () => {
-    const spy = stub({ own: [cmt(2, { author: { name: 'سمیرا احمدی', isMe: true }, actions: { ...NO, edit: true, withdraw: true } })] })
+    const spy = stub({ own: [cmt(2, { author: { name: 'سمیرا احمدی', isMe: true, role: 'reader' }, actions: { ...NO, edit: true, withdraw: true } })] })
     open(VIEWER)
     fireEvent.click(await screen.findByRole('button', { name: 'عوض کردن متن' }))
     const box = screen.getByPlaceholderText('حرفتان را ساده بنویسید…')

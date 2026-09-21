@@ -111,7 +111,9 @@ def present(request: Request, viewer, c, *, trail: bool = False,
                    "orphan": _orphan(cfg, c, {} if docs is None else docs)},
         "text": c["text"], "state": c["state"], "stage": c["stage"],
         "waitingWith": _waiting(app, c),
-        "author": {"name": c["author_name"], "isMe": c["author_id"] == viewer["id"]},
+        "author": {"name": c["author_name"], "isMe": c["author_id"] == viewer["id"],
+                   "role": next((d.get("role") for e, d in zip(evs, detail)
+                                 if e["kind"] == "submitted"), None)},
         "createdAt": _iso(c["created_at"]), "updatedAt": _iso(c["updated_at"]),
         "approvals": len(S.approvers_since_restart(cc, c["id"])),
         "notes": notes,
@@ -125,6 +127,7 @@ def present(request: Request, viewer, c, *, trail: bool = False,
     if trail:
         out["trail"] = [{"kind": e["kind"], "name": e["user_name"], "note": e["note"],
                          "reason": d.get("reason"), "commit": d.get("commit"),
+                         "role": d.get("role"),
                          "at": _iso(e["at"])} for e, d in zip(evs, detail)]
     return out
 
@@ -190,7 +193,7 @@ def create_comment(body: CommentBody, request: Request, user=Depends(require_ses
         cid = S.insert(cc, author=user, anchor_kind=body.anchorKind, anchor_id=body.anchorId,
                        process_id=pid, department=dept, snapshot=snap, text=text, now=now)
         S.event(cc, cid, kind="submitted", now=now, user_id=user["id"],
-                user_name=user["display_name"])
+                user_name=user["display_name"], role=R.kind_of(request.app.state.db, user))
         R.submit(request.app.state.db, cc, cid, now=now)
     record(request, "comment.created", actor=user["username"],
            session_id=getattr(request.state, "session_id", None), target=R.cmt(cid),
@@ -312,7 +315,8 @@ def approve(ref: str, body: NoteBody, request: Request, user=Depends(require_ses
 
     def go(cc, c, now):
         S.event(cc, c["id"], kind="approved", now=now, user_id=user["id"],
-                user_name=user["display_name"], note=note)
+                user_name=user["display_name"], role=R.kind_of(request.app.state.db, user),
+                note=note)
         if c["stage"] == "pool":
             S.set_state(cc, c["id"], state="approved", now=now)
         else:
@@ -331,7 +335,8 @@ def reject(ref: str, body: ReasonBody, request: Request, user=Depends(require_se
 
     def go(cc, c, now):
         S.event(cc, c["id"], kind="rejected", now=now, user_id=user["id"],
-                user_name=user["display_name"], note=reason)
+                user_name=user["display_name"], role=R.kind_of(request.app.state.db, user),
+                note=reason)
         S.set_state(cc, c["id"], state="rejected", now=now)
 
     out = _act(request, user, ref, "reject", go)
@@ -347,7 +352,7 @@ def edit(ref: str, body: TextBody, request: Request, user=Depends(require_sessio
     def go(cc, c, now):
         S.set_text(cc, c["id"], text=text, now=now)
         S.event(cc, c["id"], kind="edited", now=now, user_id=user["id"],
-                user_name=user["display_name"])
+                user_name=user["display_name"], role=R.kind_of(request.app.state.db, user))
         R.submit(app, cc, c["id"], now=now)
 
     out = _act(request, user, ref, "edit", go)
@@ -359,7 +364,7 @@ def edit(ref: str, body: TextBody, request: Request, user=Depends(require_sessio
 def withdraw(ref: str, request: Request, user=Depends(require_session)):
     def go(cc, c, now):
         S.event(cc, c["id"], kind="withdrawn", now=now, user_id=user["id"],
-                user_name=user["display_name"])
+                user_name=user["display_name"], role=R.kind_of(request.app.state.db, user))
         S.set_state(cc, c["id"], state="withdrawn", now=now)
 
     out = _act(request, user, ref, "withdraw", go)
@@ -373,7 +378,8 @@ def address(ref: str, body: AddressBody, request: Request, user=Depends(require_
 
     def go(cc, c, now):
         S.event(cc, c["id"], kind="addressed", now=now, user_id=user["id"],
-                user_name=user["display_name"], note=note)
+                user_name=user["display_name"], role=R.kind_of(request.app.state.db, user),
+                note=note)
         S.set_state(cc, c["id"], state="addressed", now=now)
 
     out = _act(request, user, ref, "address", go)

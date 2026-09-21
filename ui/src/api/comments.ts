@@ -5,6 +5,8 @@ import { fetchJson } from './client'
 export type CommentAnchorKind = 'node' | 'process' | 'department'
 export type CommentState = 'awaiting' | 'approved' | 'addressed' | 'rejected' | 'withdrawn'
 export type CommentAction = 'approve' | 'reject' | 'edit' | 'withdraw' | 'address'
+/** A person's kind when they acted (D62), snapshotted on the event; null for a system move. */
+export type CommentRole = 'reader' | 'admin' | 'editor'
 
 export interface Comment {
   id: string
@@ -23,7 +25,7 @@ export interface Comment {
   state: CommentState
   stage: 'reader' | 'pool' | null
   waitingWith: { kind: 'person'; name: string } | { kind: 'pool' } | { kind: 'editors' } | null
-  author: { name: string; isMe: boolean }
+  author: { name: string; isMe: boolean; role: CommentRole | null }
   createdAt: string
   updatedAt: string
   approvals: number
@@ -40,6 +42,7 @@ export interface CommentTrailItem {
   note: string | null
   reason: string | null
   commit: string | null
+  role: CommentRole | null
   at: string
 }
 

@@ -6,7 +6,7 @@ import { VIEWER, HEAD, ADMIN } from '../test/sessions'
 
 const base = {
   id: 'CMT-1', text: 't', state: 'awaiting', stage: 'reader', waitingWith: null,
-  author: { name: 'x', isMe: true }, createdAt: '', updatedAt: '', approvals: 0, notes: [],
+  author: { name: 'x', isMe: true, role: 'reader' }, createdAt: '', updatedAt: '', approvals: 0, notes: [],
   rejectReason: null, addressed: null,
   actions: { approve: false, reject: false, edit: false, withdraw: false, address: false },
 } as const
