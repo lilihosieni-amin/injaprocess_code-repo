@@ -44,6 +44,9 @@ const GHOST = 'inline-flex items-center justify-center bg-tile-v2 text-violet bo
 // to the same five pixels and leaves that helper with nothing to measure.
 const HIT = 'relative before:absolute before:content-[""] before:-inset-[5px]'
 
+/** The comments button on its own screen, reader 2700–2702. */
+const CMT_ON = 'inline-flex items-center justify-center bg-violet text-card border-hairline border-violet cursor-pointer no-underline'
+
 /** The back bar's own control, reader 157 — `10px 15px`, radius 12, 13.5px.
  *  One string because R48's ruling made it two elements. */
 const BACK_BAR_BTN =
@@ -175,18 +178,27 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
             {/* reader 141 — `margin-inline-start:auto; gap:8px; flex:none`. The
                 panel's own cluster is `gap:10px`. */}
             <div className="ms-auto flex items-center gap-s4 flex-none">
-              {session.pendingApprovals > 0 && (
-                // reader 145. Not `aria-hidden` like the panel's, which is a
-                // decoration on a button whose own name carries the count; this
-                // one stands alone, so it has to say what it is counting.
-                <span
-                  role="status"
-                  aria-label={`${toFa(session.pendingApprovals)} کامنت در انتظار تأیید شما`}
-                  className="min-w-count-chrome h-count-chrome px-s1 inline-flex items-center justify-center rounded-round bg-coral text-card text-fs-micro font-bold"
-                >
-                  {toFa(session.pendingApprovals)}
-                </span>
-              )}
+              {/* reader 142–146 — the comments button, 42×42 at radius 12, violet
+                  while on its screen (reader 2700–2702), with the coral count of
+                  comments waiting for you hung off its inline-end corner (reader
+                  145; `left:-6px` on the RTL bar is `-end-s3`, as PanelShell's).
+                  The count is in the link's name; the badge itself is decoration. */}
+              <Link
+                to="/comments" title="کامنت‌ها"
+                aria-label={session.pendingApprovals > 0
+                  ? `کامنت‌ها، ${toFa(session.pendingApprovals)} در انتظار تأیید شما` : 'کامنت‌ها'}
+                className={`${pathname.startsWith('/comments') ? CMT_ON : GHOST} ${HIT} w-iconbtn h-iconbtn rounded-button`}
+              >
+                <Icon name="comment" px={19} />
+                {session.pendingApprovals > 0 && (
+                  <span
+                    aria-hidden
+                    className="absolute -top-s3 -end-s3 min-w-count-chrome h-count-chrome px-s1 flex items-center justify-center rounded-round bg-coral text-card text-fs-micro font-bold border-2 border-card"
+                  >
+                    {toFa(session.pendingApprovals)}
+                  </span>
+                )}
+              </Link>
               {/* R3 — the reader's icon buttons are 42×42 at radius 12 (reader
                   142, 148), against the panel's 34×34 at radius 10. Neither
                   shell writes a pixel for them: `w-iconbtn` reads the role. */}
@@ -198,11 +210,9 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
               <Link to="/profile" aria-label="پروفایل من" className={`${GHOST} ${HIT} w-iconbtn h-iconbtn rounded-button`}>
                 <Icon name="user" px={19} />
               </Link>
-              {/* Neither deliverable has a sign-out affordance anywhere — the
-                  reader's bar draws a comments button here instead, and this app
-                  has no comments screen. The app has a sign-out and must keep
-                  it, drawn on the neighbouring button's metrics. Owner question,
-                  the same one PanelShell records. */}
+              {/* Neither deliverable has a sign-out affordance anywhere. The app
+                  has one and must keep it, drawn on the neighbouring button's
+                  metrics. Owner question, the same one PanelShell records. */}
               <button
                 type="button" onClick={() => setSigningOut(true)} aria-label="خروج"
                 className={`${GHOST} ${HIT} w-iconbtn h-iconbtn rounded-button`}

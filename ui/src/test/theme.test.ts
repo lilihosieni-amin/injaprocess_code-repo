@@ -661,6 +661,10 @@ const EXPECTED: Record<string, string | string[]> = {
   'text-fs-compose-reader': 'var(--fs-compose-reader)',
   'shadow-composer': 'var(--shadow-composer)',
   'w-composer': 'var(--width-composer)',
+  // P4 — the reader inbox's three mints (Reader L766, L739, L753).
+  'border-s-note': 'var(--border-note)',
+  'py-cmt-empty-y': 'var(--pad-cmt-empty-y)',
+  'underline-offset-anchor': 'var(--underline-anchor)',
   // The flow-bar mint (owner ruling R47). Nine names for the flowchart screen,
   // which F16 froze for the whole rebuild, and every one of them a number this
   // theme already carries under another role — so every one of them is a pairing

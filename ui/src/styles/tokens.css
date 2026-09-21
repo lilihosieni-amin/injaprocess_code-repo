@@ -936,4 +936,11 @@
      (Inja Reader.dc.html L632 = Panel L928). 20px has four owners here, none a
      drawer section, so it is minted again under the file's own rule. */
   --space-drawer-section: 20px;
+  /* The reader inbox (Task 12). A history entry's `border-inline-start:3px`
+     (Inja Reader.dc.html L766) — no border width but the 1.5px hairline exists. */
+  --border-note: 3px;
+  /* Its empty card, `padding:34px 20px` (Reader L739). 34 is on no ladder. */
+  --pad-cmt-empty-y: 34px;
+  /* Its anchor name, `text-underline-offset:3px` (Reader L753). */
+  --underline-anchor: 3px;
 }

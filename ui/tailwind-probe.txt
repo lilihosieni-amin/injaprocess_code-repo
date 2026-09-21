@@ -144,6 +144,9 @@ mt-drawer-section
 # P4 — the composer's three mints: its Reader textarea type (Reader L952), its
 # shadow and its 380px width (Reader L903–904, L940–941; Panel L2844, L2877–2878).
 text-fs-compose-reader shadow-composer w-composer
+# P4 — the reader inbox's three mints: a history entry's 3px inline-start edge
+# (Reader L766), the empty card's 34px (L739), the anchor's underline offset (L753).
+border-s-note py-cmt-empty-y underline-offset-anchor
 # Owner ruling R35 — the drawer-as-bottom-sheet's 22px top corners (§5.2). The
 # ladder has no 22 rung; the modal's sheet is 20 and the centred dialog 24.
 # Written `rounded-t-sheet` at its one consumer, so the bare stem below is the

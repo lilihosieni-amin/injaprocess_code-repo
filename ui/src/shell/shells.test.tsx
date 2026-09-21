@@ -2597,21 +2597,27 @@ describe('ReaderShell chrome', () => {
   })
 
   it('counts the approvals waiting for you in Persian, and drops the badge at zero', async () => {
-    // Audit S4 and S5 together: a latin digit in a 44×44 coral square.
+    // Audit S4 and S5 together: a latin digit in a 44×44 coral square. Reader
+    // 142–146: the badge now hangs off the 42×42 comments button, and the
+    // button's own name carries the count, so the badge is decoration.
     const zero = renderReader(THREE, '/departments')
     await screen.findByText('فهرست دپارتمان‌ها')
-    expect(screen.queryByRole('status')).toBeNull()
+    const bare = screen.getByRole('link', { name: 'کامنت‌ها' })
+    expect(bare).toHaveAttribute('href', '/comments')
+    expect(bare).toHaveClass('w-iconbtn', 'h-iconbtn', 'rounded-button')
+    expect(bare.querySelector('span[aria-hidden]')).toBeNull()
     zero.unmount()
     renderReader(THREE, '/departments', { pendingApprovals: 4 })
-    const badge = await screen.findByRole('status')
+    const btn = await screen.findByRole('link', { name: /^کامنت‌ها/ })
+    const badge = btn.querySelector('span[aria-hidden]') as HTMLElement
     expect(badge).toHaveTextContent('۴')
     expect(badge.textContent).not.toMatch(/[0-9]/)
     expect(badge).toHaveClass('rounded-round', 'min-w-count-chrome', 'h-count-chrome')
     // S5 — the badge is not interactive, so it must not carry the touch floor.
     expect(badge.className).not.toMatch(/\bmin-[wh]-touch\b/)
-    // …and it says what it is counting. A bare «۴» in a coral disc is a number
-    // with no sentence attached, and this is the app's only notification channel.
-    expect(badge.getAttribute('aria-label')).toContain('۴')
+    // …and the button says what it is counting. A bare «۴» in a coral disc is a
+    // number with no sentence attached, and this is the app's only channel.
+    expect(btn.getAttribute('aria-label')).toBe('کامنت‌ها، ۴ در انتظار تأیید شما')
   })
 
   it('shows the badge for a reader with EXACTLY ONE comment waiting', async () => {
@@ -2622,9 +2628,9 @@ describe('ReaderShell chrome', () => {
     // product's only channel (F15), so for that reader the badge is not part of
     // the signal, it IS the signal.
     renderReader(THREE, '/departments', { pendingApprovals: 1 })
-    const badge = await screen.findByRole('status')
-    expect(badge).toHaveTextContent('۱')
-    expect(badge.getAttribute('aria-label')).toContain('۱')
+    const btn = await screen.findByRole('link', { name: /^کامنت‌ها/ })
+    expect(btn.querySelector('span[aria-hidden]')).toHaveTextContent('۱')
+    expect(btn.getAttribute('aria-label')).toContain('۱')
   })
 
   it('names the screen the back bar is on, resolved from the departments it already holds', async () => {
@@ -3188,9 +3194,9 @@ describe('what the reader chrome’s class strings compile to', () => {
     const { cls, unmount } = readerChrome('/departments')
     await screen.findByText('فهرست دپارتمان‌ها')
     unmount()
-    const { container, unmount: drop } = renderReader(THREE, '/departments', { pendingApprovals: 4 })
-    await screen.findByRole('status')
-    const badge = await paint((container.querySelector('[role="status"]') as HTMLElement).className)
+    const { unmount: drop } = renderReader(THREE, '/departments', { pendingApprovals: 4 })
+    const btn = await screen.findByRole('link', { name: /^کامنت‌ها/ })
+    const badge = await paint((btn.querySelector('span[aria-hidden]') as HTMLElement).className)
     drop()
     void cls
     // `Inja Reader.dc.html:145` — `min-width:19px; height:19px; padding:0 4px;
@@ -3205,6 +3211,8 @@ describe('what the reader chrome’s class strings compile to', () => {
     expect(winner(badge, 'color')).toBe('var(--card)')
     expect(winner(badge, 'font-size')).toBe('var(--fs-micro)')
     expect(winner(badge, 'padding-left')).toBe('var(--space-1)')
+    // …ringed in the WHITE `--card` (`border:2px solid #fff`), as the panel's.
+    expect(winner(badge, 'border-color')).toBe('var(--card)')
   })
 
   it('carries the bar’s title on a flex:1 span that truncates rather than wraps', async () => {

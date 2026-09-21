@@ -315,7 +315,8 @@ export default {
         // Written `rounded-t-sheet` at its one consumer, src/ui/Overlay.tsx.
         sheet: 'var(--radius-sheet)',              // 22px — the drawer-as-sheet
       },
-      borderWidth: { hairline: 'var(--border-hairline)' },
+      borderWidth: { hairline: 'var(--border-hairline)', note: 'var(--border-note)' }, // note — Reader L766
+      textUnderlineOffset: { anchor: 'var(--underline-anchor)' }, // Reader L753
       boxShadow: {
         card: 'var(--shadow-card)', 'card-hover': 'var(--shadow-card-hover)',
         coral: 'var(--shadow-coral)', violet: 'var(--shadow-violet)', green: 'var(--shadow-green)',
@@ -468,6 +469,7 @@ export default {
         'crumb-y': 'var(--pad-crumb-y)',                      // 9px  — the breadcrumb strip
         'back-y': 'var(--pad-back-y)',                        // 7px  — its «بازگشت» button
         'topbar-reader': 'var(--pad-topbar-reader)',          // 20px — the reader's chrome
+        'cmt-empty-y': 'var(--pad-cmt-empty-y)',              // 34px — the inbox empty card, Reader L739
         // The reader-chrome mint. `button-icon` is the FIFTH 7px key on this
         // scale (`popover`, `stat-label`, `stat-dot`, `back-y` are the others)
         // and the first that is a button's icon gap; `button-x` is the design's
