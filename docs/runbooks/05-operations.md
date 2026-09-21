@@ -98,7 +98,7 @@ subscription, so rule it out now rather than on the invoice.
 
 ## Backup & restore
 
-Four separate things need backing up, and `git-push` covers only the first.
+Five separate things need backing up, and `git-push` covers only the first.
 
 - **Off-site baseline:** `git-push` is the off-site baseline — it backs up
   data-repo **minus audio** (raw audio under `meetings/audio/` is gitignored and
