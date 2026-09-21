@@ -26,13 +26,20 @@ class Refused(Exception):
 
 
 def _open(db: str | None) -> sqlite3.Connection:
-    path = Path(db or os.environ.get("COMMENTS_DB", ""))
-    if not str(path) or not path.is_file():
-        raise Refused(f"the comment store is not initialised ({path or 'COMMENTS_DB unset'})")
+    raw = db or os.environ.get("COMMENTS_DB", "")
+    if not raw:
+        raise Refused("the comment store is not initialised (COMMENTS_DB unset)")
+    path = Path(raw)
+    if not path.is_file():
+        raise Refused(f"the comment store is not initialised ({path})")
     conn = sqlite3.connect(path, isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
-    got = conn.execute("SELECT version FROM schema_version").fetchone()
+    try:
+        got = conn.execute("SELECT version FROM schema_version").fetchone()
+    except sqlite3.DatabaseError:
+        # Wrong file mounted, or not yet migrated: not our schema to read past.
+        raise Refused(f"the comment store is not initialised ({path})") from None
     if got is None or got[0] != SCHEMA_VERSION:
         raise Refused(f"the comment store is not initialised (schema {got and got[0]},"
                       f" expected {SCHEMA_VERSION})")

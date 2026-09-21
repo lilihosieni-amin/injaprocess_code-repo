@@ -94,3 +94,29 @@ def test_wrong_schema_version_is_refused(store, capsys):
     conn.execute("UPDATE schema_version SET version = 2")
     conn.commit()
     assert main(["list", "--department", "dining"]) == 2
+
+
+def test_a_sqlite_file_with_no_schema_table_is_refused(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "comments.db"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE unrelated (x INTEGER)")
+    conn.commit()
+    monkeypatch.setenv("COMMENTS_DB", str(path))
+    assert main(["list", "--department", "dining"]) == 2
+    assert "not initialised" in capsys.readouterr().err
+
+
+def test_a_non_sqlite_file_is_refused(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "comments.db"
+    path.write_text("not a database", encoding="utf-8")
+    monkeypatch.setenv("COMMENTS_DB", str(path))
+    assert main(["list", "--department", "dining"]) == 2
+    assert "not initialised" in capsys.readouterr().err
+
+
+def test_unset_comments_db_says_so_and_not_a_dot(monkeypatch, capsys):
+    monkeypatch.delenv("COMMENTS_DB", raising=False)
+    assert main(["list", "--department", "dining"]) == 2
+    err = capsys.readouterr().err
+    assert "COMMENTS_DB unset" in err
+    assert "(.)" not in err
