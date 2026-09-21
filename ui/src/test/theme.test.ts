@@ -657,6 +657,10 @@ const EXPECTED: Record<string, string | string[]> = {
   'px-toast-x': 'var(--pad-toast-x)',
   // P4 — the flow drawer's step comment section (Reader L632).
   'mt-drawer-section': 'var(--space-drawer-section)',
+  // P4 — the composer's three mints (Reader L952, L903–904/L940–941).
+  'text-fs-compose-reader': 'var(--fs-compose-reader)',
+  'shadow-composer': 'var(--shadow-composer)',
+  'w-composer': 'var(--width-composer)',
   // The flow-bar mint (owner ruling R47). Nine names for the flowchart screen,
   // which F16 froze for the whole rebuild, and every one of them a number this
   // theme already carries under another role — so every one of them is a pairing
@@ -1518,7 +1522,7 @@ const UNPAINTED: string[] = [
   'bg-link', 'bg-link-hover', 'text-violet-on-dark', 'text-violet-on-dark-body',
   'text-strong', 'text-ghost',
   'text-ok',
-  'text-danger', 'text-link', 'text-link-hover',
+  'text-link', 'text-link-hover',
   // `border-border-ok` left this list under owner ruling R48. R47 had kept it
   // here on purpose and said why: its only site is the design's confirm PILL —
   // `border:1.5px solid` the green edge when the mark is on (panel 599, 3585) —
@@ -1551,7 +1555,7 @@ const UNPAINTED: string[] = [
   // the disclosure, the tick), and Chrome's UA stylesheet gives a button its
   // OWN font — so the app's stack has to be written back on each of them, which
   // is the one place in the product where naming the family is not redundant.
-  'font-regular',   'shadow-sheet', 'shadow-drawer',
+  'font-regular',
   'shadow-card-dark', 'shadow-stat-dark', 'shadow-guide-hover', 'shadow-ring-flash',
   'p-screen-x', 'p-screen-y',
   'p-topbar', 'p-half', 'gap-topbar',
@@ -1579,7 +1583,6 @@ const UNPAINTED: string[] = [
   // takes the rung its site calls for. CEILING below follows them down by five.
   'h-fab-reader', 'max-w-doc',
     'max-w-audit', 'duration-fast',
-  'p-compose',
   'py-tick-nested-y', 'py-dropdown-y-dialog',
   'py-dropdown-y-filter', 'px-dropdown-x-filter',
   'my-stat-grid',
@@ -1854,7 +1857,10 @@ const UNPAINTED: string[] = [
 // other vocabulary for. The list is still exactly the orphans, every one of them
 // is still explained by a family, and the next task that consumes one of these
 // three lowers this line again.
-const CEILING = 107
+// P4 (comments) consumed four: `text-danger` (lib/comments STATUS, the step
+// comment buttons), `shadow-sheet` and `shadow-drawer` (the process drawer) and
+// `p-compose` (the composer). CEILING follows them down by four.
+const CEILING = 103
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
@@ -2192,8 +2198,15 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
     //   · **One ARRIVED in the spelling half.** `bg-warn-edge` is still painted
     //     nowhere itself, but `border-warn-edge` now has a consumer, so the
     //     token under it reaches the screen. Spelling +1, painted-nowhere −1.
-    expect(buckets.filter((b) => b.spelling).length).toBe(43)
-    expect(buckets.filter((b) => !b.spelling).length).toBe(64)
+    // **44 / 59 after P4 (comments)**, from 43 / 64:
+    //   · **Four left the list entirely.** `text-danger`, `shadow-sheet`,
+    //     `shadow-drawer` and `p-compose` are consumed by the comment UI.
+    //     Painted-nowhere −4.
+    //   · **One ARRIVED in the spelling half.** `bg-danger` is still painted
+    //     nowhere itself, but `text-danger` now has a consumer, so `--danger`
+    //     reaches the screen. Spelling +1, painted-nowhere −1.
+    expect(buckets.filter((b) => b.spelling).length).toBe(44)
+    expect(buckets.filter((b) => !b.spelling).length).toBe(59)
 
     // A family that stops covering anything is an argument nobody is paying
     // for, and the next name added beside it inherits the same absence of

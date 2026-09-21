@@ -27,7 +27,9 @@ const PROC = {
   id: 'cooking-001', department: 'cooking', name: 'پخت', summary: '', parent: null,
   source: { type: 'manual', ref: null, run: null }, created_at: '', updated_at: '',
   idef0: { inputs: [], controls: [], outputs: [], mechanisms: [] }, kpis: [], pending: [],
-  nodes: [act('cooking-001-n010', 'ثبت', 40), act('cooking-001-n020', 'تحویل', 300)], edges: [],
+  nodes: [act('cooking-001-n010', 'ثبت', 40), act('cooking-001-n020', 'تحویل', 300),
+    { id: 'cooking-001-j1', type: 'junction', junctionType: 'XOR', direction: 'split', position: { x: 600, y: 90 }, layout: 'auto' } as ProcNode],
+  edges: [],
 }
 
 function cmt(n: number, nodeId: string | null): Comment {
@@ -44,7 +46,7 @@ function cmt(n: number, nodeId: string | null): Comment {
   }
 }
 
-const COMMENTS = [cmt(1, 'cooking-001-n010'), cmt(2, 'cooking-001-n010'), cmt(3, null)]
+const COMMENTS = [cmt(1, 'cooking-001-n010'), cmt(2, 'cooking-001-n010'), cmt(3, null), cmt(4, 'cooking-001-j1')]
 
 function flow(session: SessionDescriptor) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
@@ -87,6 +89,19 @@ describe('step comments on the flowchart', () => {
     const d = drawer()
     expect(within(d).queryByText(/کامنت‌های این گام/)).toBeNull()
     expect(within(d).getByRole('button', { name: 'کامنت روی این گام' })).toBeInTheDocument()
+  })
+
+  it('a junction gets the same button and section (Reader L626, D30), and no badge on the diamond', async () => {
+    flow(VIEWER)
+    await screen.findByTitle('کامنت دارد')
+    expect(screen.getAllByTitle('کامنت دارد')).toHaveLength(1)
+    fireEvent.click(screen.getAllByText('XOR')[0])
+    const d = drawer()
+    expect(within(d).getByText('دروازهٔ منطقی XOR')).toBeInTheDocument()
+    expect(within(d).getByText('کامنت‌های این گام (۱)')).toBeInTheDocument()
+    expect(within(d).getByText('متن 4')).toBeInTheDocument()
+    fireEvent.click(within(d).getByRole('button', { name: 'کامنت روی این گام' }))
+    expect(await screen.findByText('گام «دروازهٔ منطقی XOR» · پخت')).toBeInTheDocument()
   })
 
   it('an Editor sees the list and no button', async () => {

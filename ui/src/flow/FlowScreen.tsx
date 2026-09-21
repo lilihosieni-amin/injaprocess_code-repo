@@ -1030,9 +1030,12 @@ function FlowEditor() {
               editing={editing}
               conflicts={(proc.pending ?? []).map((pending, index) => ({ pending, index })).filter((x) => x.pending.status === 'open' && x.pending.node === detailId)}
               process={proc}
-              comments={detailNode.type === 'activity' && (
-                <NodeComments pid={pid} department={proc.department} processName={proc.name}
-                  id={detailNode.id} label={detailNode.label} />
+              // Steps and junctions alike (Reader L626 sits outside `isActivity`;
+              // D30: a node anchor is a step or a junction). A junction has no
+              // label, so it is named by the title its drawer shows.
+              comments={(detailNode.type === 'activity' || detailNode.type === 'junction') && (
+                <NodeComments pid={pid} department={proc.department} processName={proc.name} id={detailNode.id}
+                  label={detailNode.type === 'activity' ? detailNode.label : `دروازهٔ منطقی ${detailNode.junctionType}`} />
               )}
               onClose={() => setDetailId(null)}
               onEdit={() => {}}
