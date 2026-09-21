@@ -23,9 +23,16 @@ export const statusLabel = (state: CommentState, surface: 'reader' | 'panel') =>
   (surface === 'panel' && PANEL_LABEL[state]) || STATUS[state].label
 
 /** Reader L2714. */
+/**
+ * The department as the design's comment data names it — «دپارتمان سالن»
+ * (Reader L1246, Panel L3237): the server sends the registry name alone
+ * (ledger, Task 4), so the word is added here.
+ */
+export const deptLabel = (name: string | null): string => `دپارتمان ${name ?? ''}`
+
 export function anchorText(c: Comment): string {
   const a = c.anchor
-  if (a.kind === 'department') return a.departmentName ?? ''
+  if (a.kind === 'department') return deptLabel(a.departmentName)
   if (a.kind === 'node') return `گام «${a.nodeLabel ?? ''}»`
   return `کل «${a.processName ?? ''}»`
 }

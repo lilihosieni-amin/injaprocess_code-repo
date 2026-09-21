@@ -7,7 +7,7 @@ import {
 import { ApiError } from '../api/client'
 import { can } from '../auth/session'
 import { useSession } from '../auth/useSession'
-import { STATUS, ageText, roleLabel, statusLabel } from '../lib/comments'
+import { STATUS, ageText, deptLabel, roleLabel, statusLabel } from '../lib/comments'
 import { jalali, toFa } from '../lib/format'
 import { Icon } from '../ui/Icon'
 import { NavTabTray } from '../ui/NavTabTray'
@@ -99,6 +99,9 @@ export function PanelInbox() {
   )
 }
 
+/** A department comment's place in the chain of names — the design's `procName` for one (Panel L3269). */
+const DEPT_WHOLE = 'اطلاعات کلی دپارتمان'
+
 /** Panel L1790–1802. */
 function Row({ c }: { c: Comment }) {
   const st = STATUS[c.state]
@@ -114,7 +117,7 @@ function Row({ c }: { c: Comment }) {
       <div className="flex items-center gap-s3 mt-option text-fs-xxs text-muted flex-wrap">
         <span className="font-semibold text-ink-current">{c.author.name}</span>
         <span className="text-faint">·</span>
-        <span>{a.nodeLabel || a.processName || a.departmentName}</span>
+        <span>{a.nodeLabel || a.processName || DEPT_WHOLE}</span>
       </div>
     </Link>
   )
@@ -258,8 +261,8 @@ function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
       <div className={`${BOX} mb-s7`}>
         <div className={`${LABEL} mb-s5`}>این کامنت به چه چیزی اشاره دارد؟</div>
         <div className="flex items-center gap-s4 flex-wrap text-fs-sm2 text-ink-current">
-          <span className="font-bold text-ink">{a.departmentName}</span>
-          {a.processName && <><span className="text-faint">›</span><span>{a.processName}</span></>}
+          <span className="font-bold text-ink">{deptLabel(a.departmentName)}</span>
+          <span className="text-faint">›</span><span>{a.processName || DEPT_WHOLE}</span>
           {a.kind === 'node' && <><span className="text-faint">›</span><span className="font-semibold text-violet">{a.nodeLabel}</span></>}
           <span dir="ltr" className="font-mono text-fs-micro py-half px-s4 rounded-badge bg-tile-v2 text-muted">{a.id}</span>
         </div>

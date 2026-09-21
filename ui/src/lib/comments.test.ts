@@ -11,7 +11,7 @@ const base = {
   actions: { approve: false, reject: false, edit: false, withdraw: false, address: false },
 } as const
 const anchor = { id: 'dining-003-n020', processId: 'dining-003', department: 'dining',
-  departmentName: 'دپارتمان سالن', processName: 'سرو غذا', nodeLabel: 'کنترل دما', orphan: false }
+  departmentName: 'سالن', processName: 'سرو غذا', nodeLabel: 'کنترل دما', orphan: false }
 const c = (a: Partial<Comment['anchor']>, w: Comment['waitingWith'] = null): Comment =>
   ({ ...base, waitingWith: w, anchor: { ...anchor, kind: 'node', ...a } }) as unknown as Comment
 
