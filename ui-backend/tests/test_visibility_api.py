@@ -279,7 +279,9 @@ def test_the_switch_is_stored_before_it_is_recorded_and_opens_no_transaction(
         assert client.put("/api/visibility/process_idef0",
                           json={"visible": True}).status_code == 200
     finally:
+        in_transaction = conn.in_transaction
         conn.set_trace_callback(None)
+        conn.close()
 
     assert statements, "the trace callback saw nothing; this test proves nothing"
     sql = [" ".join(s.split()) for s in statements]
@@ -295,7 +297,7 @@ def test_the_switch_is_stored_before_it_is_recorded_and_opens_no_transaction(
         ("BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE"))]
     assert opened == [], (
         f"this handler opened a transaction on the shared connection: {opened}")
-    assert conn.in_transaction is False
+    assert in_transaction is False
 
 
 def test_undoing_a_switch_gives_back_the_version_it_had(data_root, tmp_path):

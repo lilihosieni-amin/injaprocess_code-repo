@@ -127,8 +127,7 @@ def connect(path: Path) -> sqlite3.Connection:
     # so argon2 does not block the event loop — hence many threads).
     #
     # `check_same_thread=False` stays only so a connection opened on one thread
-    # may be *handed* to another (a test's `app.state.db = conn`, or a
-    # `PerThread` connection being closed by the garbage collector); it is not
+    # may be *handed* to another (a test's `app.state.db = conn`); it is not
     # permission to use one from two threads at the same time.
     #
     # Still no explicit transaction on `app.state.db` from a handler: a
@@ -148,14 +147,36 @@ def connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+class _Owned:
+    """Closes its connection when the last reference goes.
+
+    A `sqlite3.Connection` sits in a reference cycle with its statement cache,
+    so dropping it only closes it at the next cyclic GC pass. This holder is
+    acyclic, so plain refcounting runs `__del__` the moment a thread's
+    `threading.local` is cleared, i.e. when the thread exits.
+    """
+
+    __slots__ = ("conn",)
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def __del__(self):
+        self.conn.close()
+
+
 class PerThread:
     """A stand-in for one shared connection that is really one per thread.
 
     Every attribute (`execute`, `in_transaction`, ...) is forwarded to the
-    calling thread's own `connect(path)`, opened on first use. A thread's
-    connection is dropped — and closed by sqlite3's finalizer — when the thread
-    exits, so the count is bounded by the threads alive (the threadpool's size),
-    not by the number of requests.
+    calling thread's own `connect(path)`, opened on first use and closed when
+    that thread exits (`_Owned`), so the number open is bounded by the threads
+    alive (the threadpool's size), not by the number of requests.
+
+    Attribute *reads* only: no `with`, no attribute assignment (setting
+    `row_factory` here sets it on the proxy, not on any connection), and a call
+    with a lasting effect, such as `set_trace_callback`, affects only the
+    calling thread's connection.
     """
 
     def __init__(self, path: Path):
@@ -163,10 +184,10 @@ class PerThread:
         self._local = threading.local()
 
     def __getattr__(self, name: str):
-        conn = getattr(self._local, "conn", None)
-        if conn is None:
-            conn = self._local.conn = connect(self._path)
-        return getattr(conn, name)
+        owned = getattr(self._local, "owned", None)
+        if owned is None:
+            owned = self._local.owned = _Owned(connect(self._path))
+        return getattr(owned.conn, name)
 
 
 def _current_version(conn: sqlite3.Connection) -> int:
