@@ -1,0 +1,33 @@
+import { createContext, useContext } from 'react'
+import type { ComposeAnchor } from '../lib/comments'
+import { useSession } from '../auth/useSession'
+import { useCan } from '../auth/can'
+
+export type CommentsDrawer = { kind: 'process'; pid: string } | { kind: 'dept'; code: string }
+/** Design `compose.from`: where closing the composer returns to. */
+export type ComposeFrom = 'dept' | 'proc' | 'node'
+
+export interface CommentsApi {
+  drawer: CommentsDrawer | null
+  compose: { anchor: ComposeAnchor; from: ComposeFrom } | null
+  openDrawer: (d: CommentsDrawer) => void
+  closeDrawer: () => void
+  openCompose: (anchor: ComposeAnchor, from: ComposeFrom) => void
+  /** Closes the composer and restores the drawer it came from (design `closeCompose`). */
+  closeCompose: () => void
+}
+
+/** Null outside a `CommentsProvider`: every comment control then draws nothing. */
+export const CommentsContext = createContext<CommentsApi | null>(null)
+
+export const useComments = () => useContext(CommentsContext)
+
+/**
+ * «کامنت تازه» and its siblings: the session may comment on this department
+ * and is not an Editor (addendum §7.2 — the Editor reads comments, never writes one).
+ */
+export function useMayComment(code: string): boolean {
+  const session = useSession().data
+  const can = useCan(session)
+  return can('comment', `dept:${code}`) && !session!.capabilities.includes('edit')
+}

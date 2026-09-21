@@ -6,6 +6,7 @@ import { ToastProvider } from '../ui/Toast'
 import { SurfaceProvider } from '../ui/surface'
 import { PanelShell } from './PanelShell'
 import { ReaderShell } from './ReaderShell'
+import { CommentsProvider } from '../comments/CommentsProvider'
 
 export function AppShell({ session }: { session: SessionDescriptor }) {
   const navigate = useNavigate()
@@ -29,7 +30,7 @@ export function AppShell({ session }: { session: SessionDescriptor }) {
   const Shell = surface === 'panel' ? PanelShell : ReaderShell
   return (
     <SurfaceProvider surface={surface}>
-      <ToastProvider><Shell session={session} /></ToastProvider>
+      <ToastProvider><CommentsProvider><Shell session={session} /></CommentsProvider></ToastProvider>
     </SurfaceProvider>
   )
 }

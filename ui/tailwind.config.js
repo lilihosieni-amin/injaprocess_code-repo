@@ -328,6 +328,7 @@ export default {
         // §4.2 — the comment FAB's own two-layer coral shadow. No other shadow
         // token matches it, so `shadow-coral` is not a substitute.
         fab: 'var(--shadow-fab)',
+        composer: 'var(--shadow-composer)', // P4 — Reader L904/L941, Panel L2878
         // The department feature card's heavier rest shadow — one use, and the
         // ledger's "Referred to the owner" #9 reads it as a role rather than as
         // drift. If that is overturned the card takes `shadow-card` and this key
@@ -579,6 +580,7 @@ export default {
         // has. NOT `logo-bar`, which is also 38px and is the logo IMAGE.
         'menu-more-reader': 'var(--size-menu-more-reader)', // 38px — the reader's
         login: 'var(--width-login)',                    // 380px — the sign-in card
+        composer: 'var(--width-composer)',              // 380px — P4 composer + dept drawer
         dot: 'var(--size-dot)',                         // 9px  — the table state dot
         chev: 'var(--size-chev)',                       // 30px — the table chevron cell
         'glyph-tile': 'var(--size-glyph-tile)',         // 42px — §6.15's glyph tile

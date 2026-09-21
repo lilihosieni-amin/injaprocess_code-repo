@@ -919,4 +919,14 @@
      bar. Nor --size-logo-bar, 38px again, which is the logo IMAGE. Three 38s,
      three roles. */
   --width-flowback-mobile: 38px;
+
+  /* P4 comments. The fixed composer and the department comments drawer are
+     `width:380px;max-width:380px` (Inja Reader.dc.html L903, L940; Inja
+     Panel.dc.html L2844, L2877). --width-login is also 380 but is the sign-in
+     card, a different role. */
+  --width-composer: 380px;
+  /* …and their `box-shadow:24px 0 60px -30px rgba(16,10,40,.7)` (Reader L904,
+     L941; Panel L2878). No shadow token holds it; the Panel composer's own
+     shadow (L2845) is --shadow-drawer. */
+  --shadow-composer: 24px 0 60px -30px rgba(16, 10, 40, .7);
 }

@@ -19,6 +19,7 @@ import { IdBadge } from '../ui/IdBadge'
 import { pushDismissible, popDismissible, isTopDismissible } from '../ui/dismissibleStack'
 import { DeleteNodeConfirm } from './DeleteNodeConfirm'
 import { DetailDrawer } from './DetailDrawer'
+import { ProcessDrawer, ProcessFab } from '../comments/ProcessDrawer'
 import { JunctionLegend } from './JunctionLegend'
 import type { ActivityNode } from '../api/types'
 
@@ -1010,6 +1011,7 @@ function FlowEditor() {
           onDeleteEdge={(f, t) => ed.deleteEdge(f, t)}
         />
         <JunctionLegend />
+        <ProcessDrawer pid={pid} department={proc.department} />
         {(() => {
           if (!detailId) return null
           const detailNode = proc.nodes.find((x) => x.id === detailId)
@@ -1049,6 +1051,7 @@ function FlowEditor() {
         <ConfirmAction row={mark} department={dept} render="dialog"
           open={asking} onOpenChange={setAsking} />
       )}
+      <ProcessFab pid={pid} hidden={!!detailId} />
       {pendingDel && (() => {
         const n = proc.nodes.find((x) => x.id === pendingDel)
         const label = n && 'label' in n ? (n as { label: string }).label : pendingDel
