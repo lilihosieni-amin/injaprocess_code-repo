@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import db
+from . import comments_db, db
 from .config import Settings, load_settings
 from .routers import auth as auth_router
 from .routers import confirmations as confirmations_router
@@ -172,6 +172,9 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
     conn = db.connect(cfg.app_db)
     db.migrate(conn)
     app.state.db = conn
+    # comments.db (D1): migrated on every start like app.db. Its own shared
+    # connection, under the same rule — no transaction on it from a handler.
+    app.state.comments_db = comments_db.open_comments(cfg.comments_db)
     app.include_router(auth_router.router)
     app.include_router(confirmations_router.router)
     app.include_router(departments_router.router)

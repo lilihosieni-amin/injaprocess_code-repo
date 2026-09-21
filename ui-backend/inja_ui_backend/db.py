@@ -156,9 +156,11 @@ def _current_version(conn: sqlite3.Connection) -> int:
     return got[0] if got else 0
 
 
-def migrate(conn: sqlite3.Connection) -> int:
+def migrate(conn: sqlite3.Connection,
+            migrations: list[tuple[int, str]] | None = None) -> int:
+    migrations = MIGRATIONS if migrations is None else migrations
     version = _current_version(conn)
-    for target, sql in MIGRATIONS:
+    for target, sql in migrations:
         if target <= version:
             continue
         # The DDL and the version bump must land together or not at all. The

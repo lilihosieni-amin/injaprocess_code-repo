@@ -10,13 +10,15 @@ _PW = "test-password"
 _USERNAME = "09120000000"
 
 
-def cfg_for(data_root: Path, app_db: Path | None = None):
+def cfg_for(data_root: Path, app_db: Path | None = None, comments_db: Path | None = None):
     env = {
         "DATA_ROOT": str(data_root),
         "SCHEMA_DIR": str(Path(__file__).resolve().parents[2] / "schemas"),
         "SESSION_SIGNING_KEY": "k",
         "APP_DB": str(app_db if app_db is not None else data_root.parent / "app.db"),
     }
+    if comments_db is not None:
+        env["COMMENTS_DB"] = str(comments_db)
     return load_settings(env)
 
 
