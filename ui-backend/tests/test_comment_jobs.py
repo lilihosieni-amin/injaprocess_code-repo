@@ -7,7 +7,9 @@ from inja_ui_backend.store import comments as S
 
 
 def _dbs(tmp_path):
-    app = db.connect(tmp_path / "app.db"); db.migrate(app); app.close()
+    app = db.connect(tmp_path / "app.db")
+    db.migrate(app)
+    app.close()
     comments_db.open_comments(tmp_path / "c.db").close()
     return tmp_path / "app.db", tmp_path / "c.db"
 
