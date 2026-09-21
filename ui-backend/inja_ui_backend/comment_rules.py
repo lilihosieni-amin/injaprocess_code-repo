@@ -53,8 +53,16 @@ def admins_covering(app: sqlite3.Connection, department: str) -> list[sqlite3.Ro
 
 
 def _pool(app, cc, c, *, now, reason: str | None = None) -> None:
-    """Enter the Admin pool, or — nobody covering — deliver to the Editors (D63.6)."""
+    """Enter the Admin pool, or — nobody covering — deliver to the Editors (D63.6).
+
+    `reason` (e.g. "cycle") is kept on the trail even on the deliver branch: a
+    `pooled` event records it before the `delivered/no_admin` one, so D63.7's
+    "chain broken — cycle" is never silently swallowed by "no Admin available".
+    """
     if not admins_covering(app, c["department"]):
+        if reason:
+            S.event(cc, c["id"], kind="pooled", now=now, user_name=SYSTEM,
+                    detail={"reason": reason})
         S.event(cc, c["id"], kind="delivered", now=now, user_name=SYSTEM,
                 detail={"reason": "no_admin"})
         S.set_state(cc, c["id"], state="approved", now=now)
@@ -104,17 +112,28 @@ def submit(app: sqlite3.Connection, cc: sqlite3.Connection, cid: int, *, now: in
 
 def reconcile(app: sqlite3.Connection, cc: sqlite3.Connection, *, now: int) -> int:
     """Move what is stuck (D63.6, D63.7): a named supervisor now disabled or no
-    longer a Reader, or a pool nobody active covers. Returns how many moved."""
+    longer a Reader, or a pool nobody active covers. Returns how many moved.
+
+    The two causes at the reader stage part ways here (D63.1): a *disabled*
+    supervisor is a hop skipped in passing — the climb keeps going from their
+    edge, so a healthy Reader above them can still be found. A supervisor who
+    is simply no longer a Reader (promoted to Admin/Editor, still enabled) is
+    the climb's own stopping rule — the comment goes straight to the pool, not
+    past them to whoever they answer to, and no `skipped/disabled` event is
+    written for a hop nobody skipped.
+    """
     moved = 0
     for c in cc.execute("SELECT * FROM comments WHERE state = 'awaiting'").fetchall():
         if c["stage"] == "reader":
             who = users.by_id(app, c["approver_id"])
             if who is not None and who["disabled_at"] is None and kind_of(app, who) == "reader":
                 continue
-            if who is not None:
+            if who is not None and who["disabled_at"] is not None:
                 S.event(cc, c["id"], kind="skipped", now=now, user_id=who["id"],
                         user_name=who["display_name"], detail={"reason": "disabled"})
-            advance(app, cc, c["id"], from_user_id=c["approver_id"], now=now)
+                advance(app, cc, c["id"], from_user_id=c["approver_id"], now=now)
+            else:
+                _pool(app, cc, c, now=now)
             moved += 1
         elif c["stage"] == "pool" and not admins_covering(app, c["department"]):
             _pool(app, cc, c, now=now)

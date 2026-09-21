@@ -182,6 +182,38 @@ def test_reconcile_leaves_healthy_comments_alone(world):
     assert R.reconcile(app, cc, now=NOW + 1) == 0
 
 
+def test_reconcile_pools_a_comment_whose_supervisor_became_an_admin(world):
+    app, cc = world
+    mk(app, "admin", "admin", "*")
+    top = mk(app, "top", "reader", "dept:dining", can_sup=True)
+    head = mk(app, "head", "reader", "dept:dining", sup=top, can_sup=True)
+    viewer = mk(app, "viewer", "reader", "dept:dining", sup=head)
+    cid = post(app, cc, viewer)
+    admin_role = app.execute("SELECT id FROM roles WHERE name='admin'").fetchone()[0]
+    app.execute("UPDATE users SET role_id = ? WHERE id = ?", (admin_role, head))
+    assert R.reconcile(app, cc, now=NOW + 1) == 1
+    c = S.get(cc, cid)
+    assert c["stage"] == "pool"
+    assert ("skipped", "head", "disabled") not in kinds(cc, cid)
+
+
+def test_a_cycle_with_no_covering_admin_records_both_pooled_and_delivered(world):
+    app, cc = world
+    mk(app, "cashier admin", "admin", "dept:cashier")
+    a = mk(app, "a", "reader", "dept:dining", can_sup=True)
+    b = mk(app, "b", "reader", "dept:dining", sup=a, can_sup=True)
+    app.execute("UPDATE users SET supervisor_id = ? WHERE id = ?", (b, a))  # a↔b
+    viewer = mk(app, "viewer", "reader", "dept:dining", sup=a)
+    cid = post(app, cc, viewer)
+    S.event(cc, cid, kind="approved", now=NOW, user_id=a, user_name="a")
+    R.advance(app, cc, cid, from_user_id=a, now=NOW)          # → b
+    S.event(cc, cid, kind="approved", now=NOW, user_id=b, user_name="b")
+    R.advance(app, cc, cid, from_user_id=b, now=NOW)          # → a again: cycle, no covering admin
+    ks = kinds(cc, cid)
+    assert ("pooled", "system", "cycle") in ks
+    assert ("delivered", "system", "no_admin") in ks
+
+
 def test_cmt_ids_round_trip():
     assert R.cmt(42) == "CMT-42"
     assert R.parse_cmt("CMT-42") == 42
