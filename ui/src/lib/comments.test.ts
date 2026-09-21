@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as L from './comments'
-import { STATUS, statusLabel, anchorText, composeContext, pathLine, ageText, waitingText } from './comments'
+import { STATUS, statusLabel, anchorText, composeContext, pathLine, ageText } from './comments'
 import type { Comment } from '../api/comments'
 import { VIEWER, HEAD, ADMIN } from '../test/sessions'
 
@@ -44,18 +44,12 @@ describe('comment labels', () => {
     expect(pathLine(VIEWER)).toBe(`این کامنت اول برای سرپرست شما می‌رود؛ پس از تأیید او به یکی از ادمین‌ها و سپس به ادیتور می‌رسد. ${tail}`)
     expect(pathLine(VIEWER, 'حسین مازندرانی')).toBe(`این کامنت اول برای حسین مازندرانی می‌رود؛ پس از تأیید او به یکی از ادمین‌ها و سپس به ادیتور می‌رسد. ${tail}`)
     expect(pathLine(HEAD)).toBe(`این کامنت به یکی از ادمین‌ها و سپس به ادیتور می‌رسد. ${tail}`)
-    expect(pathLine(ADMIN)).toBe('این کامنت به ادیتور می‌رود. تا وقتی رسیدگی نشده، می‌توانید متنش را عوض کنید یا پس بگیرید.')
+    expect(pathLine(ADMIN)).toBe('این کامنت مستقیم به ادیتور می‌رود.')
   })
   it('ageText', () => {
     const now = new Date('2026-09-21T12:00:00Z')
     expect(ageText('2026-09-21T01:00:00Z', now)).toBe('امروز')
     expect(ageText('2026-09-18T11:00:00Z', now)).toBe('۳ روز پیش')
-  })
-  it('waitingText for the three kinds', () => {
-    expect(waitingText(c({}, { kind: 'person', name: 'حسین مازندرانی' }))).toBe('در انتظار تأیید — حسین مازندرانی')
-    expect(waitingText(c({}, { kind: 'pool' }))).toBe('در انتظار تأیید یکی از ادمین‌ها')
-    expect(waitingText(c({}, { kind: 'editors' }))).toBe('رسیده به ادیتور')
-    expect(waitingText(c({}, null))).toBeNull()
   })
   it('no exported string speaks of amending', () => {
     const text = JSON.stringify(L) + [VIEWER, HEAD, ADMIN].map((s) => pathLine(s)).join()

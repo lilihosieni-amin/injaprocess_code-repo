@@ -57,7 +57,8 @@ const UNTIL = 'تا وقتی کسی تأیید نکرده، می‌توانید 
  */
 export function pathLine(s: SessionDescriptor, supervisorName?: string | null): string {
   if (can(s, 'manage_users') && !can(s, 'edit'))
-    return 'این کامنت به ادیتور می‌رود. تا وقتی رسیدگی نشده، می‌توانید متنش را عوض کنید یا پس بگیرید.'
+    // An admin's comment is approved at submit (D63.5): no edit/withdraw window (D73).
+    return 'این کامنت مستقیم به ادیتور می‌رود.'
   if (s.supervisor)
     return `این کامنت اول برای ${supervisorName || 'سرپرست شما'} می‌رود؛ پس از تأیید او به یکی از ادمین‌ها و سپس به ادیتور می‌رسد. ${UNTIL}`
   return `این کامنت به یکی از ادمین‌ها و سپس به ادیتور می‌رسد. ${UNTIL}`
@@ -66,12 +67,4 @@ export function pathLine(s: SessionDescriptor, supervisorName?: string | null): 
 export function ageText(iso: string, now: Date = new Date()): string {
   const days = Math.floor((now.getTime() - new Date(iso).getTime()) / 86_400_000)
   return days < 1 ? 'امروز' : `${toFa(days)} روز پیش`
-}
-
-export function waitingText(c: Comment): string | null {
-  const w = c.waitingWith
-  if (!w) return null
-  if (w.kind === 'person') return `در انتظار تأیید — ${w.name}`
-  if (w.kind === 'pool') return 'در انتظار تأیید یکی از ادمین‌ها'
-  return 'رسیده به ادیتور'
 }
