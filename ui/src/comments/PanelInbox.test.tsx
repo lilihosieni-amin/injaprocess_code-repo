@@ -92,6 +92,8 @@ describe('panel inbox', () => {
     fireEvent.change(screen.getByPlaceholderText('یادداشت شما کنار کامنت او اضافه می‌شود…'), { target: { value: 'یک نکته' } })
     fireEvent.click(screen.getByRole('button', { name: 'ثبت یادداشت و تأیید' }))
     const modal = screen.getByRole('dialog', { name: 'با یادداشت شما تأیید شود؟' })
+    // Panel L2949: the body is 13.5px on the panel (the reader's is 14px).
+    expect(within(modal).getByText(/یک پله بالاتر/)).toHaveClass('text-fs-menu')
     expect(posted(spy)).toHaveLength(0)
     fireEvent.click(within(modal).getByRole('button', { name: 'تأیید می‌کنم' }))
     await waitFor(() => expect(posted(spy)).toHaveLength(1))

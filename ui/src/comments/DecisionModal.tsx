@@ -29,10 +29,10 @@ const COPY: Record<Decision, { title: string; body: string; ok: string; tone: st
   },
 }
 
-/** Reader L962–975 buttons; the Panel's (L2951–2952) are 13px/13.5px with «انصراف». */
+/** Reader L962–975 buttons and 14px body; the Panel's (L2949–2952) are 13px/13.5px with «انصراف», body 13.5px. */
 const LOOK = {
-  reader: { btn: 'flex-1 p-button-x rounded-tile font-bold text-fs-lg cursor-pointer', cancel: 'بی‌خیال' },
-  panel: { btn: 'flex-1 p-compose rounded-button font-bold text-fs-menu cursor-pointer', cancel: 'انصراف' },
+  reader: { btn: 'flex-1 p-button-x rounded-tile font-bold text-fs-lg cursor-pointer', cancel: 'بی‌خیال', body: 'text-fs-body' },
+  panel: { btn: 'flex-1 p-compose rounded-button font-bold text-fs-menu cursor-pointer', cancel: 'انصراف', body: 'text-fs-menu' },
 } as const
 
 /**
@@ -57,7 +57,7 @@ export function DecisionModal({ kind, onConfirm, onClose, pending }: {
           className={`${look.btn} border-hairline border-line bg-card text-violet`}>{look.cancel}</button>
       </div>
     }>
-      <p className="m-0 text-fs-body text-ink-current leading-loose [text-wrap:pretty]">{c.body}</p>
+      <p className={`m-0 ${look.body} text-ink-current leading-loose [text-wrap:pretty]`}>{c.body}</p>
     </Dialog>
   )
 }
