@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -111,3 +113,25 @@ class DisabledBody(BaseModel):
     checks — which is exactly the escalation D13 exists to prevent.
     """
     disabled: bool
+
+
+class CommentBody(BaseModel):
+    anchorKind: Literal["node", "process", "department"]
+    anchorId: str
+    text: str
+
+
+class NoteBody(BaseModel):
+    note: str | None = None
+
+
+class ReasonBody(BaseModel):
+    reason: str
+
+
+class TextBody(BaseModel):
+    text: str
+
+
+class AddressBody(BaseModel):
+    note: str | None = None

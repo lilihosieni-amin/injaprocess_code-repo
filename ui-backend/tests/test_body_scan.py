@@ -1071,6 +1071,11 @@ def _api_routes(app):
 #: then subtracted `/api/exports/`. The subtraction was at least visible; the
 #: prefix filter was not, and it dropped `GET /exports/{file_path:path}` —
 #: the one endpoint D56 writes a row about — without a word.
+_COMMENTS_NOT_SWEPT = (
+    "comments carry no process content beyond the D31 snapshot (department,"
+    " process and step names, which no visibility policy withholds); D66 is"
+    " pinned by test_comments_api.py and test_comment_rules.py")
+
 NOT_SWEPT: dict[tuple[str, str], str] = {
     ("POST", "/api/exports/login"): (
         "the way in to the shared export credential (D25): not a session, no "
@@ -1143,6 +1148,10 @@ NOT_SWEPT: dict[tuple[str, str], str] = {
         "and this route's body is an opaque file — the authorisation is the "
         "whole question and it is pinned where it lives. Whoever lands D24: the "
         "sweep in this file is still where the rest comes back."),
+    ("POST", "/api/comments"): _COMMENTS_NOT_SWEPT,
+    ("GET", "/api/comments"): _COMMENTS_NOT_SWEPT,
+    ("GET", "/api/comments/inbox"): _COMMENTS_NOT_SWEPT,
+    ("GET", "/api/comments/{ref}"): _COMMENTS_NOT_SWEPT,
 }
 
 

@@ -11,6 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from . import comments_db, db
 from .config import Settings, load_settings
 from .routers import auth as auth_router
+from .routers import comments as comments_router
 from .routers import confirmations as confirmations_router
 from .routers import departments as departments_router
 from .routers import export_files as export_files_router
@@ -176,6 +177,7 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
     # connection, under the same rule — no transaction on it from a handler.
     app.state.comments_db = comments_db.open_comments(cfg.comments_db)
     app.include_router(auth_router.router)
+    app.include_router(comments_router.router)
     app.include_router(confirmations_router.router)
     app.include_router(departments_router.router)
     app.include_router(exports_router.router)

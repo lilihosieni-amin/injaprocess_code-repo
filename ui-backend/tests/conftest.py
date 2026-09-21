@@ -92,3 +92,11 @@ def data_root(tmp_path):
     subprocess.run(["git", "-C", str(root), "-c", "user.name=t",
                     "-c", "user.email=t@t", "commit", "-q", "-m", "seed"], check=True)
     return root
+
+
+@pytest.fixture
+def people(data_root, tmp_path):
+    """The comments cast over one shared app.db + comments.db
+    (`tests_helpers.comment_people`)."""
+    from inja_ui_backend.tests_helpers import comment_people
+    return comment_people(data_root, tmp_path)
