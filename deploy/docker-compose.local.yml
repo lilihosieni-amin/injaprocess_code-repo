@@ -87,6 +87,8 @@ services:
       # Vertex, GCS — is reached directly from this machine. A SOCKS ALL_PROXY here
       # also breaks `transcribe`: httpx builds the SOCKS transport at client
       # construction, and socksio lives in the bot's uv tool venv, not this python.
+      # comments.db — the engine `comments` CLI reads this (D5); shared with ui-backend.
+      COMMENTS_DB: /comments/comments.db
     volumes:
       - "../../data-repo:/data"
       - "${HOME}/.config/gcloud:/root/.config/gcloud:ro"
@@ -96,6 +98,7 @@ services:
       - "../schemas:/opt/schemas:ro"
       - local-claude-credentials:/root/.claude   # seeded from host ~/.claude (see setup)
       - local-control-bot-state:/state
+      - local-ui-comments:/comments   # comments.db only — app.db is never mounted here (D5)
 
   ui-backend:
     # The server-shipped ui-backend.Dockerfile builds FROM node:20-slim. Docker Hub is
@@ -141,6 +144,9 @@ services:
       # default so a copy of this file to a proxied host is an obvious edit.
       TRUSTED_PROXY_HOPS: "0"
       EXPORT_DIR: /exports
+      # comments.db (D1/D5) — outside DATA_ROOT and outside app.db, shared with
+      # control-bot on the local-ui-comments volume below.
+      COMMENTS_DB: /comments/comments.db
       # SCHEMA_DIR + UI_STATIC_DIR are baked into the image; the schemas dir is
       # overlaid with the live ../schemas volume below (no rebuild on schema edits).
       # UI edits git-commit into the mounted data-repo, which is owned by the host
@@ -166,9 +172,14 @@ services:
       # generated export documents — build artifacts, deliberately outside the
       # data-repo so they never appear in its working tree (D8)
       - local-ui-exports:/exports
+      # comments.db — shared with control-bot (D5), which reads it via the
+      # engine `comments` CLI.
+      - local-ui-comments:/comments
 
 volumes:
   local-claude-credentials:
   local-control-bot-state:
   local-ui-exports:
   local-ui-state:
+  # comments.db — mounted into ui-backend AND control-bot (D5); never app.db.
+  local-ui-comments:

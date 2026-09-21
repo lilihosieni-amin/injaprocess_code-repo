@@ -321,6 +321,18 @@ docker compose cp ui-backend:/state/app-backup.db "./app-$(date +%F).db"
 docker compose exec ui-backend rm -f /state/app-backup.db
 ```
 
+`comments.db` lives on its own volume (`ui-comments`) outside the data-repo too,
+and the same gap applies: `git-push` doesn't cover it, and `state-backup` isn't
+built yet. Back it up the same way:
+
+```bash
+cd /opt/inja/code-repo/deploy
+docker compose exec ui-backend python -c \
+  "import sqlite3; s=sqlite3.connect('/comments/comments.db'); d=sqlite3.connect('/comments/comments-backup.db'); s.backup(d); d.close(); s.close()"
+docker compose cp ui-backend:/comments/comments-backup.db "./comments-$(date +%F).db"
+docker compose exec ui-backend rm -f /comments/comments-backup.db
+```
+
 Then move `app-<date>.db` off the server — it holds every password hash, so treat
 it as a secret: `chmod 600`, never into either git repo.
 
