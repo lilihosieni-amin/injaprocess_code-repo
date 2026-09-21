@@ -67,6 +67,13 @@ describe('Steps — comments on a step', () => {
     expect(await screen.findByText('گام «استقبال» · پذیرایی از میهمان')).toBeInTheDocument()
   })
 
+  it('keeps the floating button, which opens the process drawer (the design\'s steps view has both)', async () => {
+    draw(VIEWER)
+    fireEvent.click(await screen.findByRole('button', { name: 'کامنت‌های این صفحه' }))
+    expect(await screen.findByRole('dialog', { name: 'کامنت‌های این فرآیند' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /کامنت‌های این صفحه/ })).toBeNull()
+  })
+
   it('a step inside a branch gets neither chip nor button', async () => {
     draw(VIEWER)
     await screen.findByText('۱ کامنت')

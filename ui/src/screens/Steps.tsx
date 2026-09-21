@@ -10,6 +10,7 @@ import { RefusalScreen } from './Refusal'
 import type { ActivityNode } from '../api/types'
 import { StepCommentButton } from '../comments/NodeComments'
 import { useNodeCommentCounts } from '../comments/state'
+import { ProcessDrawer, ProcessFab } from '../comments/ProcessDrawer'
 
 /**
  * The hand pointing at a step — `Inja Panel.dc.html:620`, drawn beside the
@@ -287,45 +288,55 @@ export function Steps() {
 
   const blocks = linearize(proc)
 
+  // P4 — the step view keeps the flow's floating button and process drawer
+  // (Reader: `flowView: 'steps'` is a mode of the flow screen, so `openFab`
+  // and the L680 drawer are there too). Siblings AFTER the scroller, never a
+  // wrapper around it: `shell/scroll.ts` scrolls the screen's first element.
+  // The drawer is pinned by the shell, not the scroller, so it stays put while
+  // the steps scroll.
   return (
-    <div
-      data-screen="steps"
-      data-r-pad
-      className="flex-1 overflow-auto bg-ink py-screen-y px-screen-x max760:px-s7 max760:py-s9"
-    >
-      {/* `--width-steps` 760px, minted for this screen and never writable until
-          now. §8's scroll box flips its own children back in `base.css`, so the
-          direction is pinned nowhere in this file. */}
-      <div data-col className="max-w-steps mx-auto">
-        <h1 data-h1 className="font-extrabold text-fs-steps-title text-role-title-on-field text-center leading-snug m-0">
-          {proc.name}
-        </h1>
-        {/* `:618` — the one instruction on the screen, on `--tile-v5`, whose own
-            token comment names this site: "sub-process node fill, steps hint
-            strip". `flex-row-reverse` in the deliverable is what puts the glyph
-            after the sentence in reading order; written as DOM order here, so
-            the accessible name and the painted order are the same thing. */}
-        <div className="flex items-center justify-center gap-s5 mt-s8 px-s9 py-s7 rounded-tile bg-tile-v5">
-          <span data-body className="text-fs-menu font-semibold text-violet leading-normal">
-            روی هر مرحله بزنید تا توضیح کامل و مسئول آن را ببینید.
-          </span>
-          <Icon d={HAND} px={20} className="flex-none text-violet" />
-        </div>
-        <div className="mt-s9">
-          {blocks.length > 0 ? (
-            <Blocks blocks={blocks} onEnter={(sub) => nav(`/processes/${sub}/steps`)}
-              cmt={{ pid, department: proc.department, processName: proc.name, counts }} />
-          ) : (
-            /* A process whose flowchart has no activity in it yet. The list is
-               not withheld here and never can be — a step's label and its order
-               are outside the visibility policy — so this is «nobody has drawn
-               it», which is a thing that can be said out loud. */
-            <p className="rounded-card border border-dashed border-line bg-card p-s11 text-center text-fs-sm2 text-faint m-0">
-              هنوز گامی برای این فرآیند ثبت نشده است.
-            </p>
-          )}
+    <>
+      <div
+        data-screen="steps"
+        data-r-pad
+        className="flex-1 overflow-auto bg-ink py-screen-y px-screen-x max760:px-s7 max760:py-s9"
+      >
+        {/* `--width-steps` 760px, minted for this screen and never writable until
+            now. §8's scroll box flips its own children back in `base.css`, so the
+            direction is pinned nowhere in this file. */}
+        <div data-col className="max-w-steps mx-auto">
+          <h1 data-h1 className="font-extrabold text-fs-steps-title text-role-title-on-field text-center leading-snug m-0">
+            {proc.name}
+          </h1>
+          {/* `:618` — the one instruction on the screen, on `--tile-v5`, whose own
+              token comment names this site: "sub-process node fill, steps hint
+              strip". `flex-row-reverse` in the deliverable is what puts the glyph
+              after the sentence in reading order; written as DOM order here, so
+              the accessible name and the painted order are the same thing. */}
+          <div className="flex items-center justify-center gap-s5 mt-s8 px-s9 py-s7 rounded-tile bg-tile-v5">
+            <span data-body className="text-fs-menu font-semibold text-violet leading-normal">
+              روی هر مرحله بزنید تا توضیح کامل و مسئول آن را ببینید.
+            </span>
+            <Icon d={HAND} px={20} className="flex-none text-violet" />
+          </div>
+          <div className="mt-s9">
+            {blocks.length > 0 ? (
+              <Blocks blocks={blocks} onEnter={(sub) => nav(`/processes/${sub}/steps`)}
+                cmt={{ pid, department: proc.department, processName: proc.name, counts }} />
+            ) : (
+              /* A process whose flowchart has no activity in it yet. The list is
+                 not withheld here and never can be — a step's label and its order
+                 are outside the visibility policy — so this is «nobody has drawn
+                 it», which is a thing that can be said out loud. */
+              <p className="rounded-card border border-dashed border-line bg-card p-s11 text-center text-fs-sm2 text-faint m-0">
+                هنوز گامی برای این فرآیند ثبت نشده است.
+              </p>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+      <ProcessDrawer pid={pid} department={proc.department} />
+      <ProcessFab pid={pid} />
+    </>
   )
 }
