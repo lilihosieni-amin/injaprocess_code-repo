@@ -246,13 +246,20 @@ def test_d66_visibility(world):
 
 def test_visible_sql_agrees_with_can_see(world):
     app, cc = world
+    star_admin = mk(app, "star admin", "admin", "*")
     admin = mk(app, "admin", "admin", "dept:dining")
-    head = mk(app, "head", "reader", "dept:dining", can_sup=True)
+    cashier_admin = mk(app, "cashier admin", "admin", "dept:cashier")
+    report_admin = mk(app, "report admin", "admin", "dept:dining/report:steps")
+    top = mk(app, "top", "reader", "dept:dining", can_sup=True)
+    head = mk(app, "head", "reader", "dept:dining", sup=top, can_sup=True)
     viewer = mk(app, "viewer", "reader", "dept:dining", sup=head)
     other = mk(app, "other", "reader", "dept:dining")
-    post(app, cc, viewer)
+    cid = post(app, cc, viewer)
     post(app, cc, admin)
-    for uid in (admin, head, viewer, other, editor_id(app)):
+    S.event(cc, cid, kind="approved", now=NOW, user_id=head, user_name="head")
+    R.advance(app, cc, cid, from_user_id=head, now=NOW)     # → top; head keeps seeing it
+    for uid in (star_admin, admin, cashier_admin, report_admin, top, head, viewer, other,
+                editor_id(app)):
         u = users.by_id(app, uid)
         where, params = R.visible_sql(app, u)
         by_sql = {r[0] for r in cc.execute(f"SELECT c.id FROM comments c WHERE {where}", params)}

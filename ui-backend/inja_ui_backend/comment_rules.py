@@ -162,9 +162,17 @@ def visible_sql(app, viewer: sqlite3.Row) -> tuple[str, list]:
     if k == "editor":
         return "1", []
     if k == "admin":
-        depts = access.reachable_departments(app, viewer, "view")
-        if depts is None:
-            return "1", []
+        # Exactly `covers`'s rule, not `reachable_departments` (which is
+        # "somewhere within": a `dept:dining/report:steps` holder would show up
+        # as covering `dining`, while `covers`/`contains` say no — a report
+        # scope names one report, not its department). A department qualifies
+        # here only via `"*"` or an exact `dept:{code}` scope.
+        depts: set[str] = set()
+        for s in access.scopes_of(app, viewer):
+            if s == "*":
+                return "1", []
+            if scopes.SCOPE_RE.fullmatch(s) and "/" not in s:
+                depts.add(scopes.dept_of(s))
         marks = ",".join("?" * len(depts)) or "NULL"
         return (f"(c.author_id = ? OR c.department IN ({marks}))",
                 [viewer["id"], *sorted(depts)])
