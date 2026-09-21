@@ -201,9 +201,10 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
     first.close()
     conn = db.PerThread(cfg.app_db)
     app.state.db = conn
-    # comments.db (D1): migrated on every start like app.db. Its own shared
-    # connection, under the same rule — no transaction on it from a handler.
-    app.state.comments_db = comments_db.open_comments(cfg.comments_db)
+    # comments.db (D1): migrated on every start like app.db, and handed out the
+    # same way — a connection per worker thread, no transaction from a handler.
+    comments_db.open_comments(cfg.comments_db).close()
+    app.state.comments_db = db.PerThread(cfg.comments_db)
     app.include_router(auth_router.router)
     app.include_router(comments_router.router)
     app.include_router(confirmations_router.router)
