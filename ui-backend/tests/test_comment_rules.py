@@ -221,6 +221,23 @@ def test_cmt_ids_round_trip():
     assert R.parse_cmt("CMT-0x2") is None
 
 
+def test_cmt_ids_are_bounded_and_whole():
+    assert R.parse_cmt("CMT-99999999999999999999999") is None
+    assert R.parse_cmt("CMT-1\n") is None
+    assert R.parse_cmt("CMT-" + "9" * 18) == 10**18 - 1
+
+
+def test_a_reader_stage_hop_who_is_no_longer_a_reader_cannot_decide(world):
+    app, cc = world
+    head = mk(app, "head", "reader", "dept:dining", can_sup=True)
+    viewer = mk(app, "viewer", "reader", "dept:dining", sup=head)
+    cid = post(app, cc, viewer)
+    admin_role = app.execute("SELECT id FROM roles WHERE name='admin'").fetchone()[0]
+    app.execute("UPDATE users SET role_id = ? WHERE id = ?", (admin_role, head))  # not reconciled
+    a = R.actions(app, cc, users.by_id(app, head), S.get(cc, cid))
+    assert not a["approve"] and not a["reject"]
+
+
 def test_d66_visibility(world):
     app, cc = world
     admin = mk(app, "admin", "admin", "*")

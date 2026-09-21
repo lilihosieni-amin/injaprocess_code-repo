@@ -120,3 +120,36 @@ def test_unset_comments_db_says_so_and_not_a_dot(monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "COMMENTS_DB unset" in err
     assert "(.)" not in err
+
+
+def test_a_huge_or_malformed_ref_is_refused_not_a_traceback(store, capsys):
+    for ref in ("CMT-99999999999999999999999", "CMT-1\n", "CMT-01"):
+        assert main(["show", ref]) == 2
+        assert main(["resolve", ref]) == 2
+    assert "not found" in capsys.readouterr().err
+
+
+def _note(conn):
+    return conn.execute("SELECT note FROM comment_events WHERE kind='addressed'").fetchone()[0]
+
+
+def test_resolve_strips_the_note_and_a_blank_one_is_none(store):
+    conn, add = store
+    a, b = add("approved"), add("approved")
+    assert main(["resolve", f"CMT-{a}", "--note", "  انجام شد  "]) == 0
+    assert _note(conn) == "انجام شد"
+    conn.execute("DELETE FROM comment_events WHERE kind='addressed'")
+    conn.commit()
+    assert main(["resolve", f"CMT-{b}", "--note", "   "]) == 0
+    assert _note(conn) is None
+    assert json.loads(conn.execute("SELECT payload FROM outbox WHERE target=?",
+                                   (f"CMT-{b}",)).fetchone()[0])["note"] is None
+
+
+def test_resolve_refuses_a_note_over_the_cap(store, capsys):
+    conn, add = store
+    a = add("approved")
+    assert main(["resolve", f"CMT-{a}", "--note", "ا" * 2001]) == 2
+    assert "2000" in capsys.readouterr().err
+    assert conn.execute("SELECT state FROM comments WHERE id=?", (a,)).fetchone()[0] == "approved"
+    assert main(["resolve", f"CMT-{a}", "--note", "ا" * 2000]) == 0

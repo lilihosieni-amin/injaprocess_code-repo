@@ -4,6 +4,9 @@
 cadmin (dept:cashier), head (Reader supervisor), viewer (reports to head),
 other (a Reader off the path).
 """
+import json
+import sqlite3
+
 from inja_ui_backend.tests_helpers import audit_events as _events
 
 NODE = "cooking-001-n010"
@@ -112,3 +115,64 @@ def test_created_is_recorded(people):
         "anchorKind": "department", "anchorId": "cooking", "text": "x"}).json()["id"]
     ev = _events(people["viewer"], "comment.created")[-1]
     assert ev["target"] == cid
+
+
+def _to_pool(people):
+    cid = people["viewer"].post("/api/comments", json={
+        "anchorKind": "node", "anchorId": NODE, "text": "x"}).json()["id"]
+    assert people["head"].post(f"/api/comments/{cid}/approve", json={}).status_code == 200
+    return cid
+
+
+def _waiting(people, who):
+    return [c["id"] for c in people[who].get("/api/comments/inbox?tab=waiting").json()["items"]]
+
+
+def test_waiting_tab_of_a_pool_comment_follows_coverage(people):
+    cid = _to_pool(people)
+    assert _waiting(people, "admin") == [cid]          # `*` covers cooking
+    assert _waiting(people, "cadmin") == []            # dept:cashier does not
+    assert _waiting(people, "editor") == []            # not the Editor's until approved
+    assert people["admin"].post(f"/api/comments/{cid}/approve", json={}).status_code == 200
+    assert _waiting(people, "editor") == [cid]
+    assert _waiting(people, "admin") == []
+
+
+def test_a_removed_node_reads_as_orphan_on_list_and_detail(people, data_root):
+    cid = people["viewer"].post("/api/comments", json={
+        "anchorKind": "node", "anchorId": NODE, "text": "x"}).json()["id"]
+    path = data_root / "departments" / "cooking" / "processes" / "cooking-001.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    next(n for n in doc["nodes"] if n["id"] == NODE)["removed"] = True
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    listed = people["editor"].get("/api/comments?process=cooking-001").json()
+    assert [c["anchor"]["orphan"] for c in listed] == [True]
+    assert people["editor"].get(f"/api/comments/{cid}").json()["anchor"]["orphan"] is True
+
+
+def test_the_telegram_agent_is_shown_by_its_persian_name(people):
+    cid = _to_pool(people)
+    people["admin"].post(f"/api/comments/{cid}/approve", json={})
+    n = int(cid.split("-")[1])
+    conn = sqlite3.connect(people["admin"].app.state.cfg.comments_db)
+    with conn:  # what the engine's `comments resolve` writes
+        conn.execute("UPDATE comments SET state = 'addressed' WHERE id = ?", (n,))
+        conn.execute("INSERT INTO comment_events (comment_id, at, kind, user_id, user_name)"
+                     " VALUES (?, 1800000000, 'addressed', NULL, 'agent:control-bot')", (n,))
+    conn.close()
+    c = people["viewer"].get(f"/api/comments/{cid}").json()
+    assert c["addressed"]["by"] == "دستیار تلگرام"
+    assert c["trail"][-1]["name"] == "دستیار تلگرام"
+    assert "agent:control-bot" not in json.dumps(c, ensure_ascii=False)
+
+
+def test_a_huge_or_newline_id_is_404_not_500(people):
+    assert people["head"].get("/api/comments/CMT-99999999999999999999999").status_code == 404
+    assert people["head"].get("/api/comments/CMT-1%0A").status_code == 404
+
+
+def test_an_anchor_id_with_a_trailing_newline_is_404(people):
+    for kind, aid in (("node", NODE + "\n"), ("process", "cooking-001\n")):
+        r = people["viewer"].post("/api/comments", json={
+            "anchorKind": kind, "anchorId": aid, "text": "x"})
+        assert r.status_code == 404, (kind, r.text)

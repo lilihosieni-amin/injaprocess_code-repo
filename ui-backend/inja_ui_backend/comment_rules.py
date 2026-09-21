@@ -19,7 +19,8 @@ from .store import users
 
 Kind = Literal["editor", "admin", "reader"]
 SYSTEM = "system"
-_CMT = re.compile(r"^CMT-([1-9][0-9]*)$")
+# at most 18 digits, so the number always fits SQLite's INTEGER
+_CMT = re.compile(r"CMT-([1-9][0-9]{0,17})")
 
 
 def cmt(cid: int) -> str:
@@ -27,7 +28,7 @@ def cmt(cid: int) -> str:
 
 
 def parse_cmt(s: str) -> int | None:
-    m = _CMT.match(s)
+    m = _CMT.fullmatch(s)
     return int(m.group(1)) if m else None
 
 
@@ -187,7 +188,7 @@ def actions(app, cc, viewer: sqlite3.Row, c: sqlite3.Row) -> dict[str, bool]:
     k = kind_of(app, viewer)
     awaiting = c["state"] == "awaiting"
     decide = awaiting and (
-        (c["stage"] == "reader" and c["approver_id"] == viewer["id"])
+        (c["stage"] == "reader" and k == "reader" and c["approver_id"] == viewer["id"])
         or (c["stage"] == "pool" and k == "admin" and covers(app, viewer, c["department"])))
     own_untouched = (c["author_id"] == viewer["id"] and awaiting
                      and not S.approvers_since_restart(cc, c["id"]))

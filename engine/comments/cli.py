@@ -18,7 +18,9 @@ from pathlib import Path
 SCHEMA_VERSION = 1
 AGENT = "agent:control-bot"
 VISIBLE = ("approved", "addressed")
-_CMT = re.compile(r"^CMT-([1-9][0-9]*)$")
+# at most 18 digits, so the number always fits SQLite's INTEGER
+_CMT = re.compile(r"CMT-([1-9][0-9]{0,17})")
+NOTE_LIMIT = 2000  # D71, as ui-backend's routers/comments.py LIMIT
 
 
 class Refused(Exception):
@@ -47,7 +49,7 @@ def _open(db: str | None) -> sqlite3.Connection:
 
 
 def _load(conn, ref: str) -> sqlite3.Row:
-    m = _CMT.match(ref)
+    m = _CMT.fullmatch(ref)
     row = (conn.execute("SELECT * FROM comments WHERE id = ?", (int(m.group(1)),)).fetchone()
           if m else None)
     if row is None or row["state"] not in VISIBLE:
@@ -84,6 +86,10 @@ def _show(conn, a) -> None:
 
 
 def _resolve(conn, a) -> None:
+    # D71: trimmed; blank is no note; over the cap is refused, never cut
+    a.note = (a.note or "").strip() or None
+    if a.note and len(a.note) > NOTE_LIMIT:
+        raise Refused(f"the note is over {NOTE_LIMIT} characters")
     now = int(time.time())
     conn.execute("BEGIN IMMEDIATE")
     try:

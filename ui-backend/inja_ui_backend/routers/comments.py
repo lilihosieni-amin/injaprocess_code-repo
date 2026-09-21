@@ -28,6 +28,12 @@ LIMIT = 2000
 TOO_LONG = "متن بیشتر از ۲۰۰۰ نویسه است"
 EMPTY = "متن خالی است"
 PAGE = 10
+# The engine CLI's actor name is never shown raw (provisional wording, for lili).
+_SHOWN = {"agent:control-bot": "دستیار تلگرام"}
+
+
+def _who(name: str | None) -> str | None:
+    return _SHOWN.get(name, name)
 
 
 def clean(text: str | None) -> str:
@@ -118,14 +124,14 @@ def present(request: Request, viewer, c, *, trail: bool = False,
         "approvals": len(S.approvers_since_restart(cc, c["id"])),
         "notes": notes,
         "rejectReason": rejected["note"] if rejected and c["state"] == "rejected" else None,
-        "addressed": ({"by": addressed["user_name"], "at": _iso(addressed["at"]),
+        "addressed": ({"by": _who(addressed["user_name"]), "at": _iso(addressed["at"]),
                        "note": addressed["note"],
                        "commit": json.loads(addressed["detail"] or "{}").get("commit")}
                       if addressed else None),
         "actions": R.actions(app, cc, viewer, c),
     }
     if trail:
-        out["trail"] = [{"kind": e["kind"], "name": e["user_name"], "note": e["note"],
+        out["trail"] = [{"kind": e["kind"], "name": _who(e["user_name"]), "note": e["note"],
                          "reason": d.get("reason"), "commit": d.get("commit"),
                          "role": d.get("role"),
                          "at": _iso(e["at"])} for e, d in zip(evs, detail)]
@@ -164,7 +170,7 @@ def _anchor(request: Request, user, body: CommentBody) -> tuple[str | None, str,
     else:
         pid = body.anchorId
         # the id becomes a path below: nothing but a real process id gets there
-        if not PROCESS_ID_RE.match(pid):
+        if not PROCESS_ID_RE.fullmatch(pid):
             raise HTTPException(status_code=404, detail=NOT_FOUND)
     dept = storage.dept_of(pid)
     _gate(request, user, dept)

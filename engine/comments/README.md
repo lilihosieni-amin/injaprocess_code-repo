@@ -16,9 +16,10 @@ denormalised in the file.
   comment (`state` → `addressed`), appends an `addressed` event stamped
   `agent:control-bot`, and appends a `comment.addressed` row to `outbox` for
   ui-backend's drain to pick up (no `actor` field — the drain stamps that).
+  The note is trimmed; a blank one is no note; over 2,000 characters is refused.
 
 Database: `--db PATH` or `$COMMENTS_DB`.
 
 Exit 0 on success. Exit 2 on any refusal — an uninitialised or wrong-version
-store, an unknown or not-visible `CMT-n`, or resolving one already
-addressed — with `comments: …` on stderr.
+store, an unknown, malformed or not-visible `CMT-n`, a note over the cap, or
+resolving one already addressed — with `comments: …` on stderr.
