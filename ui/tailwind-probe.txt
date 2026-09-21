@@ -45,7 +45,7 @@ text-fs-h1-reader-home text-fs-h1-reader-list text-fs-h1-reader-dept
 text-fs-body-reader
 text-body text-caption text-subtitle text-title text-prose
 # R3 — the four type roles that change with the surface.
-text-role-body text-role-dense text-role-title text-role-hero
+text-role-body text-role-dense text-role-title text-role-hero text-role-count
 font-sans font-mono
 font-regular font-semibold font-bold font-extrabold
 leading-tight leading-snug leading-normal leading-relaxed leading-loose

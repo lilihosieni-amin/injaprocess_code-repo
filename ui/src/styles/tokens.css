@@ -432,6 +432,7 @@
   /* FAB — 52/56 and the two-layer coral shadow already have tokens (R3, §4.2);
      the count badge does not. Its cut-out ring is `2px solid --ink` (L-24). */
   --size-count: 21px;              /* `min-width:21px; height:21px` */
+  --size-count-reader: 22px;       /* the reader's badge, Reader L897 `min-width:22px; height:22px` */
 }
 
 /* ─────────────────────────────────────────────────────────────────────────

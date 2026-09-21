@@ -320,6 +320,7 @@ const EXPECTED: Record<string, string | string[]> = {
   // R3's scale layer. These four are the ONLY utilities that name a --role-*
   // property rather than a token, which is what makes one class two sizes.
   'text-role-body': 'var(--role-fs-body)',
+  'text-role-count': 'var(--role-fs-count)',
   'text-role-dense': 'var(--role-fs-dense)',
   'text-role-title': 'var(--role-fs-title)',
   'text-role-hero': 'var(--role-fs-hero)',
@@ -563,8 +564,8 @@ const EXPECTED: Record<string, string | string[]> = {
   'gap-tab-flow': 'var(--gap-tab-flow)',
   'py-note-y': 'var(--pad-note-y)',
   'px-note-x': 'var(--pad-note-x)',
-  'h-count': 'var(--size-count)',
-  'min-w-count': 'var(--size-count)',
+  'h-count': 'var(--role-count)',
+  'min-w-count': 'var(--role-count)',
   // The single minting pass. The stacking ladder reads the ROLE and not the
   // token — the same shape `w-tile -> --role-tile -> --size-tile` has — so the
   // ladder's semantic layer stays in roles.css, which is the file that IS the
@@ -875,7 +876,7 @@ describe('R1 (structural) — every design token has a utility name', () => {
     // ruling removed. --role-fs-textarea is the role that carries the genuine
     // per-surface difference the dense role was being asked to express.
     for (const role of ['--role-fs-body', '--role-fs-textarea', '--role-fs-title',
-      '--role-fs-hero', '--role-tile', '--role-iconbtn', '--role-fab']) {
+      '--role-fs-hero', '--role-tile', '--role-iconbtn', '--role-fab', '--role-count', '--role-fs-count']) {
       expect([...(roles.get(role) ?? [])].length, role).toBe(2)
     }
     // …and the role R12 collapsed resolves to exactly one, so a reader override

@@ -2184,12 +2184,12 @@ describe('FAB', () => {
       'border-width: 2px',
       'color: var(--card)',
       'display: inline-flex',
-      'font-size: var(--fs-xxs)',
+      'font-size: var(--role-fs-count)',
       'font-weight: var(--fw-bold)',
-      'height: var(--size-count)',
+      'height: var(--role-count)',
       'inset-inline-start: calc(var(--space-half) * -1)',
       'justify-content: center',
-      'min-width: var(--size-count)',
+      'min-width: var(--role-count)',
       'padding-left: var(--space-3)',
       'padding-right: var(--space-3)',
       'position: absolute',
@@ -2208,6 +2208,9 @@ describe('FAB', () => {
     expect(await snap(reader.container.querySelector('[data-fab-badge]')!)).toEqual(expected)
     expect(screen.getByText('۱۲')).toBeInTheDocument()
     expect(tokenLiteral('--size-count')).toBe('21px')
+    // The box and figure are the surface's (Panel L2870 21px/11px, Reader L897 22px/11.5px);
+    // only the ring is one value on both (L-24).
+    expect(tokenLiteral('--size-count-reader')).toBe('22px')
   })
 
   it('carries the deliverable’s own glyph, hidden from the reading', () => {

@@ -61,6 +61,8 @@
   --role-tile-glyph: var(--size-glyph);    /* 24px, half the tile */
   --role-iconbtn: var(--size-iconbtn);     /* 40px */
   --role-fab: var(--size-fab);             /* 52px */
+  --role-count: var(--size-count);         /* 21px — the FAB's count badge, Panel L2870 */
+  --role-fs-count: var(--fs-xxs);          /* 11px — its figure */
   /* The segmented tray (NavTabTray): owner ruling's 9px 10px, 12.5px, radius 9
      in a radius-12 tray. The reader block below draws Reader L731–733. */
   --role-pad-tab-y: var(--pad-tab-y-audit); /* 9px */
@@ -261,6 +263,8 @@
                                                   homeless. */
   --role-iconbtn: var(--size-iconbtn-reader);  /* 42px */
   --role-fab: var(--size-fab-reader);          /* 56px */
+  --role-count: var(--size-count-reader);      /* 22px — Reader L897 */
+  --role-fs-count: var(--fs-xs);               /* 11.5px — Reader L897 */
   --role-pad-tab-y: var(--pad-tab-y-reader);   /* 11px — Reader L733 */
   --role-pad-tab-x: var(--space-4);            /* 8px */
   --role-fs-tab: var(--fs-menu);               /* 13.5px */

@@ -242,6 +242,7 @@ export default {
         // and they are the only writable form the roles have: guards.test.ts
         // bans `text-[…]`, so a role with no key here cannot be written at all.
         'role-body': 'var(--role-fs-body)',    // 14px panel / 15px reader
+        'role-count': 'var(--role-fs-count)',  // 11px panel / 11.5px reader — the FAB badge
         'role-dense': 'var(--role-fs-dense)',  // 13px panel / 14.5px reader
         'role-title': 'var(--role-fs-title)',  // 22px panel / 30px reader
         'role-hero': 'var(--role-fs-hero)',    // 34px panel / 26px reader
@@ -357,7 +358,7 @@ export default {
         'page-label': 'var(--width-page-label)', // 74px  — the pager's page label
         stat: 'var(--width-stat)',               // 96px  — the header stat tile
         tab: 'var(--width-tab)',                 // 132px — an audit tab
-        count: 'var(--size-count)',              // 21px  — the FAB count badge
+        count: 'var(--role-count)',              // 21px panel / 22px reader — the FAB count badge
         // …and the chrome's own count badge, which is the same shape — a floor
         // on one axis, a fixed box on the other — so it is carried the same way
         // and appears on `width` nowhere. 19px, not `count`'s 21px: that one is
@@ -637,7 +638,7 @@ export default {
         // The FAB badge is `min-width:21px; height:21px` — a floor on one axis
         // and a fixed box on the other — so `count` is on `minWidth` above and
         // on `height` here, and on `width` nowhere: it never sets one.
-        count: 'var(--size-count)',
+        count: 'var(--role-count)',
         // …and the chrome's badge, 19px, carried the same way for the same
         // reason. Both shells draw it; neither draws it at 21.
         'count-chrome': 'var(--size-count-chrome)',
