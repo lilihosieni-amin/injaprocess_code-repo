@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchJson } from './client'
 
 /** The JSON of `ui-backend/inja_ui_backend/routers/comments.py::present`. */
@@ -55,7 +55,7 @@ export const useDeptComments = (code: string) =>
   useQuery({ queryKey: ['comments', 'dept', code], queryFn: () => fetchJson<Comment[]>(`/api/comments?department=${encodeURIComponent(code)}`) })
 
 export const useInbox = (tab: InboxTab, page: number) =>
-  useQuery({ queryKey: ['comments', 'inbox', tab, page], queryFn: () => fetchJson<InboxPage>(`/api/comments/inbox?tab=${tab}&page=${page}`) })
+  useQuery({ queryKey: ['comments', 'inbox', tab, page], placeholderData: keepPreviousData, queryFn: () => fetchJson<InboxPage>(`/api/comments/inbox?tab=${tab}&page=${page}`) })
 
 export const useComment = (ref: string) =>
   useQuery({ queryKey: ['comments', 'one', ref], queryFn: () => fetchJson<CommentDetail>(`/api/comments/${encodeURIComponent(ref)}`) })

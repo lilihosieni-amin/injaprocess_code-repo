@@ -102,7 +102,7 @@ py-empty-y-inline
 w-pager h-pager min-w-page-label
 leading-none px-stat-x min-w-stat py-stat-y-grid px-stat-x-grid my-stat-grid
 mt-stat-label
-py-tab-y-audit min-w-tab gap-tab-flow
+min-w-tab gap-tab-flow
 py-note-y px-note-x
 h-count min-w-count
 max1080:hidden max760:hidden
@@ -147,6 +147,10 @@ text-fs-compose-reader shadow-composer w-composer
 # P4 — the reader inbox's three mints: a history entry's 3px inline-start edge
 # (Reader L766), the empty card's 34px (L739), the anchor's underline offset (L753).
 border-s-note py-cmt-empty-y underline-offset-anchor
+# P4 fix — the segmented tray reads the surface: its tab's padding, type and
+# radius and the tray's radius are roles (Reader L731–733), and the reader's
+# comments tray halves each tab at <=760 (Reader L72).
+py-role-tab-y px-role-tab-x text-role-tab rounded-role-tab rounded-role-tray basis-tab-half
 # Owner ruling R35 — the drawer-as-bottom-sheet's 22px top corners (§5.2). The
 # ladder has no 22 rung; the modal's sheet is 20 and the centred dialog 24.
 # Written `rounded-t-sheet` at its one consumer, so the bare stem below is the

@@ -338,7 +338,9 @@ const tokenLiteral = (token: string) => declared().get(token) ?? ''
  */
 function pxOf(value: string): number {
   const token = /^var\((--[a-z0-9-]+)\)$/.exec(value.trim())?.[1]
-  const literal = token === undefined ? value.trim() : tokenLiteral(token)
+  // A `--role-*` is read at its PANEL value — the surface a bare render is on.
+  const literal = token === undefined ? value.trim()
+    : token.startsWith('--role-') ? roleOn('panel', token) : tokenLiteral(token)
   return Number(/^(-?\d+(?:\.\d+)?)px$/.exec(literal)?.[1] ?? NaN)
 }
 
@@ -1554,19 +1556,21 @@ describe('NavTabTray', () => {
     const { container } = render(<NavTabTray label="نما" value="mine" tabs={TABS} onChange={() => {}} />)
     expect(await snap(container.firstElementChild!)).toEqual([
       'background-color: var(--tile-v2)',
-      'border-radius: var(--radius-md)',
+      'border-radius: var(--role-tray-radius)',
       'display: flex',
       'gap: var(--space-1)',
       'padding: var(--space-1)',
     ])
     expect(tokenLiteral('--space-1')).toBe('4px')
-    expect(tokenLiteral('--radius-md')).toBe('12px')
+    expect(roleOn('panel', '--role-tray-radius')).toBe('12px')
+    // P4 — the reader's comments tray is radius 13 (Reader L731).
+    expect(roleOn('reader', '--role-tray-radius')).toBe('13px')
   })
 
   it('paints the two tab states as declarations, differing only in fill and ink', async () => {
     render(<NavTabTray label="نما" value="all" tabs={TABS} onChange={() => {}} />)
     const shared = [
-      'border-radius: var(--radius-sm)',
+      'border-radius: var(--role-tab-radius)',
       'border-width: 0px',
       'cursor: pointer',
       // OWNER RULING — `flex:1` on every tab is the DEFAULT, because it is what
@@ -1574,15 +1578,15 @@ describe('NavTabTray', () => {
       // same reason the padding is: it is not a variant of this control, it is
       // this control.
       'flex: 1 1 0%',
-      'font-size: var(--fs-sm2)',
+      'font-size: var(--role-fs-tab)',
       'font-weight: var(--fw-bold)',
       // OWNER RULING — `9px 10px`, the audit tray's own padding (panel 1511).
       // The comments tray draws `8px 6px` (panel 953); one instance each, so
       // dominance could not settle it. `px-s7` was 14px, which is neither.
-      'padding-bottom: var(--pad-tab-y-audit)',
-      'padding-left: var(--space-5)',
-      'padding-right: var(--space-5)',
-      'padding-top: var(--pad-tab-y-audit)',
+      'padding-bottom: var(--role-pad-tab-y)',
+      'padding-left: var(--role-pad-tab-x)',
+      'padding-right: var(--role-pad-tab-x)',
+      'padding-top: var(--role-pad-tab-y)',
       // F11 — the anchor the hit-area overlay is placed against. It is the one
       // declaration on this element that paints nothing, and the two tests
       // below are what say why it is here.
@@ -1594,15 +1598,48 @@ describe('NavTabTray', () => {
     expect(await snap(screen.getByRole('tab', { name: 'رسیده به شما' }))).toEqual(
       ['background-color: transparent', ...shared.slice(0, 2), 'color: var(--violet)', ...shared.slice(2)].sort(),
     )
-    expect(tokenLiteral('--radius-sm')).toBe('9px')
-    expect(tokenLiteral('--fs-sm2')).toBe('12.5px')
-    expect(tokenLiteral('--pad-tab-y-audit')).toBe('9px')
-    expect(tokenLiteral('--space-5')).toBe('10px')
+    // The panel's values, through the roles (P4 made them per surface)…
+    expect(roleOn('panel', '--role-tab-radius')).toBe('9px')
+    expect(roleOn('panel', '--role-fs-tab')).toBe('12.5px')
+    expect(roleOn('panel', '--role-pad-tab-y')).toBe('9px')
+    expect(roleOn('panel', '--role-pad-tab-x')).toBe('10px')
+    // …and the reader comments tray's `padding:11px 8px; border-radius:10px;
+    // font-size:13.5px` (Reader L733).
+    expect(roleOn('reader', '--role-tab-radius')).toBe('10px')
+    expect(roleOn('reader', '--role-fs-tab')).toBe('13.5px')
+    expect(roleOn('reader', '--role-pad-tab-y')).toBe('11px')
+    expect(roleOn('reader', '--role-pad-tab-x')).toBe('8px')
     // …and NOT the 14px rung it used to write, which is the one number of the
     // three that appears in neither tray.
     expect(tokenLiteral('--space-7')).toBe('14px')
     expect(winner(await paint(screen.getByRole('tab', { name: 'همه' }).className), 'padding-left'))
       .not.toBe('var(--space-7)')
+  })
+
+  it('halves every tab at <=760 on request, and only then (Reader L71–72)', async () => {
+    const { container, unmount } = render(
+      <NavTabTray label="نما" value="mine" tabs={TABS} onChange={() => {}} halfOnMobile />,
+    )
+    // Only under the 760px query: read the declarations that carry a media.
+    const at760 = async (el: Element, prop: string) =>
+      (await paint(el.className)).filter((p) => p.media.includes('760')).flatMap((p) => p.decls)
+        .find(([n]) => n === prop)?.[1]
+    expect(await at760(container.firstElementChild!, 'flex-wrap')).toBe('wrap')
+    expect(winner(await paint(container.firstElementChild!.className), 'flex-wrap')).toBe('')
+    for (const tab of screen.getAllByRole('tab')) {
+      expect(await at760(tab, 'flex-basis')).toBe('var(--basis-tab-half)')
+    }
+    expect(tokenLiteral('--basis-tab-half')).toBe('calc(50% - 4px)')
+    unmount()
+    render(<NavTabTray label="نما" value="mine" tabs={TABS} onChange={() => {}} />)
+    for (const tab of screen.getAllByRole('tab')) expect(tab.className).not.toMatch(/basis-tab-half/)
+  })
+
+  it('keeps the reader tab over F11’s floor too: 42.25px drawn, 50.25px with the 4px inset', () => {
+    const y = pxOf(roleOn('reader', '--role-pad-tab-y'))
+    const fs = pxOf(roleOn('reader', '--role-fs-tab'))
+    expect(2 * y + fs * 1.5).toBe(42.25)
+    expect(2 * y + fs * 1.5 + 2 * 4).toBeGreaterThanOrEqual(pxOf(tokenLiteral('--size-touch')))
   })
 
   it('spans its container by default, and stops only when the caller says so', async () => {
@@ -1645,7 +1682,7 @@ describe('NavTabTray', () => {
     )
     expect(await snap(container.firstElementChild!)).toEqual([
       'background-color: var(--tile-v2)',
-      'border-radius: var(--radius-md)',
+      'border-radius: var(--role-tray-radius)',
       'display: flex',
       'flex-wrap: wrap',
       'gap: var(--space-1)',

@@ -61,6 +61,13 @@
   --role-tile-glyph: var(--size-glyph);    /* 24px, half the tile */
   --role-iconbtn: var(--size-iconbtn);     /* 40px */
   --role-fab: var(--size-fab);             /* 52px */
+  /* The segmented tray (NavTabTray): owner ruling's 9px 10px, 12.5px, radius 9
+     in a radius-12 tray. The reader block below draws Reader L731–733. */
+  --role-pad-tab-y: var(--pad-tab-y-audit); /* 9px */
+  --role-pad-tab-x: var(--space-5);         /* 10px */
+  --role-fs-tab: var(--fs-sm2);             /* 12.5px */
+  --role-tab-radius: var(--radius-sm);      /* 9px */
+  --role-tray-radius: var(--radius-md);     /* 12px */
 
   /* ---- ink (1.1, 9.9) ---- */
   --role-ink-strong: var(--text-strong);
@@ -254,6 +261,11 @@
                                                   homeless. */
   --role-iconbtn: var(--size-iconbtn-reader);  /* 42px */
   --role-fab: var(--size-fab-reader);          /* 56px */
+  --role-pad-tab-y: var(--pad-tab-y-reader);   /* 11px — Reader L733 */
+  --role-pad-tab-x: var(--space-4);            /* 8px */
+  --role-fs-tab: var(--fs-menu);               /* 13.5px */
+  --role-tab-radius: var(--radius-control);    /* 10px */
+  --role-tray-radius: var(--radius-lg);        /* 13px — Reader L731 */
   --role-lh-lockup: var(--lh-lockup-reader);   /* 1.3 — the panel draws 1.25 (panel 120),
                                                   the reader 1.3 (reader 136). The one
                                                   leading in the system that is a scale

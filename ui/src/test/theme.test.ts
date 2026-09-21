@@ -559,7 +559,6 @@ const EXPECTED: Record<string, string | string[]> = {
   'px-stat-x-grid': 'var(--pad-stat-x-grid)',
   'my-stat-grid': 'var(--space-stat-grid)',
   'mt-stat-label': 'var(--space-stat-label)',
-  'py-tab-y-audit': 'var(--pad-tab-y-audit)',
   'min-w-tab': 'var(--width-tab)',
   'gap-tab-flow': 'var(--gap-tab-flow)',
   'py-note-y': 'var(--pad-note-y)',
@@ -665,6 +664,13 @@ const EXPECTED: Record<string, string | string[]> = {
   'border-s-note': 'var(--border-note)',
   'py-cmt-empty-y': 'var(--pad-cmt-empty-y)',
   'underline-offset-anchor': 'var(--underline-anchor)',
+  // P4 fix — the segmented tray's per-surface roles (Reader L731–733, L72).
+  'py-role-tab-y': 'var(--role-pad-tab-y)',
+  'px-role-tab-x': 'var(--role-pad-tab-x)',
+  'text-role-tab': 'var(--role-fs-tab)',
+  'rounded-role-tab': 'var(--role-tab-radius)',
+  'rounded-role-tray': 'var(--role-tray-radius)',
+  'basis-tab-half': 'var(--basis-tab-half)',
   // The flow-bar mint (owner ruling R47). Nine names for the flowchart screen,
   // which F16 froze for the whole rebuild, and every one of them a number this
   // theme already carries under another role — so every one of them is a pairing

@@ -943,4 +943,10 @@
   --pad-cmt-empty-y: 34px;
   /* Its anchor name, `text-underline-offset:3px` (Reader L753). */
   --underline-anchor: 3px;
+  /* The reader's comments tray tab, `padding:11px 8px` (Reader L733). The
+     panel's is --pad-tab-y-audit 9px; 11 has other owners, none a tab. */
+  --pad-tab-y-reader: 11px;
+  /* …and at <=760 each tab is `flex:1 1 calc(50% - 4px)` (Reader L72): two per
+     row, less the tray's 4px gap. */
+  --basis-tab-half: calc(50% - 4px);
 }

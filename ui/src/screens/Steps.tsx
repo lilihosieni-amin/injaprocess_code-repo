@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useProcess } from '../api/hooks'
 import { linearize, groupTitle, type Block, type Junction } from '../lib/linearize'
 import { toFa } from '../lib/format'
@@ -55,8 +55,13 @@ function Step({ block, onEnter, cmt }: {
   onEnter: (sub: string) => void
   cmt?: Comments
 }) {
-  const [open, setOpen] = useState(false)
   const n = block.node as ActivityNode
+  // `?step=<node>` — a comment's anchor link opens its step (Reader L2715–2716,
+  // `stepOpen`) and brings it into view, once, on arrival.
+  const target = useSearchParams()[0].get('step') === n.id
+  const [open, setOpen] = useState(target)
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => { if (target) box.current?.scrollIntoView?.({ block: 'center' }) }, [target])
   const sub = n.subprocess ?? null
   // A sub-process step has no body of its own to open — the press goes into the
   // child process instead, which is what its pill promises.
@@ -65,6 +70,7 @@ function Step({ block, onEnter, cmt }: {
 
   return (
     <div
+      ref={box}
       data-step={block.num}
       className={
         'rounded-card shadow-card overflow-hidden border-2 '

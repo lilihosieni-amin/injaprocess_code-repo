@@ -43,14 +43,14 @@ const cmt = (n: number, node: string): Comment => ({
   actions: { approve: false, reject: false, edit: true, withdraw: true, address: false },
 })
 
-function draw(session: SessionDescriptor) {
+function draw(session: SessionDescriptor, url = '/processes/dining-003/steps') {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = String(input)
     if (url.startsWith('/api/comments?process=')) return json([cmt(1, 'n1'), cmt(2, 'n2')])
     if (url === '/api/processes/dining-003') return json(PROC)
     return json([])
   })
-  renderAt('/processes/:pid/steps', <CommentsProvider><Steps /></CommentsProvider>, '/processes/dining-003/steps', session)
+  renderAt('/processes/:pid/steps', <CommentsProvider><Steps /></CommentsProvider>, url, session)
 }
 
 const card = (label: string) => screen.getByText(label).closest('[data-step]') as HTMLElement
@@ -73,6 +73,18 @@ describe('Steps — comments on a step', () => {
     fireEvent.click(screen.getByText('گرفتن سفارش'))
     expect(within(card('گرفتن سفارش')).getByText('گارسون')).toBeInTheDocument()
     expect(within(card('گرفتن سفارش')).queryByText(/کامنت/)).toBeNull()
+  })
+
+  it('?step=<node> opens that step and scrolls it into view once (Reader L2715–2716)', async () => {
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    draw(VIEWER, '/processes/dining-003/steps?step=n1')
+    await screen.findByText('۱ کامنت')
+    expect(within(card('استقبال')).getByText('میزبان')).toBeInTheDocument()
+    expect(within(card('استقبال')).getByRole('button', { expanded: true })).toBeInTheDocument()
+    expect(within(card('بدرقه')).getByRole('button')).not.toHaveAttribute('aria-expanded', 'true')
+    expect(scroll).toHaveBeenCalledTimes(1)
+    expect(scroll.mock.contexts[0]).toBe(card('استقبال'))
   })
 
   it('an Editor sees the chip and no button', async () => {

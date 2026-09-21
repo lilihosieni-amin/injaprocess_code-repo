@@ -43,18 +43,20 @@ export function ReaderInbox() {
   const { data, error, refetch } = useInbox(shown, shown === 'all' ? page : 1)
 
   if (error) return <LoadFailedScreen message="کامنت‌ها بارگذاری نشد." error={error} onRetry={() => { void refetch() }} />
+  // Only the first load draws a skeleton: `useInbox` keeps the previous page
+  // on screen while another tab or page loads.
   if (!data) return <ScreenSkeleton column="reader" />
 
   const from = (data.page - 1) * PER_PAGE + 1
   return (
     <div data-r-pad className="flex-1 overflow-auto bg-ink pt-screen-y px-reader-x pb-reader-bottom max760:px-s7 max760:py-s9">
       <div className="max-w-reader mx-auto">
-        <h1 data-r-title className="font-extrabold text-fs-h1-reader-home text-role-title-on-field m-0">کامنت‌ها</h1>
+        <h1 data-r-title className="font-extrabold text-fs-h1-reader-home max760:text-fs-display-hand text-role-title-on-field m-0">کامنت‌ها</h1>
         <p className="text-fs-body-lead text-role-subtitle-on-field mt-s4 mb-0 leading-sub [text-wrap:pretty]">
           {approver ? INTRO.approver : INTRO.author}
         </p>
         {approver && (
-          <NavTabTray tabs={TABS} value={tab} label="کامنت‌ها" className="mt-s10"
+          <NavTabTray halfOnMobile tabs={TABS} value={tab} label="کامنت‌ها" className="mt-s10"
             onChange={(id) => { setTab(id as InboxTab); setPage(1) }} />
         )}
         <div className="flex flex-col gap-s7 mt-s8">
@@ -77,7 +79,8 @@ export function ReaderInbox() {
 function anchorHref(c: Comment): string {
   return c.anchor.kind === 'department'
     ? `/departments/${encodeURIComponent(c.anchor.department)}/overview`
-    : `/processes/${encodeURIComponent(c.anchor.processId ?? '')}/steps`
+    : `/processes/${encodeURIComponent(c.anchor.processId ?? '')}/steps${
+      c.anchor.kind === 'node' ? `?step=${encodeURIComponent(c.anchor.id)}` : ''}`
 }
 
 /** Reader L2719–2721: notes, then the rejection or the editor's closing word. */
@@ -168,7 +171,7 @@ function InboxCard({ c }: { c: Comment }) {
       </div>
 
       <div className="p-s9">
-        <Link to={anchorHref(c)} className="inline-flex items-center gap-s2 text-fs-xs text-faint font-semibold text-start leading-sub no-underline">
+        <Link to={anchorHref(c)} className="inline-flex items-center gap-s2 text-fs-xs text-faint font-semibold text-start leading-snug no-underline">
           <Icon d="M15 18l-6-6 6-6" px={11} stroke={2.4} className="flex-none" />
           دربارهٔ <span className="text-violet font-bold underline decoration-dotted underline-offset-anchor">{anchorText(c)}</span>
         </Link>

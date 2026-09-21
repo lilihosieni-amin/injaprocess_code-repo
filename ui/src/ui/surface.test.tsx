@@ -196,6 +196,15 @@ const SCALE: { role: string; panel: string; reader: string; panelPx: string; rea
   // panel's number, and the owner ruled it back out as a per-surface role. The
   // guard below carries the matching carve-out.
   { role: '--role-lh-lockup', panel: 'var(--lh-lockup)', reader: 'var(--lh-lockup-reader)', panelPx: '1.25', readerPx: '1.3' },
+  // P4 — the segmented tray (NavTabTray). The panel keeps owner ruling's 9/10,
+  // 12.5px, radius 9 in a radius-12 tray; the reader's comments tray draws
+  // `padding:11px 8px; border-radius:10px; font-size:13.5px` in a radius-13 tray
+  // (Inja Reader.dc.html L731–733).
+  { role: '--role-pad-tab-y', panel: 'var(--pad-tab-y-audit)', reader: 'var(--pad-tab-y-reader)', panelPx: '9px', readerPx: '11px' },
+  { role: '--role-pad-tab-x', panel: 'var(--space-5)', reader: 'var(--space-4)', panelPx: '10px', readerPx: '8px' },
+  { role: '--role-fs-tab', panel: 'var(--fs-sm2)', reader: 'var(--fs-menu)', panelPx: '12.5px', readerPx: '13.5px' },
+  { role: '--role-tab-radius', panel: 'var(--radius-sm)', reader: 'var(--radius-control)', panelPx: '9px', readerPx: '10px' },
+  { role: '--role-tray-radius', panel: 'var(--radius-md)', reader: 'var(--radius-lg)', panelPx: '12px', readerPx: '13px' },
 ]
 
 describe('R3 — the two scales differ where the ruling says they differ', () => {
@@ -245,7 +254,8 @@ describe('R3 — the two scales differ where the ruling says they differ', () =>
     // --role-fs-textarea in. It is 14 now because the reader-chrome ruling added
     // --role-lh-lockup — a genuinely new row, the first since, and the first that
     // is a leading rather than a length.
-    expect(SCALE).toHaveLength(14)
+    // 19 after P4 added the segmented tray's five rows.
+    expect(SCALE).toHaveLength(19)
   })
 
   it('leaves the padding the two surfaces share on :root alone', () => {

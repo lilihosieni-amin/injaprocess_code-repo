@@ -250,6 +250,7 @@ export default {
         // textarea one step above it. --role-fs-dense cannot express that — owner
         // ruling R12 makes it one size on both surfaces.
         'role-textarea': 'var(--role-fs-textarea)', // 13px panel / 16px reader
+        'role-tab': 'var(--role-fs-tab)',           // 12.5px panel / 13.5px reader — the tray tab
       },
       fontWeight: {
         regular: 'var(--fw-regular)', semibold: 'var(--fw-semibold)',
@@ -283,6 +284,8 @@ export default {
         lockup: 'var(--role-lh-lockup)',
       },
       borderRadius: {
+        // The segmented tray and its tab, per surface (roles.css).
+        'role-tab': 'var(--role-tab-radius)', 'role-tray': 'var(--role-tray-radius)',
         badge: 'var(--radius-badge)', chip: 'var(--radius-chip)', control: 'var(--radius-control)',
         card: 'var(--radius-card)', doc: 'var(--radius-doc)', panel: 'var(--radius-panel)',
         button: 'var(--radius-md)',
@@ -317,6 +320,7 @@ export default {
       },
       borderWidth: { hairline: 'var(--border-hairline)', note: 'var(--border-note)' }, // note — Reader L766
       textUnderlineOffset: { anchor: 'var(--underline-anchor)' }, // Reader L753
+      flexBasis: { 'tab-half': 'var(--basis-tab-half)' }, // Reader L72
       boxShadow: {
         card: 'var(--shadow-card)', 'card-hover': 'var(--shadow-card-hover)',
         coral: 'var(--shadow-coral)', violet: 'var(--shadow-violet)', green: 'var(--shadow-green)',
@@ -443,7 +447,6 @@ export default {
         'stat-x-grid': 'var(--pad-stat-x-grid)',              // 17px
         'stat-grid': 'var(--space-stat-grid)',                // 20px
         'stat-label': 'var(--space-stat-label)',              // 7px
-        'tab-y-audit': 'var(--pad-tab-y-audit)',              // 9px
         'tab-flow': 'var(--gap-tab-flow)',                    // 3px
         'note-y': 'var(--pad-note-y)',                        // 9px
         'note-x': 'var(--pad-note-x)',                        // 11px
@@ -469,6 +472,8 @@ export default {
         'crumb-y': 'var(--pad-crumb-y)',                      // 9px  — the breadcrumb strip
         'back-y': 'var(--pad-back-y)',                        // 7px  — its «بازگشت» button
         'topbar-reader': 'var(--pad-topbar-reader)',          // 20px — the reader's chrome
+        'role-tab-y': 'var(--role-pad-tab-y)',               // 9px panel / 11px reader — the tray tab
+        'role-tab-x': 'var(--role-pad-tab-x)',               // 10px panel / 8px reader
         'cmt-empty-y': 'var(--pad-cmt-empty-y)',              // 34px — the inbox empty card, Reader L739
         // The reader-chrome mint. `button-icon` is the FIFTH 7px key on this
         // scale (`popover`, `stat-label`, `stat-dot`, `back-y` are the others)

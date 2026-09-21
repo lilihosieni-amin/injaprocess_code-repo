@@ -63,7 +63,11 @@ describe('reader inbox', () => {
     expect(spy.mock.calls.some(([u]) => String(u) === '/api/comments/inbox?tab=waiting&page=1')).toBe(true)
     expect(screen.getByRole('button', { name: 'تأیید' })).toBeInTheDocument()
     expect(screen.getByText('نوشتهٔ سمیرا احمدی')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /دربارهٔ/ })).toHaveAttribute('href', '/processes/dining-001/steps')
+    // a node anchor opens that step (Reader L2715–2716)
+    expect(screen.getByRole('link', { name: /دربارهٔ/ })).toHaveAttribute('href', '/processes/dining-001/steps?step=dining-001-n010')
+    // Reader L71–72: at ≤760 the tray wraps and each tab takes half a row
+    expect(screen.getByRole('tablist')).toHaveClass('max760:flex-wrap')
+    for (const t of screen.getAllByRole('tab')) expect(t).toHaveClass('max760:basis-tab-half')
     expect(screen.getByText(/کامنت افراد شما اول به شما می‌رسد/)).toBeInTheDocument()
   })
 
@@ -122,6 +126,44 @@ describe('reader inbox', () => {
     expect(original.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByText('رسید به ادیتور.')).toBeInTheDocument()
+  })
+
+  it('pages «همه» with the Pager: page 2 asks for page=2', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      const p = Number(url.match(/page=(\d+)/)?.[1] ?? 1)
+      if (url.includes('tab=all')) return json({ items: [cmt(10 + p)], total: 11, page: p, pages: 2 })
+      return json(page([]))
+    })
+    open(HEAD)
+    fireEvent.click(await screen.findByRole('tab', { name: 'همه' }))
+    expect(await screen.findByText('متن نویسنده 11')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'صفحهٔ بعدی' }))
+    expect(await screen.findByText('متن نویسنده 12')).toBeInTheDocument()
+    expect(spy.mock.calls.some(([u]) => String(u) === '/api/comments/inbox?tab=all&page=2')).toBe(true)
+  })
+
+  it('keeps the screen while the next tab loads — no whole-screen skeleton', async () => {
+    stub({ waiting: [waiting()] })
+    open(HEAD)
+    await screen.findByText('متن نویسنده 1')
+    fireEvent.click(screen.getByRole('tab', { name: 'کامنت‌های من' }))
+    expect(screen.getByRole('heading', { name: 'کامنت‌ها' })).toBeInTheDocument()
+  })
+
+  it('«عوض کردن متن» → «دوباره بفرست» PUTs the edited text', async () => {
+    const spy = stub({ own: [cmt(2, { author: { name: 'سمیرا احمدی', isMe: true }, actions: { ...NO, edit: true, withdraw: true } })] })
+    open(VIEWER)
+    fireEvent.click(await screen.findByRole('button', { name: 'عوض کردن متن' }))
+    const box = screen.getByPlaceholderText('حرفتان را ساده بنویسید…')
+    expect(box).toHaveValue('متن نویسنده 2')
+    fireEvent.change(box, { target: { value: 'متن تازه' } })
+    fireEvent.click(screen.getByRole('button', { name: 'دوباره بفرست' }))
+    await waitFor(() => expect(posted(spy)).toHaveLength(1))
+    const [url, init] = posted(spy)[0]
+    expect(url).toBe('/api/comments/CMT-2')
+    expect(init!.method).toBe('PUT')
+    expect(JSON.parse(String(init!.body))).toEqual({ text: 'متن تازه' })
   })
 
   it('shows the design’s empty line', async () => {
