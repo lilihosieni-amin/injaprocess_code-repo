@@ -139,3 +139,63 @@ def reconcile(app: sqlite3.Connection, cc: sqlite3.Connection, *, now: int) -> i
             _pool(app, cc, c, now=now)
             moved += 1
     return moved
+
+
+def _received(cc: sqlite3.Connection, cid: int, user_id: int) -> bool:
+    return cc.execute(
+        "SELECT 1 FROM comment_events WHERE comment_id = ? AND kind = 'assigned'"
+        " AND user_id = ? LIMIT 1", (cid, user_id)).fetchone() is not None
+
+
+def can_see(app, cc, viewer: sqlite3.Row, c: sqlite3.Row) -> bool:
+    """D66, for one comment. `visible_sql` is the same rule for a listing."""
+    k = kind_of(app, viewer)
+    if k == "editor" or c["author_id"] == viewer["id"]:
+        return True
+    if k == "admin":
+        return covers(app, viewer, c["department"])
+    return _received(cc, c["id"], viewer["id"])
+
+
+def visible_sql(app, viewer: sqlite3.Row) -> tuple[str, list]:
+    k = kind_of(app, viewer)
+    if k == "editor":
+        return "1", []
+    if k == "admin":
+        depts = access.reachable_departments(app, viewer, "view")
+        if depts is None:
+            return "1", []
+        marks = ",".join("?" * len(depts)) or "NULL"
+        return (f"(c.author_id = ? OR c.department IN ({marks}))",
+                [viewer["id"], *sorted(depts)])
+    return ("(c.author_id = ? OR EXISTS (SELECT 1 FROM comment_events e"
+            " WHERE e.comment_id = c.id AND e.kind = 'assigned' AND e.user_id = ?))",
+            [viewer["id"], viewer["id"]])
+
+
+def actions(app, cc, viewer: sqlite3.Row, c: sqlite3.Row) -> dict[str, bool]:
+    k = kind_of(app, viewer)
+    awaiting = c["state"] == "awaiting"
+    decide = awaiting and (
+        (c["stage"] == "reader" and c["approver_id"] == viewer["id"])
+        or (c["stage"] == "pool" and k == "admin" and covers(app, viewer, c["department"])))
+    own_untouched = (c["author_id"] == viewer["id"] and awaiting
+                     and not S.approvers_since_restart(cc, c["id"]))
+    return {"approve": decide, "reject": decide, "edit": own_untouched,
+            "withdraw": own_untouched,
+            "address": c["state"] == "approved" and k == "editor"}
+
+
+def pending_count(app, cc, viewer: sqlite3.Row) -> int:
+    """D68: what the viewer can act on now."""
+    k = kind_of(app, viewer)
+    if k == "editor":
+        return cc.execute("SELECT COUNT(*) FROM comments WHERE state = 'approved'").fetchone()[0]
+    reader_hops = cc.execute(
+        "SELECT COUNT(*) FROM comments WHERE state = 'awaiting' AND stage = 'reader'"
+        " AND approver_id = ?", (viewer["id"],)).fetchone()[0]
+    if k != "admin":
+        return reader_hops
+    pool = [r["department"] for r in cc.execute(
+        "SELECT department FROM comments WHERE state = 'awaiting' AND stage = 'pool'")]
+    return reader_hops + sum(1 for d in pool if covers(app, viewer, d))

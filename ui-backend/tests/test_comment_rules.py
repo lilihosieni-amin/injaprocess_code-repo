@@ -219,3 +219,92 @@ def test_cmt_ids_round_trip():
     assert R.parse_cmt("CMT-42") == 42
     assert R.parse_cmt("cmt-42") is None
     assert R.parse_cmt("CMT-0x2") is None
+
+
+def test_d66_visibility(world):
+    app, cc = world
+    admin = mk(app, "admin", "admin", "*")
+    dining_admin = mk(app, "dining admin", "admin", "dept:dining")
+    cashier_admin = mk(app, "cashier admin", "admin", "dept:cashier")
+    top = mk(app, "top", "reader", "dept:dining", can_sup=True)
+    head = mk(app, "head", "reader", "dept:dining", sup=top, can_sup=True)
+    viewer = mk(app, "viewer", "reader", "dept:dining", sup=head)
+    other = mk(app, "other", "reader", "dept:dining")
+    cid = post(app, cc, viewer)
+
+    def see(uid):
+        return R.can_see(app, cc, users.by_id(app, uid), S.get(cc, cid))
+
+    assert see(viewer) and see(head)                       # author; it waits with head
+    assert not see(top) and not see(other)                 # not reached / not on path
+    assert see(admin) and see(dining_admin) and not see(cashier_admin)
+    assert see(editor_id(app))                             # read-only in flight
+    S.event(cc, cid, kind="approved", now=NOW, user_id=head, user_name="head")
+    R.advance(app, cc, cid, from_user_id=head, now=NOW)    # → top
+    assert see(top) and see(head)                          # head keeps following it
+
+
+def test_visible_sql_agrees_with_can_see(world):
+    app, cc = world
+    admin = mk(app, "admin", "admin", "dept:dining")
+    head = mk(app, "head", "reader", "dept:dining", can_sup=True)
+    viewer = mk(app, "viewer", "reader", "dept:dining", sup=head)
+    other = mk(app, "other", "reader", "dept:dining")
+    post(app, cc, viewer)
+    post(app, cc, admin)
+    for uid in (admin, head, viewer, other, editor_id(app)):
+        u = users.by_id(app, uid)
+        where, params = R.visible_sql(app, u)
+        by_sql = {r[0] for r in cc.execute(f"SELECT c.id FROM comments c WHERE {where}", params)}
+        by_py = {r["id"] for r in cc.execute("SELECT * FROM comments")
+                 if R.can_see(app, cc, u, r)}
+        assert by_sql == by_py, uid
+
+
+def test_actions(world):
+    app, cc = world
+    admin = mk(app, "admin", "admin", "*")
+    cashier_admin = mk(app, "cashier admin", "admin", "dept:cashier")
+    head = mk(app, "head", "reader", "dept:dining", can_sup=True)
+    viewer = mk(app, "viewer", "reader", "dept:dining", sup=head)
+    cid = post(app, cc, viewer)
+
+    def act(uid):
+        return R.actions(app, cc, users.by_id(app, uid), S.get(cc, cid))
+
+    assert act(head)["approve"] and act(head)["reject"]
+    assert not act(admin)["approve"]                        # not in the pool yet
+    assert act(viewer)["edit"] and act(viewer)["withdraw"]  # no approvals yet
+    S.event(cc, cid, kind="approved", now=NOW, user_id=head, user_name="head")
+    R.advance(app, cc, cid, from_user_id=head, now=NOW)     # → pool
+    assert act(admin)["approve"] and not act(cashier_admin)["approve"]
+    assert not act(editor_id(app))["approve"]               # Editors never act in the pool
+    assert not act(viewer)["edit"] and not act(viewer)["withdraw"]
+    S.set_state(cc, cid, state="approved", now=NOW)
+    assert act(editor_id(app))["address"] and not act(admin)["address"]
+
+
+def test_rejected_is_closed_to_its_author(world):
+    app, cc = world
+    viewer = mk(app, "viewer", "reader", "dept:dining")
+    mk(app, "admin", "admin", "*")
+    cid = post(app, cc, viewer)
+    S.set_state(cc, cid, state="rejected", now=NOW)
+    a = R.actions(app, cc, users.by_id(app, viewer), S.get(cc, cid))
+    assert not a["edit"] and not a["withdraw"]
+
+
+def test_pending_count(world):
+    app, cc = world
+    admin = mk(app, "admin", "admin", "dept:dining")
+    head = mk(app, "head", "reader", "dept:dining", can_sup=True)
+    viewer = mk(app, "viewer", "reader", "dept:dining", sup=head)
+    loner = mk(app, "loner", "reader", "dept:dining")
+    post(app, cc, viewer)                 # waits with head
+    post(app, cc, loner)                  # waits in the pool
+    post(app, cc, admin)                  # approved at once
+
+    def n(uid):
+        return R.pending_count(app, cc, users.by_id(app, uid))
+
+    assert n(head) == 1 and n(admin) == 1 and n(editor_id(app)) == 1 and n(viewer) == 0
