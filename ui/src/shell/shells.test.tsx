@@ -1758,23 +1758,24 @@ describe('what the panel chrome’s class strings compile to', () => {
     expect(pill.textContent).toBe('۲')
     const p = await paint(pill.className)
     expect(declarations(p)).toEqual(new Set([
-      'min-width: var(--size-count-chrome)',
-      'height: var(--size-count-chrome)',
+      'min-width: var(--size-count-sheet)',
+      'height: var(--size-count-sheet)',
       'padding-left: var(--space-3)',
       'padding-right: var(--space-3)',
       'display: flex',
       'align-items: center',
       'justify-content: center',
-      'border-radius: var(--radius-round)',
+      'border-radius: var(--radius-pill)',
       'background-color: var(--coral)',
       'color: var(--card)',
       'font-size: var(--fs-xxs)',
       'font-weight: var(--fw-bold)',
       'flex: none',
     ]))
-    // Round, not merely rounded: `--radius-pill` is 20px and would draw a
-    // stadium on a 19px box, which is the same shape one corner short.
-    expect(winner(p, 'border-radius')).not.toBe('var(--radius-pill)')
+    // Panel L2993 writes `border-radius:999px`: a stadium once two digits widen
+    // the 22px box. `--radius-pill` (20px) scales down to the same stadium;
+    // `--radius-round` (50%) would draw an ellipse instead.
+    expect(winner(p, 'border-radius')).toBe('var(--radius-pill)')
     // …and it does not shrink away when a long label pushes at it, which is
     // what `flex-none` is for beside a `flex:1` sibling.
     expect(winner(p, 'flex')).toBe('none')

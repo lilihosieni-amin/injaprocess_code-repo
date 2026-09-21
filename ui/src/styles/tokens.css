@@ -642,6 +642,7 @@
      --size-count is 21px and is the FAB's badge; --size-tick is 19px and is
      ledger L-10's tick box. Two owners, and neither of them is this role. */
   --size-count-chrome: 19px;
+  --size-count-sheet: 22px;        /* the panel menu sheet's count pill, Panel L2993 `min-width:22px; height:22px` */
 
   /* The conflict-inbox button's inline padding, `padding:8px 13px` (panel 152);
      its 8px is --space-4. Five tokens hold 13px — the search field, the compose

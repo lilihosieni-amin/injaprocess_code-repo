@@ -591,7 +591,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
                 {/* §6.0's `hasBadge` (L2993): the comments awaiting this
                     caller, on the same pill as «صندوق بازبینی» below. */}
                 {n.to === COMMENTS.to && session.pendingApprovals > 0 && (
-                  <span className="min-w-count-chrome h-count-chrome px-s3 flex items-center justify-center rounded-round bg-coral text-card text-fs-xxs font-bold flex-none">
+                  <span className="min-w-count-sheet h-count-sheet px-s3 flex items-center justify-center rounded-pill bg-coral text-card text-fs-xxs font-bold flex-none">
                     {toFa(session.pendingApprovals)}
                   </span>
                 )}
@@ -602,14 +602,9 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
                 <span className="flex-1">صندوق بازبینی</span>
                 {openCount > 0 && (
                   // §6.0 — `min-width:22px; height:22px; border-radius:999px`
-                  // on the coral, pushed to the row's end by the span above.
-                  // Written on the chrome's own count-badge token, which is
-                  // 19px: the deliverable draws 19 in the bar and 22 here, and
-                  // a third badge size needs a token in `src/styles/`, which
-                  // this task may not add. Reported rather than invented — the
-                  // shape, the colour and the placement are the design's; one
-                  // number is the shell's nearest named rung.
-                  <span className="min-w-count-chrome h-count-chrome px-s3 flex items-center justify-center rounded-round bg-coral text-card text-fs-xxs font-bold flex-none">
+                  // on the coral, pushed to the row's end by the span above
+                  // (Panel L2993; the bar's badge is 19, this one 22).
+                  <span className="min-w-count-sheet h-count-sheet px-s3 flex items-center justify-center rounded-pill bg-coral text-card text-fs-xxs font-bold flex-none">
                     {toFa(openCount)}
                   </span>
                 )}

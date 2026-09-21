@@ -127,7 +127,7 @@ gap-stat-dot
 # the summary screen were left writing their own values out; these nine are what
 # Tasks 12, 13 and 16 need. `min-w-menu` is NOT here — it is on line 62 already,
 # and the mint gave it a token (--width-menu) rather than a new name.
-mt-hint leading-lockup min-w-count-chrome h-count-chrome
+mt-hint leading-lockup min-w-count-chrome h-count-chrome min-w-count-sheet h-count-sheet
 px-inbox-x py-crumb-y py-back-y px-topbar-reader
 grid-cols-idef0
 # The reader-chrome mint. The owner's ruling on ReaderShell — the reader takes

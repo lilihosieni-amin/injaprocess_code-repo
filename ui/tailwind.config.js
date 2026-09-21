@@ -364,6 +364,7 @@ export default {
         // and appears on `width` nowhere. 19px, not `count`'s 21px: that one is
         // the FAB's.
         'count-chrome': 'var(--size-count-chrome)', // 19px — the top-bar badge
+        'count-sheet': 'var(--size-count-sheet)',   // 22px — the menu sheet's count pill, Panel L2993
         // The flow-bar mint (R47). A second menu popover FLOOR: `menu` above is
         // the 265px the panel shell's «مدیریت» popover is drawn at, and this is
         // the 225px the flowchart's ⋯ menu is (panel 576, reader 336). Two
@@ -642,6 +643,7 @@ export default {
         // …and the chrome's badge, 19px, carried the same way for the same
         // reason. Both shells draw it; neither draws it at 21.
         'count-chrome': 'var(--size-count-chrome)',
+        'count-sheet': 'var(--size-count-sheet)',
       },
       // §5.2 — the search field's icon sits `--inset-search-icon` from the edge.
       // It is an inset, not spacing: naming it here keeps `start-search-icon`

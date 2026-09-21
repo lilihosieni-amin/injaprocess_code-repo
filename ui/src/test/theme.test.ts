@@ -632,6 +632,8 @@ const EXPECTED: Record<string, string | string[]> = {
   'leading-lockup': 'var(--role-lh-lockup)',
   'min-w-count-chrome': 'var(--size-count-chrome)',
   'h-count-chrome': 'var(--size-count-chrome)',
+  'min-w-count-sheet': 'var(--size-count-sheet)',
+  'h-count-sheet': 'var(--size-count-sheet)',
   'px-inbox-x': 'var(--pad-inbox-x)',
   'py-crumb-y': 'var(--pad-crumb-y)',
   'py-back-y': 'var(--pad-back-y)',
