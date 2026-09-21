@@ -269,7 +269,10 @@ def test_the_switch_is_stored_before_it_is_recorded_and_opens_no_transaction(
     policy is still whichever write landed last.
     """
     client = _client_as(data_root, tmp_path, "editor", "*")
-    conn = client.app.state.db
+    # `app.state.db` is a connection per worker thread (`db.PerThread`), so a
+    # trace set from this thread would watch the wrong one. One request at a
+    # time, so a single plain connection in its place is safe and is traced.
+    conn = client.app.state.db = db.connect(client.app.state.cfg.app_db)
     statements: list[str] = []
     conn.set_trace_callback(statements.append)
     try:

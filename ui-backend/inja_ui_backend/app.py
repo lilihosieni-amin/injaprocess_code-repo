@@ -195,8 +195,11 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
     # on every start, so the same code path creates a fresh database and upgrades
     # an existing one. Not seeded here — the first Editor is created by an
     # operator with a password, never by application startup.
-    conn = db.connect(cfg.app_db)
-    db.migrate(conn)
+    # A connection per worker thread (`db.PerThread`), never one shared.
+    first = db.connect(cfg.app_db)
+    db.migrate(first)
+    first.close()
+    conn = db.PerThread(cfg.app_db)
     app.state.db = conn
     # comments.db (D1): migrated on every start like app.db. Its own shared
     # connection, under the same rule — no transaction on it from a handler.
