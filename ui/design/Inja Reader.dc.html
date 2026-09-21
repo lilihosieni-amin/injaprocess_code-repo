@@ -747,16 +747,16 @@
               </div>
 
               <div style="padding:18px">
-                <button onClick="{{ c.openAnchor }}" style="display:inline-flex;align-items:center;gap:7px;border:0;background:transparent;padding:0;font-family:inherit;font-size:13px;color:#4A25A9;font-weight:700;cursor:pointer;text-align:start;line-height:1.7">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M15 18l-6-6 6-6"></path></svg>
-                  دربارهٔ {{ c.anchor }}
+                <button onClick="{{ c.openAnchor }}" style="display:inline-flex;align-items:center;gap:5px;border:0;background:transparent;padding:0;font-family:inherit;font-size:11.5px;color:#a99fc4;font-weight:600;cursor:pointer;text-align:start;line-height:1.6">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M15 18l-6-6 6-6"></path></svg>
+                  دربارهٔ <span style="color:#4A25A9;font-weight:700;text-decoration:underline dotted;text-underline-offset:3px">{{ c.anchor }}</span>
                 </button>
 
                 <sc-if value="{{ c.editing }}">
                   <textarea value="{{ amendText }}" onInput="{{ onAmend }}" rows="4" placeholder="حرفتان را ساده بنویسید…" style="width:100%;margin-top:12px;padding:14px;border:1.5px solid #E3D8F5;border-radius:14px;font-size:16px;color:#2A1D5E;background:#FBF9FE;outline:none;resize:vertical;line-height:1.95" style-focus="border-color:#FA5A52"></textarea>
                 </sc-if>
                 <sc-if value="{{ c.notEditing }}">
-                  <div style="font-size:17px;color:#2A1D5E;line-height:1.95;margin-top:10px;text-wrap:pretty">{{ c.text }}</div>
+                  <div style="font-size:18px;font-weight:700;color:#2A1D5E;line-height:1.85;margin-top:8px;text-wrap:pretty">{{ c.text }}</div>
                 </sc-if>
 
                 <sc-if value="{{ c.byOther }}">
@@ -774,23 +774,23 @@
                   </div>
                 </sc-if>
 
-                <div style="display:flex;align-items:flex-start;gap:10px;margin-top:16px;padding:14px;background:#FBF9FE;border-radius:14px">
+                <div style="display:flex;align-items:flex-start;gap:10px;margin-top:16px;padding:14px;background:#FBF9FE;border-radius:14px;display:{{ c.noteDisplay }}">
                   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8a7db0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><circle cx="12" cy="12" r="9"></circle><path d="M12 8h.01M11 12h1v4h1"></path></svg>
                   <div style="font-size:14px;color:#5a5175;line-height:1.9;text-wrap:pretty">{{ c.note }}</div>
                 </div>
 
                 <sc-if value="{{ c.canApprove }}">
                   <sc-if value="{{ c.amending }}">
-                    <textarea value="{{ noteText }}" onInput="{{ onNote }}" rows="4" placeholder="یادداشت شما زیر متن او اضافه می‌شود…" style="width:100%;margin-top:14px;padding:14px;border:1.5px solid #E3D8F5;border-radius:14px;font-size:16px;color:#2A1D5E;background:#FBF9FE;outline:none;resize:vertical;line-height:1.95" style-focus="border-color:#FA5A52"></textarea>
+                    <textarea value="{{ noteText }}" onInput="{{ onNote }}" rows="4" placeholder="اصلاح شما زیر کامنت او اضافه می‌شود…" style="width:100%;margin-top:14px;padding:14px;border:1.5px solid #E3D8F5;border-radius:14px;font-size:16px;color:#2A1D5E;background:#FBF9FE;outline:none;resize:vertical;line-height:1.95" style-focus="border-color:#FA5A52"></textarea>
                   </sc-if>
                   <sc-if value="{{ c.rejecting }}">
                     <textarea value="{{ rejText }}" onInput="{{ onRej }}" rows="3" placeholder="چرا قبول ندارید؟" style="width:100%;margin-top:14px;padding:14px;border:1.5px solid #FDD9D6;border-radius:14px;font-size:16px;color:#2A1D5E;background:#FBF9FE;outline:none;resize:vertical;line-height:1.95" style-focus="border-color:#FA5A52"></textarea>
                   </sc-if>
                   <sc-if value="{{ c.plainMode }}">
-                    <button onClick="{{ c.approve }}" style="width:100%;margin-top:16px;padding:16px;border:0;border-radius:14px;background:#1F8A5B;color:#fff;font-family:inherit;font-weight:700;font-size:15.5px;cursor:pointer;box-shadow:0 10px 22px -13px rgba(31,138,91,.9)">درست است، تأیید می‌کنم</button>
+                    <button onClick="{{ c.approve }}" style="width:100%;margin-top:16px;padding:16px;border:0;border-radius:14px;background:#1F8A5B;color:#fff;font-family:inherit;font-weight:700;font-size:15.5px;cursor:pointer;box-shadow:0 10px 22px -13px rgba(31,138,91,.9)">تأیید</button>
                     <div data-r-cmtactions="" style="display:flex;gap:10px;margin-top:10px">
-                      <button onClick="{{ c.amend }}" style="flex:1;padding:14px;border:1.5px solid #E3D8F5;border-radius:14px;background:#fff;color:#4A25A9;font-family:inherit;font-weight:700;font-size:14.5px;cursor:pointer">یادداشت اضافه کن</button>
-                      <button onClick="{{ c.reject }}" style="flex:1;padding:14px;border:1.5px solid #FDD9D6;border-radius:14px;background:#FFF3F2;color:#E23D35;font-family:inherit;font-weight:700;font-size:14.5px;cursor:pointer">قبول ندارم</button>
+                      <button onClick="{{ c.amend }}" style="flex:1;padding:14px;border:1.5px solid #E3D8F5;border-radius:14px;background:#fff;color:#4A25A9;font-family:inherit;font-weight:700;font-size:14.5px;cursor:pointer">اصلاح کامنت</button>
+                      <button onClick="{{ c.reject }}" style="flex:1;padding:14px;border:1.5px solid #FDD9D6;border-radius:14px;background:#FFF3F2;color:#E23D35;font-family:inherit;font-weight:700;font-size:14.5px;cursor:pointer">رد کردن</button>
                     </div>
                   </sc-if>
                   <sc-if value="{{ c.amending }}">
@@ -1997,10 +1997,12 @@ class Component extends DCLogic {
     // D37: یک سرپرست همهٔ کامنت‌های زیرمجموعه‌اش را در هر وضعیتی می‌بیند
     const rTeam = me.approve ? rAll.filter(c => c.author !== me.name) : [];
     const tabDefs = me.approve
-      ? [{ id:'mine', label:'در انتظار تأیید شما' }, { id:'team', label:'کامنت‌های تیم من' }, { id:'own', label:'کامنت‌های من' }]
+      ? [{ id:'mine', label:'در انتظار تأیید شما' }, { id:'own', label:'کامنت‌های من' }, { id:'team', label:'همه' }]
       : [];
     const cmtTab = me.approve ? (s.cmtTab || 'mine') : 'own';
-    const shownR = (cmtTab === 'mine' ? rInbox : cmtTab === 'team' ? rTeam : rOwn).slice().sort((a, b) => b.days - a.days);
+    const closedRankR = (c) => (c.st === 'addressed' || c.st === 'rejected' || c.st === 'withdrawn') ? 1 : 0;
+    const shownR = (cmtTab === 'mine' ? rInbox : cmtTab === 'team' ? rAll : rOwn)
+      .slice().sort((a, b) => (closedRankR(a) - closedRankR(b)) || (a.days - b.days));
 
     const withState = [];
     const mine = rInbox;
@@ -2719,13 +2721,12 @@ class Component extends DCLogic {
             .concat(c.st === 'addressed' ? [{ by: 'ادیتور رسیدگی کرد:', text: c.closeNote || 'فرآیند اصلاح شد.', tone: '#BFE5D0' }] : []),
           hasNotes: ((c.notes || []).length + (c.st === 'rejected' || c.st === 'addressed' ? 1 : 0)) > 0,
 
-          note: c.st === 'awaiting' ? (c.approvals
-                ? toFa(c.approvals) + ' نفر تأیید کرده‌اند. از اینجا به بعد متن عوض نمی‌شود.'
-                : own ? 'منتظر تأیید است. تا تأیید نشده می‌توانید عوضش کنید.' : 'منتظر تأیید است.')
-            : c.st === 'approved' ? 'تأیید شد و رسید به ادیتور.'
-            : c.st === 'addressed' ? 'این مورد بسته شد.'
-            : c.st === 'rejected' ? 'این مورد بسته شد.'
-            : 'خودتان پس گرفتید.',
+          // وضعیت بالای کارت گفته شده؛ این خط فقط چیزی می‌گوید که از نشان وضعیت درنمی‌آید
+          note: c.st === 'awaiting'
+            ? (c.approvals ? toFa(c.approvals) + ' نفر تأیید کرده‌اند. از اینجا به بعد متن عوض نمی‌شود.'
+              : own ? 'تا تأیید نشده می‌توانید متنش را عوض کنید.' : '')
+            : c.st === 'approved' ? 'رسید به ادیتور.' : '',
+          noteDisplay: (c.st === 'awaiting' && (c.approvals || own)) || c.st === 'approved' ? 'flex' : 'none',
           canApprove: mineTurn, amending: s.note === c.id, rejecting: s.rej === c.id,
           approveLabel: s.note === c.id ? 'ثبت یادداشت و تأیید' : 'درست است، تأیید می‌کنم',
           amendLabel: 'انصراف',
