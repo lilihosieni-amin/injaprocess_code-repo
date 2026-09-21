@@ -230,7 +230,7 @@ function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
 
   const area = (placeholder: string, rows: number, danger = false) => (
     <TextField multiline rows={rows} label={placeholder} placeholder={placeholder} value={text} onChange={setText}
-      boxClassName={`${FIELD} ${danger ? 'border-border-danger' : ''}`} className="mb-s6 [&>label]:sr-only" />
+      danger={danger} boxClassName={FIELD} className="mb-s6 [&>label]:sr-only" />
   )
 
   const rejectedBy = c.trail.filter((e) => e.kind === 'rejected').at(-1)?.name ?? ''

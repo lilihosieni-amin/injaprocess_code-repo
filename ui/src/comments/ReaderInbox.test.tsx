@@ -92,7 +92,9 @@ describe('reader inbox', () => {
     const spy = stub({ waiting: [waiting()] })
     open(HEAD)
     fireEvent.click(await screen.findByRole('button', { name: 'رد کردن' }))
-    expect(screen.getByPlaceholderText('چرا قبول ندارید؟')).toBeInTheDocument()
+    // Reader L787: the reason box is edged in --border-danger, not the field's --line.
+    expect(screen.getByPlaceholderText('چرا قبول ندارید؟')).toHaveClass('border-border-danger')
+    expect(screen.getByPlaceholderText('چرا قبول ندارید؟')).not.toHaveClass('border-line')
     fireEvent.click(screen.getByRole('button', { name: 'ثبت' }))
     expect(await screen.findByText('دلیل رد کردن را بنویسید')).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).toBeNull()

@@ -158,8 +158,7 @@ function InboxCard({ c }: { c: Comment }) {
   // Reader L761 (edit, margin 12), L791/L794 (note/reject, margin 14).
   const area = (placeholder: string, rows: number, danger = false) => (
     <TextField multiline rows={rows} label={placeholder} placeholder={placeholder} value={text} onChange={setText}
-      // `border-border-danger` is emitted after TextField's `border-line` (theme order), so it wins.
-      boxClassName={`${FIELD} ${danger ? 'border-border-danger' : ''}`} className={`${mode === 'edit' ? 'mt-s6' : 'mt-s7'} [&>label]:sr-only`} />
+      danger={danger} boxClassName={FIELD} className={`${mode === 'edit' ? 'mt-s6' : 'mt-s7'} [&>label]:sr-only`} />
   )
 
   return (

@@ -65,6 +65,8 @@ export interface TextFieldProps {
    * L952, Inja Panel L2855). Every class passed must be a token class.
    */
   boxClassName?: string
+  /** The comment inbox's reject reason: a `--border-danger` edge at rest, coral on focus (Reader L787, Panel L1885). */
+  danger?: boolean
 }
 
 /**
@@ -81,12 +83,12 @@ export interface TextFieldProps {
 export function TextField({
   label, value, onChange, hint, invalid = false, multiline = false, rows = 3,
   type = 'text', ltr = false, dir, inputMode, ground, placeholder, autoComplete,
-  disabled = false, required = false, name, id: given, className = '', boxClassName,
+  disabled = false, required = false, name, id: given, className = '', boxClassName, danger = false,
 }: TextFieldProps) {
   const auto = useId()
   const id = given ?? auto
   const hintId = `${id}-hint`
-  const edge = fieldEdge(invalid)
+  const edge = danger && !invalid ? 'border-border-danger focus:border-coral' : fieldEdge(invalid)
   const bg = fieldGround(ground ?? (multiline ? 'sub' : 'card'))
   // §8 — the latin island is a property of the VALUE, not of the element that
   // holds it: a username typed into a textarea is as latin as one typed into an
