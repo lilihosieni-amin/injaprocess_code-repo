@@ -81,6 +81,10 @@ describe('process drawer', () => {
     fireEvent.click(await fab())
     expect(await screen.findByText('کامنتی برای این فرآیند نیست')).toBeInTheDocument()
     expect(screen.getByText('کامنت یک گام خاص، در جزئیات همان گام دیده می‌شود.')).toBeInTheDocument()
+    // Reader L680: the edge faces the page, not the window's side (the design's
+    // drawer renders its border on the inner edge).
+    expect(document.querySelector('[data-r-drawer]')).toHaveClass('border-s')
+    expect(document.querySelector('[data-r-drawer]')).not.toHaveClass('border-e')
   })
 
   it('a VIEWER gets «کامنت تازه روی این فرآیند»; closing the composer re-opens the drawer', async () => {
@@ -135,6 +139,9 @@ describe('department drawer', () => {
     dept(VIEWER)
     fireEvent.click(await fab())
     expect(await screen.findByText('کامنتی روی این اطلاعات نیست')).toBeInTheDocument()
+    // Reader L904: the pane's edge faces the page.
+    expect(document.querySelector('[data-r-composebox]')).toHaveClass('border-s')
+    expect(document.querySelector('[data-r-composebox]')).not.toHaveClass('border-e')
   })
 
   it('Panel: its own title and empty copy; an EDITOR sees no «کامنت تازه»', async () => {

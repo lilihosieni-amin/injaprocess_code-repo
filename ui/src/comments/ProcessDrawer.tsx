@@ -45,10 +45,10 @@ function ProcessDrawerOpen({ pid, department }: { pid: string; department: strin
   const { data, error, refetch } = useProcessOnly(pid)
   return (
     <div data-r-drawer role="dialog" aria-labelledby={id} className={
-      'absolute inset-y-0 end-0 w-full max-w-drawer bg-card border-e border-warm shadow-drawer '
+      'absolute inset-y-0 end-0 w-full max-w-drawer bg-card border-s border-warm shadow-drawer '
       + 'flex flex-col z-canvas-overlay '
       + 'max760:inset-x-0 max760:top-auto max760:bottom-0 max760:max-w-none max760:h-[64%] '
-      + 'max760:rounded-t-sheet max760:border-e-0 max760:border-t max760:shadow-sheet'}>
+      + 'max760:rounded-t-sheet max760:border-s-0 max760:border-t max760:shadow-sheet'}>
       <div className="flex items-center justify-between gap-s5 py-s8 px-s9 border-b border-tile-v flex-none">
         <div className="min-w-0">
           <div id={id} className="font-extrabold text-fs-lg text-ink">کامنت‌های این فرآیند</div>

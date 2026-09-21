@@ -27,8 +27,8 @@ export function FixedPane({ title, className, children }: {
       'fixed inset-y-0 end-0 w-composer z-drawer flex items-stretch '
       + 'max760:inset-0 max760:w-auto max760:bg-scrim max760:items-end'}>
       <div data-r-composebox role="dialog" aria-labelledby={id} className={
-        `w-full overflow-auto bg-card border-e border-warm ${className} `
-        + 'max760:max-h-[88vh] max760:rounded-t-sheet max760:border-e-0'}>
+        `w-full overflow-auto bg-card border-s border-warm ${className} `
+        + 'max760:max-h-[88vh] max760:rounded-t-sheet max760:border-s-0'}>
         {title(id)}
         {children}
       </div>
