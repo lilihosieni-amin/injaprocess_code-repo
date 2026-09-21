@@ -121,8 +121,8 @@ const DEPTS = [{ code: 'dining', name: 'سالن', count: 3, subs: 0 }]
 function renderPanel(
   caps: Capability[],
   entry: string,
-  { pending = [] as unknown[], depts = DEPTS as unknown[], scopes }: {
-    pending?: unknown[]; depts?: unknown[]; scopes?: string[]
+  { pending = [] as unknown[], depts = DEPTS as unknown[], scopes, pendingApprovals = 0 }: {
+    pending?: unknown[]; depts?: unknown[]; scopes?: string[]; pendingApprovals?: number
   } = {},
 ) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
@@ -132,7 +132,7 @@ function renderPanel(
       status: 200, headers: { 'Content-Type': 'application/json' },
     }))
   })
-  const who = scopes === undefined ? session(caps) : { ...session(caps), scopes }
+  const who = { ...session(caps), ...(scopes === undefined ? {} : { scopes }), pendingApprovals }
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
@@ -154,6 +154,7 @@ function renderPanel(
                 there. */}
             <Route path="/facts" element={<p>محتوا</p>} />
             <Route path="/facts/:fid" element={<p>محتوا</p>} />
+            <Route path="/comments" element={<p>محتوا</p>} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -657,6 +658,31 @@ describe('PanelShell chrome', () => {
       expect(within(sheet).getByRole('link', { name: new RegExp(name) }), name).toBeInTheDocument()
     }
     expect(within(sheet).getByRole('button', { name: /صندوق بازبینی/ })).toBeInTheDocument()
+  })
+
+  it('adds «صندوق کامنت‌ها» to the tray and the sheet for an Editor or Admin, the sheet row counting in Persian', async () => {
+    // Panel L4784 `navDefs`; the badge is the sheet's only (L2993, `pendingForMe`).
+    const { unmount } = renderPanel(['view', 'manage_users'], '/departments', { pendingApprovals: 2 })
+    const tray = screen.getByRole('navigation', { name: 'بخش‌های اصلی' })
+    const link = within(tray).getByRole('link', { name: 'صندوق کامنت‌ها' })
+    expect(link).toHaveAttribute('href', '/comments')
+    expect(link.textContent).toBe('صندوق کامنت‌ها')
+    await userEvent.click(screen.getAllByRole('button', { name: 'فهرست' })[0])
+    const row = within(screen.getByRole('dialog')).getByRole('link', { name: /صندوق کامنت‌ها/ })
+    expect(row).toHaveAttribute('href', '/comments')
+    expect(row.textContent).toBe('صندوق کامنت‌ها۲')
+    unmount()
+    // …and a caller who is neither gets no entry that the screen would refuse.
+    renderPanel(['view', 'view_audit'], '/departments')
+    expect(screen.queryByRole('link', { name: /صندوق کامنت‌ها/ })).toBeNull()
+  })
+
+  it('lights the sheet’s comments row on the inbox', async () => {
+    renderPanel(['view', 'edit'], '/comments')
+    await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+    const row = within(screen.getByRole('dialog')).getByRole('link', { name: /صندوق کامنت‌ها/ })
+    expect(row.className).toMatch(/\bbg-violet\b/)
+    expect(row.textContent).toBe('صندوق کامنت‌ها')
   })
 
   it('counts the sheet’s inbox in Persian, which is the count a phone can see', async () => {

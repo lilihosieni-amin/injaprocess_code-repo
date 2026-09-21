@@ -151,6 +151,10 @@ border-s-note py-cmt-empty-y underline-offset-anchor
 # radius and the tray's radius are roles (Reader L731–733), and the reader's
 # comments tray halves each tab at <=760 (Reader L72).
 py-role-tab-y px-role-tab-x text-role-tab rounded-role-tab rounded-role-tray basis-tab-half
+# P4 Task 13 — the panel inbox: list pane 400 (Panel L1771), detail column 660
+# (L1806), nothing-selected copy 320 (L1938), decision buttons 120/150 (L1880,
+# L1886) and the resolve pair 140 (L1909).
+w-cmt-list max-w-cmt-detail max-w-cmt-none min-w-cmt-action min-w-cmt-action-wide min-w-cmt-resolve
 # Owner ruling R35 — the drawer-as-bottom-sheet's 22px top corners (§5.2). The
 # ladder has no 22 rung; the modal's sheet is 20 and the centred dialog 24.
 # Written `rounded-t-sheet` at its one consumer, so the bare stem below is the

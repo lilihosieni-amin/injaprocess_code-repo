@@ -671,6 +671,14 @@ const EXPECTED: Record<string, string | string[]> = {
   'rounded-role-tab': 'var(--role-tab-radius)',
   'rounded-role-tray': 'var(--role-tray-radius)',
   'basis-tab-half': 'var(--basis-tab-half)',
+  // P4 Task 13 — the panel inbox's six lengths (Panel L1771, L1806, L1938,
+  // L1880, L1886, L1909).
+  'w-cmt-list': 'var(--width-cmt-list)',
+  'max-w-cmt-detail': 'var(--width-cmt-detail)',
+  'max-w-cmt-none': 'var(--width-cmt-none)',
+  'min-w-cmt-action': 'var(--width-cmt-action)',
+  'min-w-cmt-action-wide': 'var(--width-cmt-action-wide)',
+  'min-w-cmt-resolve': 'var(--width-cmt-resolve)',
   // The flow-bar mint (owner ruling R47). Nine names for the flowchart screen,
   // which F16 froze for the whole rebuild, and every one of them a number this
   // theme already carries under another role — so every one of them is a pairing
@@ -1584,14 +1592,14 @@ const UNPAINTED: string[] = [
   'w-avatar',
   'h-avatar', 'w-logo-bar', 'h-logo-bar', 'w-touch', 'h-touch', 'w-tile-reader',
   'h-tile-reader', 'w-iconbtn-reader',
-  'h-iconbtn-reader', 'w-fab-reader',
+  'h-iconbtn-reader',
   // Owner ruling R36 gave the nested rung a consumer. `w-tick-nested`,
   // `h-tick-nested`, `rounded-tick-nested`, `w-tick-glyph-nested` and
   // `h-tick-glyph-nested` came off this list here: the design draws a 16px tick
   // at radius 5 inside another option (panel 1386), and ScopePicker's nested
   // view menu and Dropdown's multi-select option both draw it now that a tick
   // takes the rung its site calls for. CEILING below follows them down by five.
-  'h-fab-reader', 'max-w-doc',
+  'max-w-doc',
     'max-w-audit', 'duration-fast',
   'py-tick-nested-y', 'py-dropdown-y-dialog',
   'py-dropdown-y-filter', 'px-dropdown-x-filter',
@@ -1870,7 +1878,9 @@ const UNPAINTED: string[] = [
 // P4 (comments) consumed four: `text-danger` (lib/comments STATUS, the step
 // comment buttons), `shadow-sheet` and `shadow-drawer` (the process drawer) and
 // `p-compose` (the composer). CEILING follows them down by four.
-const CEILING = 103
+// P4 Task 13: the panel inbox's nothing-selected tile is 56×56 (Panel L1939),
+// which is `w-fab-reader`/`h-fab-reader`. CEILING follows them down by two.
+const CEILING = 101
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
@@ -2215,7 +2225,9 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
     //   · **One ARRIVED in the spelling half.** `bg-danger` is still painted
     //     nowhere itself, but `text-danger` now has a consumer, so `--danger`
     //     reaches the screen. Spelling +1, painted-nowhere −1.
-    expect(buckets.filter((b) => b.spelling).length).toBe(44)
+    // **42 / 59 after P4 Task 13**: `w-fab-reader` and `h-fab-reader` left the
+    //   spelling half — the panel inbox's 56×56 tile (Panel L1939). Spelling −2.
+    expect(buckets.filter((b) => b.spelling).length).toBe(42)
     expect(buckets.filter((b) => !b.spelling).length).toBe(59)
 
     // A family that stops covering anything is an argument nobody is paying

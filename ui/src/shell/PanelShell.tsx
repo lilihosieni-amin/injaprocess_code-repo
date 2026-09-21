@@ -23,20 +23,21 @@ const TRAY = 'inline-flex items-center gap-s1 p-s1 rounded-button bg-tile-v2'
 const TRAY_ITEM = 'px-s7 py-s4 rounded-tool border-0 no-underline cursor-pointer text-fs-sm2 font-bold'
 
 /**
- * The two sections of §6.0's nav tray, in the design's own order
- * (`Inja Panel.dc.html:4784`). Its third entry, «صندوق کامنت‌ها», is absent
- * under R5 — this app has no comments inbox, and an entry to a screen that does
- * not exist is a control that can only refuse.
+ * The sections of §6.0's nav tray, in the design's own order
+ * (`Inja Panel.dc.html:4784`).
  *
- * Ungated, both of them: `/departments` is every panel session's home, and the
- * facts routes are gated on holding *any* Panel capability — which is the same
- * list `selectShell` picks this shell from, so everyone who sees this bar can
- * reach them.
+ * The first two are ungated: `/departments` is every panel session's home, and
+ * the facts routes are gated on holding *any* Panel capability — which is the
+ * same list `selectShell` picks this shell from, so everyone who sees this bar
+ * can reach them. The third, «صندوق کامنت‌ها» (P4), is the Editor's and the
+ * Admin's inbox (D62), so it is drawn only to a holder of `edit` or
+ * `manage_users` (R5: no entry the screen would refuse).
  */
 const NAV = [
   { to: '/departments', label: 'دپارتمان‌ها' },
   { to: '/facts', label: 'داده‌های کمّی' },
 ]
+const COMMENTS = { to: '/comments', label: 'صندوق کامنت‌ها' }
 
 // §5.2 — icon buttons are the white card, the brand violet and a 1.5px --line
 // hairline. Audit S1's fix lives in this one string: the bar behind these
@@ -138,6 +139,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
   const { pathname } = useLocation()
   const nav = useNavigate()
   const canEdit = can(session, 'edit')
+  const sections = canEdit || can(session, 'manage_users') ? [...NAV, COMMENTS] : NAV
   // Scope-aware, unlike `can` above, which reads the capability list and
   // nothing else. Used by the one nav entry whose screen checks a scope.
   const mayReach = useCan(session)
@@ -345,8 +347,8 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
       </Link>
       <span aria-hidden className="w-px h-s11 mx-s1 bg-border-current max1080:hidden" />
       <nav data-r-nav aria-label="بخش‌های اصلی" className={`${TRAY} max1080:hidden`}>
-        {/* §6.0's `navDefs` (`Inja Panel.dc.html:4784`), minus «صندوق کامنت‌ها»:
-            there is no such screen, and R5 draws no entry to one.
+        {/* §6.0's `navDefs` (`Inja Panel.dc.html:4784`). The desktop tab has
+            no badge; the sheet's row carries it (L2993).
 
             The pill is computed rather than pinned to «دپارتمان‌ها», because a
             hard-coded fill puts the violet under the wrong word the moment a
@@ -355,7 +357,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
             routes of that section, not on `/departments` alone. This line was
             `pathname === n.to` for one commit, which is the same answer only on
             the single route the bar is drawn on — see `shell/back.ts`. */}
-        {NAV.map((n) => (
+        {sections.map((n) => (
           <Link key={n.to} to={n.to}
             className={`${TRAY_ITEM} ${traySection(pathname) === n.to ? 'bg-violet text-card' : 'bg-transparent text-violet'}`}>
             {n.label}
@@ -580,12 +582,19 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
               <p className="m-0 text-fs-body font-bold text-ink">{session.displayName}</p>
               <p className="m-0 mt-half text-fs-xs text-muted">{session.role}</p>
             </div>
-            {/* The tray's two entries again — this sheet is the ≤1080 stand-in
+            {/* The tray's entries again — this sheet is the ≤1080 stand-in
                 for a bar that is hidden there, so a section reachable from the
                 tray and not from here would be unreachable on a phone. */}
-            {NAV.map((n) => (
+            {sections.map((n) => (
               <Link key={n.to} to={n.to} onClick={() => setMenuOpen(false)} className={sheetRow(n.to)}>
                 <span className="flex-1">{n.label}</span>
+                {/* §6.0's `hasBadge` (L2993): the comments awaiting this
+                    caller, on the same pill as «صندوق بازبینی» below. */}
+                {n.to === COMMENTS.to && session.pendingApprovals > 0 && (
+                  <span className="min-w-count-chrome h-count-chrome px-s3 flex items-center justify-center rounded-round bg-coral text-card text-fs-xxs font-bold flex-none">
+                    {toFa(session.pendingApprovals)}
+                  </span>
+                )}
               </Link>
             ))}
             {canEdit && (

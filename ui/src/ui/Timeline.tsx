@@ -10,6 +10,8 @@ export interface TimelineNode {
   stateLabel: string
   /** Overrides the Persian ordinal in the rail dot. */
   mark?: string
+  /** Overrides the state line's colour — Panel L4218 paints «نویسنده» violet and a system move muted. */
+  tone?: string
   note?: string
 }
 
@@ -59,7 +61,7 @@ export function Timeline({ nodes, label }: { nodes: TimelineNode[]; label: strin
             <p className="m-0 text-fs-sm font-bold text-ink">
               {n.name} <span className="text-fs-xxs font-normal text-muted">{n.role}</span>
             </p>
-            <p className={`m-0 mt-half text-fs-caption font-semibold ${STATE[n.state]}`}>{n.stateLabel}</p>
+            <p className={`m-0 mt-half text-fs-caption font-semibold ${n.tone ?? STATE[n.state]}`}>{n.stateLabel}</p>
             {n.note !== undefined && (
               <p className="m-0 mt-s3 px-note-x py-note-y rounded-tool bg-tile-v4 text-fs-caption text-body-ink leading-normal">
                 {n.note}

@@ -949,4 +949,12 @@
   /* …and at <=760 each tab is `flex:1 1 calc(50% - 4px)` (Reader L72): two per
      row, less the tray's 4px gap. */
   --basis-tab-half: calc(50% - 4px);
+  /* The panel inbox (Task 13), Inja Panel.dc.html. None of these lengths is
+     held by a token already. */
+  --width-cmt-list: 400px;        /* the list pane, `width:400px` (Panel L1771) */
+  --width-cmt-detail: 660px;      /* the detail column, `max-width:660px` (L1806) */
+  --width-cmt-none: 320px;        /* the nothing-selected copy, `max-width:320px` (L1938) */
+  --width-cmt-action: 120px;      /* a decision button, `min-width:120px` (L1880) */
+  --width-cmt-action-wide: 150px; /* the note/reject confirm button, `min-width:150px` (L1886) */
+  --width-cmt-resolve: 140px;     /* the resolve box's two buttons, `min-width:140px` (L1909) */
 }

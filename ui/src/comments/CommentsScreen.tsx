@@ -1,7 +1,8 @@
 import { useSurface } from '../ui/surface'
+import { PanelInbox } from './PanelInbox'
 import { ReaderInbox } from './ReaderInbox'
 
-/** `/comments`. The panel's inbox (Task 13) joins here on the panel surface. */
+/** `/comments` — each surface's own inbox. */
 export function CommentsScreen() {
-  return useSurface() === 'reader' ? <ReaderInbox /> : null
+  return useSurface() === 'reader' ? <ReaderInbox /> : <PanelInbox />
 }

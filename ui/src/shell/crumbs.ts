@@ -38,6 +38,7 @@ const FLAT: Record<string, string> = {
   visibility: 'سیاست نمایش محتوا',
   profile: 'پروفایل و گذرواژه',
   facts: 'داده‌های کمّی',
+  comments: 'صندوق کامنت‌ها',
 }
 
 /**

@@ -369,6 +369,9 @@ export default {
         // menus, two floors — collapsing them would crop one label or pad the
         // other, which is the reading `menu`'s own token comment took.
         'menu-flow': 'var(--width-menu-flow)',   // 225px — the flow bar's ⋯ menu
+        'cmt-action': 'var(--width-cmt-action)',           // 120px — Panel L1880
+        'cmt-action-wide': 'var(--width-cmt-action-wide)', // 150px — Panel L1886
+        'cmt-resolve': 'var(--width-cmt-resolve)',         // 140px — Panel L1909
       },
       // §5.2 Dropdown — the popover's scroll cap. On `maxHeight` and not on
       // `spacing`: a cap is not a step, the same reason the three search-icon
@@ -535,6 +538,8 @@ export default {
         // off, as it does for every key above.
         subtitle: 'var(--width-subtitle)',         // 440px — departments subtitle
         intro: 'var(--width-intro)',               // 600px — intro paragraph
+        'cmt-detail': 'var(--width-cmt-detail)',   // 660px — Panel L1806
+        'cmt-none': 'var(--width-cmt-none)',       // 320px — Panel L1938
       },
       // The ten `--size-*` tokens R3 adds are square boxes, so each is named once
       // and carried on both scales — `w-glyph`/`h-glyph` is one name on two
@@ -598,6 +603,7 @@ export default {
         // design sets a width on it and no height. NOT `menu-more-reader`, which
         // is 38px too and is the reader chrome's own square button.
         'flowback-mobile': 'var(--width-flowback-mobile)', // 38px — at ≤760
+        'cmt-list': 'var(--width-cmt-list)',            // 400px — Panel L1771
       },
       height: {
         tile: 'var(--role-tile)', tool: 'var(--size-tool)', avatar: 'var(--size-avatar)',
