@@ -18,7 +18,7 @@ from .. import db, ids, storage
 from ..access import FORBIDDEN, NOT_FOUND, allows, log_out_of_scope
 from ..auth import record, require_session
 from ..disclosure import Disclosure
-from ..models import CommentBody
+from ..models import AddressBody, CommentBody, NoteBody, ReasonBody, TextBody
 from ..store import comments as S
 from ..store import users
 from .departments import PROCESS_ID_RE
@@ -269,3 +269,113 @@ def load_visible(request: Request, user, ref: str):
 @router.get("/{ref}")
 def get_comment(ref: str, request: Request, user=Depends(require_session)):
     return present(request, user, load_visible(request, user, ref), trail=True)
+
+
+# ---- the actions (D63, D69, D72, D73) ----
+
+def _sid(request: Request):
+    return getattr(request.state, "session_id", None)
+
+
+def _act(request: Request, user, ref: str, action: str, fn) -> dict:
+    """404 unless visible; then, under the write lock, re-read the comment and
+    check `action` on that locked state — so two racing Admins cannot both
+    approve — and run `fn(cc, c, now)`. Visible but not allowed: 403 + access.denied."""
+    cid = load_visible(request, user, ref)["id"]
+    now = int(time.time())
+    with write(request) as cc:
+        c = S.get(cc, cid)
+        allowed = R.actions(request.app.state.db, cc, user, c)[action]
+        if allowed:
+            fn(cc, c, now)
+    if not allowed:
+        record(request, "access.denied", actor=user["username"], session_id=_sid(request),
+               target=R.cmt(cid), outcome="denied", detail={"capability": "comment"})
+        raise HTTPException(status_code=403, detail=FORBIDDEN)
+    return present(request, user, S.get(request.app.state.comments_db, cid), trail=True)
+
+
+def _audit(request: Request, user, action: str, out: dict) -> None:
+    record(request, action, actor=user["username"], session_id=_sid(request),
+           target=out["id"])
+
+
+def _note(note: str | None) -> str | None:
+    """An optional note: blank is no note; otherwise D71's cap."""
+    return clean(note) if note and note.strip() else None
+
+
+@router.post("/{ref}/approve")
+def approve(ref: str, body: NoteBody, request: Request, user=Depends(require_session)):
+    note = _note(body.note)
+    app = request.app.state.db
+
+    def go(cc, c, now):
+        S.event(cc, c["id"], kind="approved", now=now, user_id=user["id"],
+                user_name=user["display_name"], note=note)
+        if c["stage"] == "pool":
+            S.set_state(cc, c["id"], state="approved", now=now)
+        else:
+            R.advance(app, cc, c["id"], from_user_id=user["id"], now=now)
+
+    out = _act(request, user, ref, "approve", go)
+    _audit(request, user, "comment.approved", out)
+    if note:
+        _audit(request, user, "comment.noted", out)
+    return out
+
+
+@router.post("/{ref}/reject")
+def reject(ref: str, body: ReasonBody, request: Request, user=Depends(require_session)):
+    reason = clean(body.reason)
+
+    def go(cc, c, now):
+        S.event(cc, c["id"], kind="rejected", now=now, user_id=user["id"],
+                user_name=user["display_name"], note=reason)
+        S.set_state(cc, c["id"], state="rejected", now=now)
+
+    out = _act(request, user, ref, "reject", go)
+    _audit(request, user, "comment.rejected", out)
+    return out
+
+
+@router.put("/{ref}")
+def edit(ref: str, body: TextBody, request: Request, user=Depends(require_session)):
+    text = clean(body.text)
+    app = request.app.state.db
+
+    def go(cc, c, now):
+        S.set_text(cc, c["id"], text=text, now=now)
+        S.event(cc, c["id"], kind="edited", now=now, user_id=user["id"],
+                user_name=user["display_name"])
+        R.submit(app, cc, c["id"], now=now)
+
+    out = _act(request, user, ref, "edit", go)
+    _audit(request, user, "comment.edited", out)
+    return out
+
+
+@router.post("/{ref}/withdraw")
+def withdraw(ref: str, request: Request, user=Depends(require_session)):
+    def go(cc, c, now):
+        S.event(cc, c["id"], kind="withdrawn", now=now, user_id=user["id"],
+                user_name=user["display_name"])
+        S.set_state(cc, c["id"], state="withdrawn", now=now)
+
+    out = _act(request, user, ref, "withdraw", go)
+    _audit(request, user, "comment.withdrawn", out)
+    return out
+
+
+@router.post("/{ref}/address")
+def address(ref: str, body: AddressBody, request: Request, user=Depends(require_session)):
+    note = _note(body.note)
+
+    def go(cc, c, now):
+        S.event(cc, c["id"], kind="addressed", now=now, user_id=user["id"],
+                user_name=user["display_name"], note=note)
+        S.set_state(cc, c["id"], state="addressed", now=now)
+
+    out = _act(request, user, ref, "address", go)
+    _audit(request, user, "comment.addressed", out)
+    return out

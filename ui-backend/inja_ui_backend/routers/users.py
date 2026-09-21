@@ -69,7 +69,7 @@ import anyio
 import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from .. import db
+from .. import comment_rules, db
 from ..access import NOT_FOUND, requires, scopes_of
 from ..auth import VERIFY_LIMITER, hash_password, record, validate_password
 from ..delegation import (
@@ -93,6 +93,7 @@ from ..models import CreateUserBody, DisabledBody, PatchUserBody, SetPasswordBod
 from ..phone import USERNAME_RE, normalise_phone
 from ..scopes import SCOPE_RE
 from ..store import sessions, users
+from .comments import write as comments_write
 
 router = APIRouter(prefix="/api/users")
 #: Its own router because the path is `/api/roles` and this module's prefix is
@@ -231,6 +232,16 @@ def _write(request: Request):
         raise
     finally:
         conn.close()
+
+
+def _reconcile_comments(request: Request) -> None:
+    """A disable, a role or a scope change can strand a waiting comment (D63.6–7).
+
+    Called after the users transaction has committed, so reconcile sees the
+    change; on comments.db's own write connection.
+    """
+    with comments_write(request) as cc:
+        comment_rules.reconcile(request.app.state.db, cc, now=int(time.time()))
 
 
 def _actor(conn: sqlite3.Connection, user: sqlite3.Row) -> sqlite3.Row:
@@ -669,6 +680,8 @@ def modify_user(user_id: int, body: PatchUserBody, request: Request,
         if scopes != before_scopes:
             changed["scopes"] = {"before": before_scopes, "after": scopes}
 
+    if "roleId" in changed or "scopes" in changed:
+        _reconcile_comments(request)
     conn = request.app.state.db
     who = username
     if changed:
@@ -745,6 +758,8 @@ def set_user_disabled(user_id: int, body: DisabledBody, request: Request,
                 # that call passes `except_session` and this one does not).
                 sessions.revoke_all_for_user(conn, target["id"], now)
 
+    if changed:
+        _reconcile_comments(request)
     conn = request.app.state.db
     if changed:
         record(request, "user.disabled" if body.disabled else "user.enabled",

@@ -1152,6 +1152,11 @@ NOT_SWEPT: dict[tuple[str, str], str] = {
     ("GET", "/api/comments"): _COMMENTS_NOT_SWEPT,
     ("GET", "/api/comments/inbox"): _COMMENTS_NOT_SWEPT,
     ("GET", "/api/comments/{ref}"): _COMMENTS_NOT_SWEPT,
+    ("POST", "/api/comments/{ref}/approve"): _COMMENTS_NOT_SWEPT,
+    ("POST", "/api/comments/{ref}/reject"): _COMMENTS_NOT_SWEPT,
+    ("PUT", "/api/comments/{ref}"): _COMMENTS_NOT_SWEPT,
+    ("POST", "/api/comments/{ref}/withdraw"): _COMMENTS_NOT_SWEPT,
+    ("POST", "/api/comments/{ref}/address"): _COMMENTS_NOT_SWEPT,
 }
 
 
