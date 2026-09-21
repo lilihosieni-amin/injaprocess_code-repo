@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { screen, fireEvent, within } from '@testing-library/react'
+import { screen, fireEvent, within, waitFor } from '@testing-library/react'
 import { renderAt } from '../test/utils'
 import { EDITOR, VIEWER } from '../test/sessions'
 import type { SessionDescriptor } from '../auth/session'
@@ -8,6 +8,7 @@ import { SurfaceProvider, type Surface } from '../ui/surface'
 import { CommentsProvider } from './CommentsProvider'
 import { DeptFab } from './DeptDrawer'
 import { ProcessDrawer, ProcessFab } from './ProcessDrawer'
+import { FlowScreen } from '../flow/FlowScreen'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -162,5 +163,35 @@ describe('without a provider', () => {
     renderAt('/x', <><DeptFab code="dining" /><ProcessFab pid="p" /><ProcessDrawer pid="p" department="dining" /></>, '/x', VIEWER)
     expect(screen.queryByRole('button')).toBeNull()
     expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('on the flow screen', () => {
+  const node = { id: 'cooking-001-n010', type: 'activity', label: 'ثبت', description: 'd', actor: 'x',
+    icom: { inputs: [], controls: [], outputs: [], mechanisms: [] }, subprocess: null,
+    position: { x: 40, y: 90 }, layout: 'auto', source: { created_by: 'x', touched_by: [] } }
+  const proc = { id: 'cooking-001', department: 'cooking', name: 'p', summary: '', parent: null,
+    source: { type: 'manual', ref: null, run: null }, created_at: '', updated_at: '',
+    idef0: { inputs: [], controls: [], outputs: [], mechanisms: [] }, kpis: [], pending: [],
+    nodes: [node], edges: [] }
+
+  it("opening a step's detail closes the process drawer (Reader L1846–1847); closing the detail does not bring it back", async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.startsWith('/api/comments?process=')) return json([])
+      if (url === '/api/processes/cooking-001') return json(proc)
+      return json([])
+    })
+    renderAt('/processes/:pid/flow', <CommentsProvider><FlowScreen /></CommentsProvider>,
+      '/processes/cooking-001/flow', { ...VIEWER, scopes: ['dept:cooking'] })
+    fireEvent.click(await fab())
+    expect(screen.getByRole('dialog', { name: 'کامنت‌های این فرآیند' })).toBeInTheDocument()
+    fireEvent.click(await screen.findByText('ثبت'))
+    expect(screen.queryByRole('dialog', { name: 'کامنت‌های این فرآیند' })).toBeNull()
+    const closes = screen.getAllByTitle('بستن')
+    expect(closes).toHaveLength(1)
+    fireEvent.click(closes[0])
+    await waitFor(() => expect(screen.queryAllByTitle('بستن')).toHaveLength(0))
+    expect(screen.queryByRole('dialog', { name: 'کامنت‌های این فرآیند' })).toBeNull()
   })
 })

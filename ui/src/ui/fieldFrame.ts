@@ -24,12 +24,19 @@
  * (without it the field falls to `normal` and stops matching Button's height),
  * and the type size below.
  */
-export const FIELD_FRAME =
-  'block w-full box-border text-ink leading-normal ' +
-  'rounded-button border-hairline outline-none transition-[border-color] ' +
+/**
+ * FIELD_FRAME without its radius and leading: what a caller's `boxClassName`
+ * (TextField) builds on, so the replaced classes are absent rather than
+ * fighting the new ones in Tailwind's output order.
+ */
+export const FIELD_FRAME_BARE =
+  'block w-full box-border text-ink ' +
+  'border-hairline outline-none transition-[border-color] ' +
   // §4.6 — "disabled keeps its surface and fades", the same treatment Button
   // gives it. A control that is off is never hidden and never a pointer target.
   'disabled:opacity-60 disabled:cursor-default'
+
+export const FIELD_FRAME = 'leading-normal rounded-button ' + FIELD_FRAME_BARE
 
 /**
  * The single-line control's type: a FIXED step, not a `--role-*` one.

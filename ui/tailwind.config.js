@@ -236,6 +236,7 @@ export default {
         'fs-h1-reader-list': 'var(--fs-h1-reader-list)', // 30px
         'fs-h1-reader-dept': 'var(--fs-h1-reader-dept)', // 24px
         'fs-body-reader': 'var(--fs-body-reader)',       // 15px
+        'fs-compose-reader': 'var(--fs-compose-reader)', // 15.5px — Reader composer textarea (L952)
         // R3 — the four type roles that CHANGE with the surface. Everything
         // else on this scale is a fixed step; these four are the scale layer,
         // and they are the only writable form the roles have: guards.test.ts

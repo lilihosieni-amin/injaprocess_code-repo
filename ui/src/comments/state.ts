@@ -29,5 +29,5 @@ export const useComments = () => useContext(CommentsContext)
 export function useMayComment(code: string): boolean {
   const session = useSession().data
   const can = useCan(session)
-  return can('comment', `dept:${code}`) && !session!.capabilities.includes('edit')
+  return can('comment', `dept:${code}`) && session?.capabilities.includes('edit') !== true
 }

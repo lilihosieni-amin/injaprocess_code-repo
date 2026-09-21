@@ -66,12 +66,18 @@ export function NewButton({ label, onClick, className }: { label: string; onClic
  * The one composer (addendum §7.9): Reader §1.10, L939–960, drawn in the
  * Panel's own styling on the panel surface (Panel L2843–2862). The path line
  * is `pathLine` (addendum §7.1), not the design's single-admin chain.
+ *
+ * The textarea is drawn at the design's own metrics (`field`): Reader L952
+ * 15.5px / padding 14 / radius 14 / leading 1.95 (→ --lh-loose, ledger L-17);
+ * Panel L2855 13.5px / 13 / 12 / 1.9. Edge, ground and coral focus are
+ * TextField's, and equal the design's.
  */
 const LOOK = {
   reader: {
     pane: 'p-modal shadow-composer', head: 'mb-s8', title: 'text-fs-h3', close: 'lg',
     heading: 'چه چیزی درست نیست؟', box: 'py-s7', label: 'text-fs-lg', ctx: 'text-fs-caption mt-s3',
     placeholder: 'در عمل چطور انجام می‌شود؟ چه چیزی جا افتاده؟', rows: 6,
+    field: 'text-fs-compose-reader p-s7 rounded-tile leading-loose',
     chain: 'text-fs-sm text-ink-current py-compose px-s7 bg-value-current rounded-button',
     actions: 'max760:flex-col max760:gap-s4',
     button: 'p-button-x rounded-tile text-fs-lg max760:w-full max760:flex-none',
@@ -81,6 +87,7 @@ const LOOK = {
     pane: 'p-empty-x shadow-drawer', head: 'mb-s7', title: 'text-fs-dialog', close: 'md',
     heading: 'کامنت تازه', box: 'py-compose', label: 'text-fs-body', ctx: 'text-fs-xs mt-s2',
     placeholder: 'چه چیزی در این فرآیند با واقعیت نمی‌خواند؟', rows: 5,
+    field: 'text-fs-menu p-compose rounded-button leading-loose',
     chain: 'text-fs-caption text-muted',
     actions: '',
     button: 'p-compose rounded-button text-fs-menu',
@@ -123,7 +130,8 @@ export function Composer({ anchor }: { anchor: ComposeAnchor }) {
         <div className={`text-faint ${look.ctx}`}>{composeContext(anchor)}</div>
       </div>
       <TextField multiline rows={look.rows} label={look.placeholder} placeholder={look.placeholder}
-        value={text} onChange={setText} className="mt-s7 [&>label]:sr-only" />
+        value={text} onChange={setText} boxClassName={look.field}
+        className="mt-s7 [&>label]:sr-only" />
       <div className={`leading-loose mt-s6 [text-wrap:pretty] ${look.chain}`}>{session && pathLine(session)}</div>
       <div data-r-cmtactions className={`flex gap-s5 mt-s9 ${look.actions}`}>
         <button type="button" onClick={send} disabled={create.isPending}

@@ -59,6 +59,27 @@ describe('Composer', () => {
     expect(screen.getByText(/این کامنت اول برای سرپرست شما می‌رود/)).toBeInTheDocument()
   })
 
+  it('draws the textarea at the design metrics of each surface, not TextField defaults', () => {
+    stub(() => json({}, 201))
+    openComposer('reader')
+    // Reader L952: 15.5px, padding 14, radius 14, leading 1.95 (→ --lh-loose, L-17)
+    const r = screen.getByRole('textbox')
+    for (const c of ['text-fs-compose-reader', 'p-s7', 'rounded-tile', 'leading-loose', 'border-line', 'bg-surface-sub'])
+      expect(r).toHaveClass(c)
+    for (const c of ['text-role-textarea', 'rounded-button', 'leading-normal', 'py-textarea-y'])
+      expect(r).not.toHaveClass(c)
+  })
+
+  it('panel textarea: 13.5px, padding 13, radius 12, leading 1.9 (Panel L2855)', () => {
+    stub(() => json({}, 201))
+    openComposer('panel')
+    const p = screen.getByRole('textbox')
+    for (const c of ['text-fs-menu', 'p-compose', 'rounded-button', 'leading-loose'])
+      expect(p).toHaveClass(c)
+    for (const c of ['text-role-textarea', 'leading-normal', 'py-textarea-y'])
+      expect(p).not.toHaveClass(c)
+  })
+
   it('refuses empty text with a toast and posts nothing', async () => {
     const posted: unknown[] = []
     stub((b) => { posted.push(b); return json({}, 201) })

@@ -9,7 +9,7 @@ import { useSurface } from '../ui/surface'
  * author and «باز کردن در صندوق کامنت‌ها».
  *
  * `flow` — the flow drawers, Reader L637–652 (= Reader L625–653, Panel L977–991).
- * `panelDept` — the Panel department drawer, Panel L2926–2936.
+ * `panelDept` — the Panel department drawer, Panel L2895–2907.
  * The design's « · {authorRole}» is not drawn: the comment JSON carries no role.
  * Leadings follow ledger L-17: 1.85 → --lh-sub, 1.9 → --lh-loose.
  */

@@ -20,6 +20,7 @@ import { pushDismissible, popDismissible, isTopDismissible } from '../ui/dismiss
 import { DeleteNodeConfirm } from './DeleteNodeConfirm'
 import { DetailDrawer } from './DetailDrawer'
 import { ProcessDrawer, ProcessFab } from '../comments/ProcessDrawer'
+import { useComments } from '../comments/state'
 import { JunctionLegend } from './JunctionLegend'
 import type { ActivityNode } from '../api/types'
 
@@ -107,6 +108,10 @@ function FlowEditor() {
   const resolve = useResolvePending(pid)
   const [pendingDel, setPendingDel] = useState<string | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
+  // A step's detail replaces the process's comment drawer — Reader L1846–1847,
+  // `set({ node: n.id, cmtDrawer: false })`.
+  const comments = useComments()
+  const openDetail = (id: string) => { comments?.closeDrawer(); setDetailId(id) }
   const [mode, setMode] = useState<'pan' | 'select'>('pan')
   const rf = useReactFlow()
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -287,12 +292,12 @@ function FlowEditor() {
    */
   function onNodeClick(id: string) {
     const n = proc.nodes.find((x) => x.id === id)
-    if (n && n.type === 'junction') { if (editing) ed.select(id); setDetailId(id); return }
+    if (n && n.type === 'junction') { if (editing) ed.select(id); openDetail(id); return }
     if (editing) { ed.select(id); return }
     if (!n || n.type !== 'activity') return
     const sub = (n as ActivityNode).subprocess
     if (sub) { nav(`/processes/${sub}/flow`); return }
-    setDetailId(id)
+    openDetail(id)
   }
 
   return (
@@ -1005,7 +1010,7 @@ function FlowEditor() {
           focusId={entryNode(proc)?.id}
           onNodeClick={onNodeClick}
           onConnect={(c: Connection) => c.source && c.target && ed.connect(c.source, c.target)}
-          onOpenDetail={setDetailId}
+          onOpenDetail={openDetail}
           onCommitPositions={(u) => ed.moveNodes(u)}
           onSetEdgeLabel={(f, t, v) => ed.setEdgeLabel(f, t, v)}
           onDeleteEdge={(f, t) => ed.deleteEdge(f, t)}

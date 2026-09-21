@@ -1,7 +1,7 @@
 import { useId } from 'react'
 import type { FieldGround } from './fieldFrame'
 import {
-  FIELD_FRAME, FIELD_LABEL, FIELD_PAD, FIELD_PAD_TEXTAREA, FIELD_TYPE,
+  FIELD_FRAME, FIELD_FRAME_BARE, FIELD_LABEL, FIELD_PAD, FIELD_PAD_TEXTAREA, FIELD_TYPE,
   FIELD_TYPE_TEXTAREA, fieldEdge, fieldGround, fieldHint,
 } from './fieldFrame'
 
@@ -58,6 +58,13 @@ export interface TextFieldProps {
   name?: string
   id?: string
   className?: string
+  /**
+   * Replaces the control's own type, padding, radius and leading — nothing else
+   * (edge, focus, ground and hint stay this component's). For a control the
+   * design draws at its own metrics, e.g. the comment composer (Inja Reader
+   * L952, Inja Panel L2855). Every class passed must be a token class.
+   */
+  boxClassName?: string
 }
 
 /**
@@ -74,7 +81,7 @@ export interface TextFieldProps {
 export function TextField({
   label, value, onChange, hint, invalid = false, multiline = false, rows = 3,
   type = 'text', ltr = false, dir, inputMode, ground, placeholder, autoComplete,
-  disabled = false, required = false, name, id: given, className = '',
+  disabled = false, required = false, name, id: given, className = '', boxClassName,
 }: TextFieldProps) {
   const auto = useId()
   const id = given ?? auto
@@ -101,7 +108,7 @@ export function TextField({
           aria-invalid={invalid || undefined}
           aria-describedby={hint === undefined ? undefined : hintId}
           onChange={(e) => onChange(e.target.value)}
-          className={`${FIELD_FRAME} ${FIELD_TYPE_TEXTAREA} ${edge} ${FIELD_PAD_TEXTAREA} ${bg} resize-y ${island}`}
+          className={`${boxClassName ? `${FIELD_FRAME_BARE} ${boxClassName}` : `${FIELD_FRAME} ${FIELD_TYPE_TEXTAREA} ${FIELD_PAD_TEXTAREA}`} ${edge} ${bg} resize-y ${island}`}
         />
       ) : (
         <input
@@ -112,7 +119,7 @@ export function TextField({
           aria-invalid={invalid || undefined}
           aria-describedby={hint === undefined ? undefined : hintId}
           onChange={(e) => onChange(e.target.value)}
-          className={`${FIELD_FRAME} ${FIELD_TYPE} ${edge} ${FIELD_PAD} ${bg} ${island}`}
+          className={`${boxClassName ? `${FIELD_FRAME_BARE} ${boxClassName}` : `${FIELD_FRAME} ${FIELD_TYPE} ${FIELD_PAD}`} ${edge} ${bg} ${island}`}
         />
       )}
       {hint !== undefined && <p id={hintId} className={fieldHint(invalid)}>{hint}</p>}

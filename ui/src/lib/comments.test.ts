@@ -13,7 +13,7 @@ const base = {
 const anchor = { id: 'dining-003-n020', processId: 'dining-003', department: 'dining',
   departmentName: 'دپارتمان سالن', processName: 'سرو غذا', nodeLabel: 'کنترل دما', orphan: false }
 const c = (a: Partial<Comment['anchor']>, w: Comment['waitingWith'] = null): Comment =>
-  ({ ...base, waitingWith: w, anchor: { ...anchor, kind: 'node', ...a } }) as Comment
+  ({ ...base, waitingWith: w, anchor: { ...anchor, kind: 'node', ...a } }) as unknown as Comment
 
 describe('comment labels', () => {
   it('STATUS carries the Reader RST labels and tones', () => {

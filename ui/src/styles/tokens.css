@@ -929,4 +929,7 @@
      L941; Panel L2878). No shadow token holds it; the Panel composer's own
      shadow (L2845) is --shadow-drawer. */
   --shadow-composer: 24px 0 60px -30px rgba(16, 10, 40, .7);
+  /* The Reader composer's textarea type, `font-size:15.5px` (Inja Reader.dc.html
+     L952). No type token holds 15.5; the Panel's 13.5 (L2855) is --fs-menu. */
+  --fs-compose-reader: 15.5px;
 }
