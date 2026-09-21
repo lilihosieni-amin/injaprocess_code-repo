@@ -48,8 +48,8 @@ export interface CommentDetail extends Comment { trail: CommentTrailItem[] }
 export type InboxTab = 'waiting' | 'own' | 'all'
 export interface InboxPage { items: Comment[]; total: number; page: number; pages: number }
 
-export const useProcessComments = (pid: string) =>
-  useQuery({ queryKey: ['comments', 'process', pid], queryFn: () => fetchJson<Comment[]>(`/api/comments?process=${encodeURIComponent(pid)}`) })
+export const useProcessComments = (pid: string, enabled = true) =>
+  useQuery({ queryKey: ['comments', 'process', pid], enabled, queryFn: () => fetchJson<Comment[]>(`/api/comments?process=${encodeURIComponent(pid)}`) })
 
 export const useDeptComments = (code: string) =>
   useQuery({ queryKey: ['comments', 'dept', code], queryFn: () => fetchJson<Comment[]>(`/api/comments?department=${encodeURIComponent(code)}`) })

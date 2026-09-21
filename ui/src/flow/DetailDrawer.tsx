@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Chip } from '../ui/Chip'
 import { useProcesses } from '../api/hooks'
 import { useCan } from '../auth/can'
@@ -56,6 +56,10 @@ export type DrawerProps = {
    *  the caller must state. Written up in the R42 report rather than guessed at
    *  here. */
   showInternals?: boolean
+  /** The step's comment part (P4, Reader L625–653), rendered by the flow screen
+   *  from `src/comments/`. The export passes nothing, so it draws nothing and
+   *  pulls no comment code in. */
+  comments?: ReactNode
   /** Only `department` and `id` are read — see `ReadableProcess`: an export's
    *  process is not a whole `Process`, and this prop must not claim it is. */
   process: ReadableProcess
@@ -261,6 +265,7 @@ export function DetailDrawer(props: DrawerProps) {
         ) : (
           <div className="font-extrabold text-[16px] text-ink">{'label' in node ? (node as { label: string }).label : (node as { id: string }).id}</div>
         )}
+        {!props.editing && props.comments}
       </div>
       {props.editing && (
         <div className="px-[18px] py-3 border-t border-[#F0E9FB]">

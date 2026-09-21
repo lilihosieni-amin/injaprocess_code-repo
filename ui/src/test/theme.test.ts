@@ -655,6 +655,8 @@ const EXPECTED: Record<string, string | string[]> = {
   // and it compiles, paints identically, and moves the wrong element the day
   // the empty card or the reader's chrome changes.
   'px-toast-x': 'var(--pad-toast-x)',
+  // P4 — the flow drawer's step comment section (Reader L632).
+  'mt-drawer-section': 'var(--space-drawer-section)',
   // The flow-bar mint (owner ruling R47). Nine names for the flowchart screen,
   // which F16 froze for the whole rebuild, and every one of them a number this
   // theme already carries under another role — so every one of them is a pairing

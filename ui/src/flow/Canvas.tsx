@@ -24,7 +24,7 @@ const FOCUS_PAD = 32
  *  and must not look like a different control. */
 const FIT_ICON = 'M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3'
 
-export function Canvas({ docNodes, docEdges, revision, editing, mode = 'pan', focusId, onConnect, onNodeClick, onOpenDetail, onCommitPositions, onSetEdgeLabel, onDeleteEdge }: {
+export function Canvas({ docNodes, docEdges, revision, editing, mode = 'pan', focusId, commentCounts, onConnect, onNodeClick, onOpenDetail, onCommitPositions, onSetEdgeLabel, onDeleteEdge }: {
   docNodes: Node[]; docEdges: Edge[]; revision: number; editing: boolean; mode?: 'pan' | 'select'
   /**
    * The node the focus control scrolls to — owner ruling: *"when user click on
@@ -41,6 +41,9 @@ export function Canvas({ docNodes, docEdges, revision, editing, mode = 'pan', fo
    * agree with, so nothing there is worse for the default.
    */
   focusId?: string
+  /** Visible comments per node id (P4) — the flow screen's only; the export
+   *  passes none, so no node wears a comment badge there. */
+  commentCounts?: Record<string, number>
   onConnect?: (c: Connection) => void
   onNodeClick?: (id: string) => void
   onOpenDetail?: (id: string) => void
@@ -61,11 +64,12 @@ export function Canvas({ docNodes, docEdges, revision, editing, mode = 'pan', fo
   // current every render so the handlers always act on the latest doc.
   const onSetEdgeLabelRef = useRef(onSetEdgeLabel); onSetEdgeLabelRef.current = onSetEdgeLabel
   const onDeleteEdgeRef = useRef(onDeleteEdge); onDeleteEdgeRef.current = onDeleteEdge
+  const countsRef = useRef(commentCounts); countsRef.current = commentCounts
 
   // Re-seed from the doc ONLY when structure changes (revision) or the edit flag flips.
   // moveNodes/setEdgeLabel don't bump revision, so a drag/type won't snap back.
   useEffect(() => {
-    setNodes(docNodes.map((n) => ({ ...n, data: { ...n.data, onOpenDetail }, draggable: editing, selectable: editing })))
+    setNodes(docNodes.map((n) => ({ ...n, data: { ...n.data, onOpenDetail, commentCount: countsRef.current?.[n.id] }, draggable: editing, selectable: editing })))
     setEdges(docEdges.map((e) => ({
       ...e, selectable: editing,
       data: { ...(e.data as object), editing, onSetLabel: (v: string) => onSetEdgeLabelRef.current?.(e.source, e.target, v), onDelete: () => onDeleteEdgeRef.current?.(e.source, e.target) },
@@ -73,6 +77,16 @@ export function Canvas({ docNodes, docEdges, revision, editing, mode = 'pan', fo
     seeded.current = new Map(docNodes.map((n) => [n.id, n.position]))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revision, editing])
+
+  // Counts arrive after the seed and change without a re-seed: patch them in
+  // place, like the highlight below, so positions are kept.
+  useEffect(() => {
+    if (!commentCounts) return
+    setNodes((nds) => nds.map((n) => {
+      const c = commentCounts[n.id]
+      return n.data.commentCount === c ? n : { ...n, data: { ...n.data, commentCount: c } }
+    }))
+  }, [commentCounts, setNodes])
 
   // Highlight the two nodes joined by the selected edge, so it's clear which
   // way the edge runs. Driven off selection (not a re-seed) to preserve positions.

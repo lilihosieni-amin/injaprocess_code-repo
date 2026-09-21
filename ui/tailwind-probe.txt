@@ -138,6 +138,9 @@ gap-button-icon px-button-x w-menu-more-reader h-menu-more-reader
 # 978); the 12 is `py-s6` and the 20 had four owners in tokens.css, none of them
 # a toast. Both toast components wrote Tailwind's own `px-5` for it.
 px-toast-x
+# P4 — a step's comment section in the flow detail drawer, `margin-top:20px`
+# (Reader L632 = Panel L928). 20 has five owners already, none a drawer section.
+mt-drawer-section
 # Owner ruling R35 — the drawer-as-bottom-sheet's 22px top corners (§5.2). The
 # ladder has no 22 rung; the modal's sheet is 20 and the centred dialog 24.
 # Written `rounded-t-sheet` at its one consumer, so the bare stem below is the

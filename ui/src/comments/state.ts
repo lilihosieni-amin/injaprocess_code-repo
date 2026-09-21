@@ -1,7 +1,8 @@
-import { createContext, useContext } from 'react'
+import { createContext, useContext, useMemo } from 'react'
 import type { ComposeAnchor } from '../lib/comments'
 import { useSession } from '../auth/useSession'
 import { useCan } from '../auth/can'
+import { useProcessComments } from '../api/comments'
 
 export type CommentsDrawer = { kind: 'process'; pid: string } | { kind: 'dept'; code: string }
 /** Design `compose.from`: where closing the composer returns to. */
@@ -30,4 +31,19 @@ export function useMayComment(code: string): boolean {
   const session = useSession().data
   const can = useCan(session)
   return can('comment', `dept:${code}`) && session?.capabilities.includes('edit') !== true
+}
+
+/**
+ * Visible node-anchored comments per node id (D66 — the server already
+ * filtered to what the viewer may see). Fetches nothing outside a
+ * `CommentsProvider`, so the export and the provider-less screen tests are
+ * untouched.
+ */
+export function useNodeCommentCounts(pid: string): Record<string, number> {
+  const { data } = useProcessComments(pid, !!useComments())
+  return useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const c of data ?? []) if (c.anchor.kind === 'node') m[c.anchor.id] = (m[c.anchor.id] ?? 0) + 1
+    return m
+  }, [data])
 }

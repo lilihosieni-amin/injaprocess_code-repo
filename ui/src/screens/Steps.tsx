@@ -8,6 +8,8 @@ import { Icon } from '../ui/Icon'
 import { LoadFailedScreen, ScreenSkeleton } from '../ui/states'
 import { RefusalScreen } from './Refusal'
 import type { ActivityNode } from '../api/types'
+import { StepCommentButton } from '../comments/NodeComments'
+import { useNodeCommentCounts } from '../comments/state'
 
 /**
  * The hand pointing at a step — `Inja Panel.dc.html:620`, drawn beside the
@@ -48,9 +50,10 @@ const GATE: Record<Junction, string> = { AND: '&', OR: 'O', XOR: 'X' }
  * which is the amber the same line of the design gives its card, and it carries
  * the «مراحل این کار را ببین» pill that no other step has. Reported.
  */
-function Step({ block, onEnter }: {
+function Step({ block, onEnter, cmt }: {
   block: Extract<Block, { kind: 'step' }>
   onEnter: (sub: string) => void
+  cmt?: Comments
 }) {
   const [open, setOpen] = useState(false)
   const n = block.node as ActivityNode
@@ -58,6 +61,7 @@ function Step({ block, onEnter }: {
   // A sub-process step has no body of its own to open — the press goes into the
   // child process instead, which is what its pill promises.
   const expandable = sub === null && (n.actor?.trim() || n.description?.trim())
+  const count = cmt?.counts[n.id] ?? 0
 
   return (
     <div
@@ -78,7 +82,7 @@ function Step({ block, onEnter }: {
         </span>
         <span className="flex-1 min-w-0 flex flex-col items-start gap-s4">
           <span className="font-bold text-fs-lg text-ink leading-snug text-start">{n.label}</span>
-          {(block.cond || sub || block.back.some((r) => r.num)) && (
+          {(block.cond || sub || block.back.some((r) => r.num) || count > 0) && (
             <span className="flex flex-wrap items-center gap-s3">
               {/* The edge label that leads INTO this step — «اگر: پرداخت نقدی».
                   Without it a branch's steps read as unconditional. */}
@@ -104,6 +108,12 @@ function Step({ block, onEnter }: {
                 <span className="inline-flex items-center gap-s3 text-fs-xs font-bold px-s5 py-s1 rounded-pill bg-violet text-card">
                   <Icon name="chevronEnd" px={12} stroke={2.6} />
                   مراحل این کار را ببین
+                </span>
+              )}
+              {/* P4 — Reader L458 (= Panel L754). */}
+              {count > 0 && (
+                <span className="text-fs-micro font-semibold py-hint px-option rounded-pill bg-tile-v text-violet">
+                  {toFa(count)} کامنت
                 </span>
               )}
             </span>
@@ -148,6 +158,12 @@ function Step({ block, onEnter }: {
               </p>
             </div>
           )}
+          {/* P4 — Reader L482–487 (= Panel L778–781). Only a step that opens
+              has a body to hold it; the others are covered by the process FAB. */}
+          {cmt && (
+            <StepCommentButton pid={cmt.pid} department={cmt.department} processName={cmt.processName}
+              id={n.id} label={n.label} />
+          )}
         </div>
       )}
     </div>
@@ -162,11 +178,18 @@ function Step({ block, onEnter }: {
  * point, so a branch ends where the paths rejoin and the steps after it are
  * drawn once, at the outer level, rather than repeated per branch.
  */
-function Blocks({ blocks, onEnter }: { blocks: Block[]; onEnter: (sub: string) => void }) {
+/**
+ * The comment context a top-level step is given (P4). A step inside an XOR/AND
+ * branch is given none: the design's `br.steps` (Reader L400–440) draws no chip
+ * and no button, and D30 sends comments there to the process.
+ */
+type Comments = { pid: string; department: string; processName: string; counts: Record<string, number> }
+
+function Blocks({ blocks, onEnter, cmt }: { blocks: Block[]; onEnter: (sub: string) => void; cmt?: Comments }) {
   return (
     <div className="flex flex-col gap-s7">
       {blocks.map((b, i) => b.kind === 'step' ? (
-        <Step key={b.node.id} block={b} onEnter={onEnter} />
+        <Step key={b.node.id} block={b} onEnter={onEnter} cmt={cmt} />
       ) : (
         <div key={`g${i}`} className="rounded-feature border border-steps-group-border bg-steps-group p-s7">
           <div className="flex items-center gap-s6 px-s3 pb-s7">
@@ -243,6 +266,7 @@ export function Steps() {
   const { pid = '' } = useParams()
   const nav = useNavigate()
   const { data: proc, error, refetch } = useProcess(pid)
+  const counts = useNodeCommentCounts(pid)
 
   // Placed after every hook, so the early returns never change hook order.
   const refused = refusalStatus(error)
@@ -283,7 +307,8 @@ export function Steps() {
         </div>
         <div className="mt-s9">
           {blocks.length > 0 ? (
-            <Blocks blocks={blocks} onEnter={(sub) => nav(`/processes/${sub}/steps`)} />
+            <Blocks blocks={blocks} onEnter={(sub) => nav(`/processes/${sub}/steps`)}
+              cmt={{ pid, department: proc.department, processName: proc.name, counts }} />
           ) : (
             /* A process whose flowchart has no activity in it yet. The list is
                not withheld here and never can be — a step's label and its order

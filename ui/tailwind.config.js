@@ -482,6 +482,7 @@ export default {
         // margin and the reader's chrome gutter. Its vertical 12 is `py-s6` and
         // needs nothing new.
         'toast-x': 'var(--pad-toast-x)',                      // 20px — the toast's inline padding
+        'drawer-section': 'var(--space-drawer-section)',      // 20px — P4 step comments in the flow drawer (Reader L632)
         // The flow-bar mint (owner ruling R47) — six of the nine names the
         // flowchart screen needed, and every one of them a number this scale
         // already carries under another role. `flowbar-y` is the SIXTH 11px key,

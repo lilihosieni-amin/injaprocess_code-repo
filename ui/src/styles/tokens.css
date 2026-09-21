@@ -932,4 +932,8 @@
   /* The Reader composer's textarea type, `font-size:15.5px` (Inja Reader.dc.html
      L952). No type token holds 15.5; the Panel's 13.5 (L2855) is --fs-menu. */
   --fs-compose-reader: 15.5px;
+  /* A step's comment section in the flow detail drawer, `margin-top:20px`
+     (Inja Reader.dc.html L632 = Panel L928). 20px has four owners here, none a
+     drawer section, so it is minted again under the file's own rule. */
+  --space-drawer-section: 20px;
 }

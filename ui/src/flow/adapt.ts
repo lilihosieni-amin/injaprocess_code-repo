@@ -3,7 +3,7 @@ import type { Node, Edge } from '@xyflow/react'
 import type { ProcNode, ReadableProcess } from '../api/types'
 import { EDGE_STROKE, EDGE_ARROW } from './edges/edge-style'
 
-export type FlowNodeData = { node: ProcNode; conflicts: number; hasSub: boolean; highlighted?: boolean; onOpenDetail?: (id: string) => void }
+export type FlowNodeData = { node: ProcNode; conflicts: number; hasSub: boolean; highlighted?: boolean; commentCount?: number; onOpenDetail?: (id: string) => void }
 
 const REAL_ACTIVITY = /^[a-z]+-[0-9]{3}-n[0-9]{3}$/
 const REAL_JUNCTION = /^[a-z]+-[0-9]{3}-j[0-9]+$/

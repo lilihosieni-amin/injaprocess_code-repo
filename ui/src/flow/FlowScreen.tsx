@@ -20,7 +20,8 @@ import { pushDismissible, popDismissible, isTopDismissible } from '../ui/dismiss
 import { DeleteNodeConfirm } from './DeleteNodeConfirm'
 import { DetailDrawer } from './DetailDrawer'
 import { ProcessDrawer, ProcessFab } from '../comments/ProcessDrawer'
-import { useComments } from '../comments/state'
+import { useComments, useNodeCommentCounts } from '../comments/state'
+import { NodeComments } from '../comments/NodeComments'
 import { JunctionLegend } from './JunctionLegend'
 import type { ActivityNode } from '../api/types'
 
@@ -112,6 +113,7 @@ function FlowEditor() {
   // `set({ node: n.id, cmtDrawer: false })`.
   const comments = useComments()
   const openDetail = (id: string) => { comments?.closeDrawer(); setDetailId(id) }
+  const commentCounts = useNodeCommentCounts(pid)
   const [mode, setMode] = useState<'pan' | 'select'>('pan')
   const rf = useReactFlow()
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -1008,6 +1010,7 @@ function FlowEditor() {
           // not to a frame around all of it. `entryNode` is the one rule for
           // "where does this process begin", shared with the step view.
           focusId={entryNode(proc)?.id}
+          commentCounts={commentCounts}
           onNodeClick={onNodeClick}
           onConnect={(c: Connection) => c.source && c.target && ed.connect(c.source, c.target)}
           onOpenDetail={openDetail}
@@ -1027,6 +1030,10 @@ function FlowEditor() {
               editing={editing}
               conflicts={(proc.pending ?? []).map((pending, index) => ({ pending, index })).filter((x) => x.pending.status === 'open' && x.pending.node === detailId)}
               process={proc}
+              comments={detailNode.type === 'activity' && (
+                <NodeComments pid={pid} department={proc.department} processName={proc.name}
+                  id={detailNode.id} label={detailNode.label} />
+              )}
               onClose={() => setDetailId(null)}
               onEdit={() => {}}
               onAccept={(index) => resolve.mutate({ index, decision: 'accept' })}
