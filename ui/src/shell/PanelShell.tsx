@@ -359,8 +359,15 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
             the single route the bar is drawn on — see `shell/back.ts`. */}
         {sections.map((n) => (
           <Link key={n.to} to={n.to}
-            className={`${TRAY_ITEM} ${traySection(pathname) === n.to ? 'bg-violet text-card' : 'bg-transparent text-violet'}`}>
+            className={`${TRAY_ITEM} relative ${traySection(pathname) === n.to ? 'bg-violet text-card' : 'bg-transparent text-violet'}`}>
             {n.label}
+            {/* lili, 2026-09-22: comments wait on this caller — a red dot at
+                the entry's inline-end corner, StatTile's 8px dot in --danger.
+                The sheet row keeps its count. */}
+            {n.to === COMMENTS.to && session.pendingApprovals > 0 && (
+              <span role="img" aria-label="کامنت در انتظار شما"
+                className="absolute top-s1 end-s1 w-s4 h-s4 rounded-round bg-danger" />
+            )}
           </Link>
         ))}
         {adminMenu()}

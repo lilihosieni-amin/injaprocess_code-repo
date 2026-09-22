@@ -661,12 +661,15 @@ describe('PanelShell chrome', () => {
   })
 
   it('adds «صندوق کامنت‌ها» to the tray and the sheet for an Editor or Admin, the sheet row counting in Persian', async () => {
-    // Panel L4784 `navDefs`; the badge is the sheet's only (L2993, `pendingForMe`).
+    // Panel L4784 `navDefs`; the sheet row counts (L2993, `pendingForMe`), the
+    // tray entry wears a red dot (lili, 2026-09-22).
     const { unmount } = renderPanel(['view', 'manage_users'], '/departments', { pendingApprovals: 2 })
     const tray = screen.getByRole('navigation', { name: 'بخش‌های اصلی' })
-    const link = within(tray).getByRole('link', { name: 'صندوق کامنت‌ها' })
+    const link = within(tray).getByRole('link', { name: 'صندوق کامنت‌ها کامنت در انتظار شما' })
     expect(link).toHaveAttribute('href', '/comments')
     expect(link.textContent).toBe('صندوق کامنت‌ها')
+    const dot = within(link).getByRole('img', { name: 'کامنت در انتظار شما' })
+    expect(dot).toHaveClass('w-s4', 'h-s4', 'rounded-round', 'bg-danger')
     await userEvent.click(screen.getAllByRole('button', { name: 'فهرست' })[0])
     const row = within(screen.getByRole('dialog')).getByRole('link', { name: /صندوق کامنت‌ها/ })
     expect(row).toHaveAttribute('href', '/comments')
@@ -675,6 +678,13 @@ describe('PanelShell chrome', () => {
     // …and a caller who is neither gets no entry that the screen would refuse.
     renderPanel(['view', 'view_audit'], '/departments')
     expect(screen.queryByRole('link', { name: /صندوق کامنت‌ها/ })).toBeNull()
+  })
+
+  it('draws no dot on the tray’s «صندوق کامنت‌ها» when nothing waits on the caller', () => {
+    renderPanel(['view', 'edit'], '/departments')
+    const tray = screen.getByRole('navigation', { name: 'بخش‌های اصلی' })
+    expect(within(tray).getByRole('link', { name: 'صندوق کامنت‌ها' })).toBeInTheDocument()
+    expect(within(tray).queryByRole('img', { name: 'کامنت در انتظار شما' })).toBeNull()
   })
 
   it('lights the sheet’s comments row on the inbox', async () => {
@@ -1926,6 +1936,8 @@ describe('what the panel chrome’s class strings compile to', () => {
       'font-weight: var(--fw-bold)',
       'text-decoration-line: none',
       'cursor: pointer',
+      // the containing block for «صندوق کامنت‌ها»'s red dot (lili, 2026-09-22)
+      'position: relative',
     ]))
   })
 
