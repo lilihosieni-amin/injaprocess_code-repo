@@ -66,6 +66,8 @@ describe('step comments on the flowchart', () => {
     flow(VIEWER)
     const badge = await screen.findByTitle('کامنت دارد')
     expect(badge).toHaveTextContent('۲')
+    expect(badge).toHaveClass('bg-danger', 'text-card')
+    expect(badge).not.toHaveClass('bg-tile-v')
     expect(screen.getAllByTitle('کامنت دارد')).toHaveLength(1)
   })
 
