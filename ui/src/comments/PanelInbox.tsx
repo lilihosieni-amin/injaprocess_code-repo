@@ -75,7 +75,7 @@ export function PanelInbox() {
             </div>
           )}
           <div className="flex flex-col gap-s5">
-            {data.items.map((c) => <Row key={c.id} c={c} />)}
+            {data.items.map((c) => <Row key={c.id} c={c} on={c.id === sel} />)}
           </div>
           {tab === 'all' && data.pages > 1 && (
             <Pager from={from} to={from + data.items.length - 1} count={data.total}
@@ -102,13 +102,13 @@ export function PanelInbox() {
 /** A department comment's place in the chain of names — the design's `procName` for one (Panel L3269). */
 const DEPT_WHOLE = 'اطلاعات کلی دپارتمان'
 
-/** Panel L1790–1802. */
-function Row({ c }: { c: Comment }) {
+/** Panel L1790–1802; the open comment's row is marked selected (lili, 2026-09-22). */
+function Row({ c, on }: { c: Comment; on: boolean }) {
   const st = STATUS[c.state]
   const a = c.anchor
   return (
-    <Link to={`?c=${encodeURIComponent(c.id)}`}
-      className="block no-underline border-hairline border-warm bg-card rounded-tile p-s7 cursor-pointer shadow-card">
+    <Link to={`?c=${encodeURIComponent(c.id)}`} aria-current={on ? 'true' : undefined}
+      className={`block no-underline border-hairline ${on ? 'border-border-current bg-tile-v4' : 'border-warm bg-card'} rounded-tile p-s7 cursor-pointer shadow-card`}>
       <div className="flex items-center gap-s4 flex-wrap mb-s4">
         <span className={`text-fs-micro font-semibold py-half px-option rounded-pill ${st.bg} ${st.fg}`}>{statusLabel(c.state, 'panel')}</span>
         <span className="ms-auto text-fs-micro text-faint">{ageText(c.createdAt)}</span>
@@ -259,6 +259,21 @@ function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
       </div>
 
       <div className={`${BOX} mb-s7`}>
+        {/* Panel L1819–1825: the comment itself, above its anchor (4528a04) */}
+        <div className="mb-s6 min-w-0">
+          <div className="text-fs-caption font-bold text-ink">{c.author.name}</div>
+          {c.author.role && <div className="text-fs-xxs text-muted mt-half">{roleLabel(c.author.role)}</div>}
+        </div>
+        <div className="text-fs-lg text-ink leading-loose whitespace-pre-line [text-wrap:pretty]">{c.text}</div>
+        {c.notes.map((n, i) => (
+          <div key={i} className="mt-s7 border-t border-dashed border-border-current pt-s7">
+            <div className={`${LABEL} mb-s4`}>{n.by} اضافه کرد:</div>
+            <div className="text-fs-body text-ink leading-loose bg-tile-v4 rounded-control p-s6 whitespace-pre-line">{n.text}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className={`${BOX} mb-s7`}>
         <div className={`${LABEL} mb-s5`}>این کامنت به چه چیزی اشاره دارد؟</div>
         <div className="flex items-center gap-s4 flex-wrap text-fs-sm2 text-ink-current">
           <span className="font-bold text-ink">{deptLabel(a.departmentName)}</span>
@@ -275,21 +290,6 @@ function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
           className="mt-s7 inline-flex items-center gap-button-icon py-option px-s7 rounded-input font-bold text-fs-sm2 no-underline bg-card text-violet border-hairline border-line">
           مشاهده در فلوچارت
         </Link>}
-      </div>
-
-      <div className={`${BOX} mb-s7`}>
-        {/* Panel L1837–1842 */}
-        <div className="mb-s6 min-w-0">
-          <div className="text-fs-sm font-bold text-ink">{c.author.name}</div>
-          {c.author.role && <div className="text-fs-xxs text-muted mt-half">{roleLabel(c.author.role)}</div>}
-        </div>
-        <div className="text-fs-body-lead text-ink leading-loose whitespace-pre-line [text-wrap:pretty]">{c.text}</div>
-        {c.notes.map((n, i) => (
-          <div key={i} className="mt-s7 border-t border-dashed border-border-current pt-s7">
-            <div className={`${LABEL} mb-s4`}>{n.by} اضافه کرد:</div>
-            <div className="text-fs-body text-ink leading-loose bg-tile-v4 rounded-control p-s6 whitespace-pre-line">{n.text}</div>
-          </div>
-        ))}
       </div>
 
       <div className={`${BOX} mb-s7`}>
@@ -339,7 +339,6 @@ function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
           <div data-r-actions className={ROW}>
             {/* The design's green shadow on this violet button (L1909) is a drift. */}
             <button type="button" onClick={() => setAsk('resolve')} className={`${BTN} min-w-cmt-resolve border-0 bg-violet text-card shadow-violet`}>ثبت به‌عنوان رسیدگی‌شده</button>
-            {flow && <Link to={flow} className={`${GHOST} min-w-cmt-resolve no-underline text-center`}>رفتن به فرآیند</Link>}
           </div>
         </div>
       )}

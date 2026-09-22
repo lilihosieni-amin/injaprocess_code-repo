@@ -208,4 +208,39 @@ describe('panel inbox', () => {
     expect(await screen.findByRole('link', { name: 'مشاهده در فلوچارت' }))
       .toHaveAttribute('href', '/processes/dining-001/flow?node=dining-001-n010')
   })
+
+  it('the resolve box has no «رفتن به فرآیند»; the anchor box keeps «مشاهده در فلوچارت»', async () => {
+    const done = cmt(3, { state: 'approved', stage: null, waitingWith: { kind: 'editors' }, actions: { ...NO, address: true } })
+    stub({ waiting: [done] }, [done], EDITOR)
+    open(EDITOR, '/comments?c=CMT-3')
+    expect(await screen.findByRole('button', { name: 'ثبت به‌عنوان رسیدگی‌شده' })).toBeInTheDocument()
+    expect(screen.queryByText('رفتن به فرآیند')).toBeNull()
+    expect(screen.getByRole('link', { name: 'مشاهده در فلوچارت' })).toBeInTheDocument()
+  })
+
+  it('draws the comment text box above the anchor box (Panel L1819), at 12px author and 15px text', async () => {
+    const pool = cmt(4)
+    stub({ waiting: [pool] }, [pool])
+    open(ADMIN, '/comments?c=CMT-4')
+    const anchorLabel = await screen.findByText('این کامنت به چه چیزی اشاره دارد؟')
+    const detail = anchorLabel.closest('[data-r-cmtdetail]') as HTMLElement
+    const text = within(detail).getByText('متن نویسنده 4')
+    expect(text.compareDocumentPosition(anchorLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(text).toHaveClass('text-fs-lg', 'leading-loose')
+    expect(within(detail).getAllByText('سمیرا احمدی')[0]).toHaveClass('text-fs-caption', 'font-bold')
+  })
+
+  it('marks the open comment’s row as selected; the others stay plain', async () => {
+    const a = cmt(5), b = cmt(6)
+    stub({ waiting: [a, b] }, [a, b])
+    open(ADMIN, '/comments?c=CMT-5')
+    const on = (await screen.findAllByText('متن نویسنده 5'))[0].closest('a')!
+    const off = screen.getByText('متن نویسنده 6').closest('a')!
+    expect(on).toHaveAttribute('aria-current', 'true')
+    expect(on).toHaveClass('bg-tile-v4', 'border-border-current', 'border-hairline')
+    expect(on).not.toHaveClass('border-warm')
+    expect(off).not.toHaveAttribute('aria-current')
+    expect(off).toHaveClass('bg-card', 'border-warm')
+    expect(off).not.toHaveClass('bg-tile-v4')
+  })
 })
