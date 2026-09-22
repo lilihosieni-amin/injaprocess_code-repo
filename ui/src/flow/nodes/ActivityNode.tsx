@@ -23,7 +23,7 @@ export function ActivityNode({ data }: NodeProps<Node<FlowNodeData>>) {
       {/* P4 — Reader L523–528 (= Panel L819–822). Only the flow screen passes a
           count; the export never does, so it draws nothing there. */}
       {(data.commentCount ?? 0) > 0 && (
-        <span title="کامنت دارد" className="absolute bottom-1 end-[5px] inline-flex items-center gap-[3px] py-px ps-1.5 pe-1 bg-tile-v text-violet rounded-pill text-[9px] font-bold">
+        <span title="کامنت دارد" className="absolute bottom-1 end-[5px] inline-flex items-center gap-[3px] py-px ps-1.5 pe-1 bg-danger text-card rounded-pill text-[9px] font-bold">
           <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
           {toFa(data.commentCount!)}
         </span>

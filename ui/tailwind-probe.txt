@@ -146,7 +146,7 @@ mt-drawer-section
 text-fs-compose-reader shadow-composer w-composer
 # P4 — the reader inbox's three mints: a history entry's 3px inline-start edge
 # (Reader L766), the empty card's 34px (L739), the anchor's underline offset (L753).
-border-s-note py-cmt-empty-y underline-offset-anchor
+border-s-note py-cmt-empty-y leading-cmt-pill
 # P4 fix — the segmented tray reads the surface: its tab's padding, type and
 # radius and the tray's radius are roles (Reader L731–733), and the reader's
 # comments tray halves each tab at <=760 (Reader L72).

@@ -8,7 +8,7 @@ import { Logo } from '../ui/Logo'
 import { toFa } from '../lib/format'
 import { roleLabel } from '../lib/roles'
 import { readerBack, readerHere } from './crumbs'
-import { canGoBack, isProcessView } from './back'
+import { canGoBack, commentOrigin, isProcessView } from './back'
 import { useScrollMemory } from './scroll'
 import { SignOutConfirm } from './SignOutConfirm'
 
@@ -66,7 +66,7 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
   // Owner ruling — sign-out asks first. One control on this surface, and the
   // same question `PanelShell` raises from its two.
   const [signingOut, setSigningOut] = useState(false)
-  const { pathname } = useLocation()
+  const { pathname, state } = useLocation()
   const nav = useNavigate()
   // Owner ruling — see `useScrollMemory`. The reader needs it most: their way
   // into a process is a long list they have scrolled through.
@@ -82,7 +82,9 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
   // moving as content gets confirmed. Reader-only — PanelShell does none of this.
   const only = departments?.length === 1 ? departments[0].code : undefined
   const root = only === undefined ? '/departments' : `/departments/${only}`
-  const back = readerBack(pathname, root)
+  // Opened from the comments page: back returns to that comment (`./back`).
+  const origin = commentOrigin(state)
+  const back = origin ?? readerBack(pathname, root)
   const here = readerHere(pathname, root)
   const hereTitle =
     here.title ??
@@ -253,7 +255,7 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
               // One class string, two elements. NOT a `<Link>` with an
               // `onClick`: that would go on advertising to the middle button and
               // to «copy link address» exactly the URL the ruling calls wrong.
-              isProcessView(pathname) && canGoBack() ? (
+              !origin && isProcessView(pathname) && canGoBack() ? (
                 <button type="button" onClick={() => nav(-1)} className={BACK_BAR_BTN}>
                   <Icon name="chevronStart" px={16} stroke={2.4} />
                   بازگشت

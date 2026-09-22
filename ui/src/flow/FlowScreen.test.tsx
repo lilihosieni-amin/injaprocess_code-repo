@@ -71,6 +71,19 @@ describe('FlowScreen (view)', () => {
     expect(back.parentElement!.firstElementChild).toBe(back)
   })
 
+  it('returns a READER who came from the comments page to that comment', async () => {
+    Object.defineProperty(window.history, 'state', { value: { idx: 2 }, configurable: true })
+    try {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(proc), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      renderAt('/processes/:pid/flow', reader(<FlowScreen />),
+        { pathname: '/processes/cooking-001/flow', state: { from: '/comments?c=CMT-12' } }, EDITOR)
+      await screen.findByText('ثبت درخواست')
+      expect(screen.getByRole('link', { name: 'بازگشت' })).toHaveAttribute('href', '/comments?c=CMT-12')
+    } finally {
+      Object.defineProperty(window.history, 'state', { value: null, configurable: true })
+    }
+  })
+
   it('draws no back button in the toolbar on the PANEL, whose strip has one', async () => {
     // **R44** — "in flowchart screen, the back button should be on top menu too.
     // like other page." One component, two deliverables that disagree about

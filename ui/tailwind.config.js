@@ -283,6 +283,7 @@ export default {
         // is 40 and 42. Pointing this key back at `--lh-lockup` would silently
         // paint the panel's number inside the reader.
         lockup: 'var(--role-lh-lockup)',
+        'cmt-pill': 'var(--lh-cmt-pill)', // 1.5 — the reader inbox card's anchor pill (Reader L750)
       },
       borderRadius: {
         // The segmented tray and its tab, per surface (roles.css).
@@ -320,7 +321,6 @@ export default {
         sheet: 'var(--radius-sheet)',              // 22px — the drawer-as-sheet
       },
       borderWidth: { hairline: 'var(--border-hairline)', note: 'var(--border-note)' }, // note — Reader L766
-      textUnderlineOffset: { anchor: 'var(--underline-anchor)' }, // Reader L753
       flexBasis: { 'tab-half': 'var(--basis-tab-half)' }, // Reader L72
       boxShadow: {
         card: 'var(--shadow-card)', 'card-hover': 'var(--shadow-card-hover)',

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { screen, fireEvent, within, waitFor, render } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { renderAt } from '../test/utils'
 import { HEAD, VIEWER } from '../test/sessions'
 import type { SessionDescriptor } from '../auth/session'
@@ -29,6 +29,12 @@ function cmt(n: number, over: Partial<Comment> = {}): Comment {
     approvals: 0, notes: [], rejectReason: null, addressed: null, actions: NO,
     ...over,
   }
+}
+
+/** Where a link out of /comments landed, and the origin it carried. */
+function Where() {
+  const loc = useLocation()
+  return <p data-testid="from">{(loc.state as { from?: string } | null)?.from ?? ''}</p>
 }
 
 const page = (items: Comment[]) => ({ items, total: items.length, page: 1, pages: 1 })
@@ -62,9 +68,10 @@ describe('reader inbox', () => {
     expect(screen.getByRole('tab', { name: 'در انتظار تأیید شما' })).toHaveAttribute('aria-selected', 'true')
     expect(spy.mock.calls.some(([u]) => String(u) === '/api/comments/inbox?tab=waiting&page=1')).toBe(true)
     expect(screen.getByRole('button', { name: 'تأیید' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'جزئیات' }))
     expect(screen.getByText('نوشتهٔ سمیرا احمدی')).toBeInTheDocument()
     // a node anchor opens that step (Reader L2715–2716)
-    expect(screen.getByRole('link', { name: /دربارهٔ/ })).toHaveAttribute('href', '/processes/dining-001/steps?step=dining-001-n010')
+    expect(screen.getByRole('link', { name: 'گام «خوشامد»' })).toHaveAttribute('href', '/processes/dining-001/steps?step=dining-001-n010')
     // Reader L71–72: at ≤760 the tray wraps and each tab takes half a row
     expect(screen.getByRole('tablist')).toHaveClass('max760:flex-wrap')
     for (const t of screen.getAllByRole('tab')) expect(t).toHaveClass('max760:basis-tab-half')
@@ -109,6 +116,8 @@ describe('reader inbox', () => {
     expect(spy.mock.calls.some(([u]) => String(u) === '/api/comments/inbox?tab=own&page=1')).toBe(true)
     expect(screen.getByRole('button', { name: 'عوض کردن متن' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'پس گرفتن' })).toBeInTheDocument()
+    expect(screen.queryByText('تا تأیید نشده می‌توانید متنش را عوض کنید.')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'جزئیات' }))
     expect(screen.queryByText(/^نوشتهٔ/)).toBeNull()
     expect(screen.getByText('تا تأیید نشده می‌توانید متنش را عوض کنید.')).toBeInTheDocument()
     expect(screen.getByText('کامنت‌هایی که خودتان ثبت کرده‌اید و وضعیت‌شان در زنجیره.')).toBeInTheDocument()
@@ -121,6 +130,7 @@ describe('reader inbox', () => {
     ] })] })
     open(VIEWER)
     const original = await screen.findByText('متن نویسنده 3')
+    fireEvent.click(screen.getByRole('button', { name: 'جزئیات' }))
     const first = screen.getByText('یادداشت اول')
     const second = screen.getByText('یادداشت دوم')
     expect(screen.getByText('حسین مازندرانی اضافه کرد:')).toBeInTheDocument()
@@ -187,7 +197,7 @@ describe('reader inbox', () => {
     stub({ own: [cmt(4, { anchor: { ...cmt(4).anchor, orphan: true } })] })
     open(VIEWER)
     expect(await screen.findByText('گام «خوشامد»')).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /دربارهٔ/ })).toBeNull()
+    expect(screen.queryByRole('link')).toBeNull()
   })
 
   describe('?c=CMT-n', () => {
@@ -220,6 +230,15 @@ describe('reader inbox', () => {
       expect(scroll).toHaveBeenCalledTimes(1)
     })
 
+    it("opens «در انتظار تأیید شما» on a comment that waits on the viewer, not the paged «همه»", async () => {
+      Element.prototype.scrollIntoView = vi.fn()
+      const mine = cmt(7, { actions: { ...NO, approve: true, reject: true } })
+      stubWith(mine, { waiting: [mine], all: [] })
+      at(HEAD, 'CMT-7')
+      expect(await screen.findByText('متن نویسنده 7')).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: 'در انتظار تأیید شما' })).toHaveAttribute('aria-selected', 'true')
+    })
+
     it("opens the approver's «همه» on someone else's comment", async () => {
       Element.prototype.scrollIntoView = vi.fn()
       const theirs = cmt(6)
@@ -228,6 +247,93 @@ describe('reader inbox', () => {
       await waitFor(() => expect(screen.getByRole('tab', { name: 'همه' })).toHaveAttribute('aria-selected', 'true'))
       expect(await screen.findByText('متن نویسنده 6')).toBeInTheDocument()
     })
+  })
+
+  it('draws the anchor as a pill, its chevron after the text (Reader L750–753)', async () => {
+    stub({ waiting: [waiting()] })
+    open(HEAD)
+    const pill = await screen.findByRole('link', { name: 'گام «خوشامد»' })
+    expect(pill).toHaveClass('rounded-pill', 'bg-value-current', 'text-fs-micro', 'font-semibold', 'text-muted',
+      'py-hint', 'ps-option', 'pe-button-icon', 'leading-cmt-pill', 'hover:bg-tile-v', 'hover:text-violet')
+    const label = within(pill).getByText('گام «خوشامد»')
+    expect(label).toHaveClass('truncate')
+    const svg = pill.querySelector('svg')!
+    expect(label.compareDocumentPosition(svg) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(svg).toHaveAttribute('width', '10')
+    expect(svg).toHaveClass('opacity-70')
+  })
+
+  it('keeps the context behind «جزئیات»; the buttons stay outside it', async () => {
+    stub({ waiting: [waiting()] })
+    open(HEAD)
+    const toggle = await screen.findByRole('button', { name: 'جزئیات' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveClass('w-full', 'mt-s7', 'pt-option-y', 'border-t', 'border-tile-v', 'text-fs-sm', 'font-bold', 'text-violet')
+    expect(toggle.querySelector('path')).toHaveAttribute('d', 'M6 9l6 6 6-6')
+    expect(screen.queryByText('نوشتهٔ سمیرا احمدی')).toBeNull()
+    expect(screen.getByRole('button', { name: 'تأیید' })).toBeInTheDocument()
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(toggle.querySelector('path')).toHaveAttribute('d', 'M6 15l6-6 6 6')
+    expect(screen.getByText('نوشتهٔ سمیرا احمدی')).toBeInTheDocument()
+    fireEvent.click(toggle)
+    expect(screen.queryByText('نوشتهٔ سمیرا احمدی')).toBeNull()
+  })
+
+  it('opens one card at a time', async () => {
+    stub({ waiting: [waiting(), cmt(2, { author: { name: 'مهدی رجبی', isMe: false, role: 'reader' } })] })
+    open(HEAD)
+    const [a, b] = await screen.findAllByRole('button', { name: 'جزئیات' })
+    fireEvent.click(a)
+    expect(screen.getByText('نوشتهٔ سمیرا احمدی')).toBeInTheDocument()
+    fireEvent.click(b)
+    expect(screen.getByText('نوشتهٔ مهدی رجبی')).toBeInTheDocument()
+    expect(screen.queryByText('نوشتهٔ سمیرا احمدی')).toBeNull()
+  })
+
+  it('a note or a rejection in progress holds the card open', async () => {
+    stub({ waiting: [waiting()] })
+    open(HEAD)
+    fireEvent.click(await screen.findByRole('button', { name: 'افزودن یادداشت' }))
+    expect(screen.getByRole('button', { name: 'جزئیات' })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('نوشتهٔ سمیرا احمدی')).toBeInTheDocument()
+  })
+
+  it('draws no «جزئیات» when there is nothing behind it', async () => {
+    stub({ own: [cmt(8, { state: 'withdrawn', author: { name: 'سمیرا احمدی', isMe: true, role: 'reader' } })] })
+    open(VIEWER)
+    expect(await screen.findByText('متن نویسنده 8')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'جزئیات' })).toBeNull()
+  })
+
+  it('«پس گرفتن» asks first, and posts only on «پس می‌گیرم»', async () => {
+    const spy = stub({ own: [cmt(2, { author: { name: 'سمیرا احمدی', isMe: true, role: 'reader' }, actions: { ...NO, edit: true, withdraw: true } })] })
+    open(VIEWER)
+    fireEvent.click(await screen.findByRole('button', { name: 'پس گرفتن' }))
+    let modal = screen.getByRole('dialog', { name: 'این کامنت را پس می‌گیرید؟' })
+    expect(within(modal).getByText('کامنت از زنجیره خارج می‌شود و در سابقه می‌ماند.')).toBeInTheDocument()
+    expect(within(modal).getByRole('button', { name: 'پس می‌گیرم' })).toHaveClass('bg-coral', 'shadow-coral')
+    fireEvent.click(within(modal).getByRole('button', { name: 'بی‌خیال' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(posted(spy)).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: 'پس گرفتن' }))
+    modal = screen.getByRole('dialog', { name: 'این کامنت را پس می‌گیرید؟' })
+    fireEvent.click(within(modal).getByRole('button', { name: 'پس می‌گیرم' }))
+    await waitFor(() => expect(posted(spy)).toHaveLength(1))
+    expect(posted(spy)[0][0]).toBe('/api/comments/CMT-2/withdraw')
+    expect(await screen.findByText('پس گرفته شد — در سابقه می‌ماند')).toBeInTheDocument()
+  })
+
+  it('the anchor pill carries the comment it was opened from', async () => {
+    stub({ waiting: [waiting()] })
+    renderAt('*', (
+      <ToastProvider><SurfaceProvider surface="reader"><Routes>
+        <Route path="/comments" element={<CommentsScreen />} />
+        <Route path="*" element={<Where />} />
+      </Routes></SurfaceProvider></ToastProvider>
+    ), '/comments', HEAD)
+    fireEvent.click(await screen.findByRole('link', { name: 'گام «خوشامد»' }))
+    expect(await screen.findByTestId('from')).toHaveTextContent('/comments?c=CMT-1')
   })
 
   it('never renders the word «اصلاح» — an approver adds a note, never an amendment', async () => {

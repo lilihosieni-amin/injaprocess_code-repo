@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { answersHistory, canGoBack, isProcessView, sheetHere, traySection } from './back'
+import { answersHistory, canGoBack, commentOrigin, fromComment, isProcessView, sheetHere, traySection } from './back'
 
 /** Replace `window.history.state` without navigating, which jsdom's own
  *  `pushState` would also have to be given a URL for. */
@@ -189,5 +189,18 @@ describe('sheetHere', () => {
   it('does not read a sibling whose name merely starts the same way', () => {
     expect(sheetHere('/profiles', '/profile')).toBe(false)
     expect(sheetHere('/factsheet', '/facts')).toBe(false)
+  })
+})
+
+describe('commentOrigin', () => {
+  it('reads the comment a page was opened from, and nothing else', () => {
+    expect(commentOrigin(fromComment('CMT-12'))).toBe('/comments?c=CMT-12')
+    expect(commentOrigin({ from: '/comments' })).toBe('/comments')
+    expect(commentOrigin(null)).toBeUndefined()
+    expect(commentOrigin(undefined)).toBeUndefined()
+    expect(commentOrigin({ from: '/departments' })).toBeUndefined()
+    expect(commentOrigin({ from: '/commentsx' })).toBeUndefined()
+    expect(commentOrigin({ from: 'https://evil.example/comments' })).toBeUndefined()
+    expect(commentOrigin({ from: 7 })).toBeUndefined()
   })
 })

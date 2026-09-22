@@ -663,10 +663,10 @@ const EXPECTED: Record<string, string | string[]> = {
   'text-fs-compose-reader': 'var(--fs-compose-reader)',
   'shadow-composer': 'var(--shadow-composer)',
   'w-composer': 'var(--width-composer)',
-  // P4 — the reader inbox's three mints (Reader L766, L739, L753).
+  // P4 — the reader inbox's mints (Reader L766, L739; the anchor pill L750, 4528a04).
   'border-s-note': 'var(--border-note)',
   'py-cmt-empty-y': 'var(--pad-cmt-empty-y)',
-  'underline-offset-anchor': 'var(--underline-anchor)',
+  'leading-cmt-pill': 'var(--lh-cmt-pill)',
   // P4 fix — the segmented tray's per-surface roles (Reader L731–733, L72).
   'py-role-tab-y': 'var(--role-pad-tab-y)',
   'px-role-tab-x': 'var(--role-pad-tab-x)',
@@ -1533,7 +1533,7 @@ const UNPAINTED: string[] = [
   'bg-border-dead', 'bg-border-ok', 'bg-strong',
   'bg-body-ink', 'bg-ghost', 'bg-dialog-ghost', 'bg-ink-current',
   'bg-ink-proposed', 'bg-on-dark', 'bg-disabled', 'bg-ok',
-  'bg-danger', 'bg-warn-soft', 'bg-info-soft', 'bg-ok-soft',
+  'bg-warn-soft', 'bg-info-soft', 'bg-ok-soft',
   'bg-danger-soft', 'bg-toast-check', 'bg-junction-xor', 'bg-junction-and',
   // `bg-junction-or` came off here with Task 22: the facts list's «تأییدنشده»
   // dot is `--junction-or` (`Inja Panel.dc.html:4625`, `CONF.amber.dot`), which
@@ -1883,7 +1883,9 @@ const UNPAINTED: string[] = [
 // `p-compose` (the composer). CEILING follows them down by four.
 // P4 Task 13: the panel inbox's nothing-selected tile is 56×56 (Panel L1939),
 // which is `w-fab-reader`/`h-fab-reader`. CEILING follows them down by two.
-const CEILING = 101
+// P4 fixes (2026-09-22): `bg-danger` is the panel tray's red comments dot.
+// CEILING follows it down by one.
+const CEILING = 100
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
@@ -2230,7 +2232,9 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
     //     reaches the screen. Spelling +1, painted-nowhere −1.
     // **42 / 59 after P4 Task 13**: `w-fab-reader` and `h-fab-reader` left the
     //   spelling half — the panel inbox's 56×56 tile (Panel L1939). Spelling −2.
-    expect(buckets.filter((b) => b.spelling).length).toBe(42)
+    // **41 / 59 after the P4 fixes**: `bg-danger` left the spelling half — the
+    //   panel tray's red comments dot paints it. Spelling −1.
+    expect(buckets.filter((b) => b.spelling).length).toBe(41)
     expect(buckets.filter((b) => !b.spelling).length).toBe(59)
 
     // A family that stops covering anything is an argument nobody is paying

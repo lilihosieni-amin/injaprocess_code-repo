@@ -13,7 +13,7 @@ import { Canvas } from './Canvas'
 import { Button, Spinner } from '../ui/Button'
 import { Icon } from '../ui/Icon'
 import { readerBack } from '../shell/crumbs'
-import { canGoBack } from '../shell/back'
+import { canGoBack, commentOrigin } from '../shell/back'
 import { useSurface } from '../ui/surface'
 import { IdBadge } from '../ui/IdBadge'
 import { pushDismissible, popDismissible, isTopDismissible } from '../ui/dismissibleStack'
@@ -98,7 +98,7 @@ export function FlowScreen() {
 function FlowEditor() {
   const { pid = '' } = useParams()
   const nav = useNavigate()
-  const { pathname } = useLocation()
+  const { pathname, state: locState } = useLocation()
   const { data: server } = useProcess(pid)
   const can = useCan(useSession().data)
   const { data: siblings = [] } = useProcesses(server?.department ?? '', { enabled: !!server?.department })
@@ -237,7 +237,9 @@ function FlowEditor() {
   // is; the coalesce narrows `string | undefined` to the `To` a `<Link>` takes
   // and is not a second answer to the question.
   const deptRoot = `/departments/${proc.department}`
-  const backTo = readerBack(pathname, deptRoot) ?? deptRoot
+  // Opened from the comments page: back returns to that comment (`shell/back`).
+  const origin = commentOrigin(locState)
+  const backTo = origin ?? readerBack(pathname, deptRoot) ?? deptRoot
   // R5 — the edit control is not drawn to someone the edit path would refuse.
   //
   // Cosmetic only, like every other `useCan` on a screen (D48): PUT
@@ -446,7 +448,7 @@ function FlowEditor() {
             `<Link>` with an `onClick`, which would keep advertising to the
             middle button and to «copy link address» exactly the URL the ruling
             says is the wrong one. */}
-        {onReader && (canGoBack() ? (
+        {onReader && (!origin && canGoBack() ? (
           <button
             type="button"
             onClick={() => nav(-1)}
