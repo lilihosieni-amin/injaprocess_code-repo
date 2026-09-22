@@ -230,6 +230,15 @@ describe('reader inbox', () => {
       expect(scroll).toHaveBeenCalledTimes(1)
     })
 
+    it("opens «در انتظار تأیید شما» on a comment that waits on the viewer, not the paged «همه»", async () => {
+      Element.prototype.scrollIntoView = vi.fn()
+      const mine = cmt(7, { actions: { ...NO, approve: true, reject: true } })
+      stubWith(mine, { waiting: [mine], all: [] })
+      at(HEAD, 'CMT-7')
+      expect(await screen.findByText('متن نویسنده 7')).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: 'در انتظار تأیید شما' })).toHaveAttribute('aria-selected', 'true')
+    })
+
     it("opens the approver's «همه» on someone else's comment", async () => {
       Element.prototype.scrollIntoView = vi.fn()
       const theirs = cmt(6)

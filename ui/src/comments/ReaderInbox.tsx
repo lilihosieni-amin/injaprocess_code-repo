@@ -49,7 +49,10 @@ export function ReaderInbox() {
   const [page, setPage] = useState(1)
   // Reader `cmtOpen` (4528a04): one id, so opening a card closes the other.
   const [openId, setOpenId] = useState<string | null>(null)
-  const tab: InboxTab = picked ?? (target ? (target.author.isMe ? 'own' : 'all') : 'waiting')
+  // A comment waiting on the viewer opens «در انتظار تأیید شما» (unpaged), so
+  // «بازگشت» to `?c=` finds its card; else the author's own tab, else «همه».
+  const tab: InboxTab = picked ?? (!target || target.actions.approve || target.actions.address
+    ? 'waiting' : target.author.isMe ? 'own' : 'all')
   const shown: InboxTab = approver ? tab : 'own'
   const { data, error, refetch } = useInbox(shown, shown === 'all' ? page : 1)
   const scrolled = useRef<string | null>(null)
