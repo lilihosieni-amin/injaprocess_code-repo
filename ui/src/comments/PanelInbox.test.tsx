@@ -238,7 +238,7 @@ describe('panel inbox', () => {
     expect(screen.getByRole('link', { name: 'مشاهده در فلوچارت' })).toBeInTheDocument()
   })
 
-  it('draws the comment text box above the anchor box (Panel L1819), at 12px author and 15px text', async () => {
+  it('draws the comment text box above the anchor box (Panel L1819), at 11px author (lili, smaller than the design) and 15px text', async () => {
     const pool = cmt(4)
     stub({ waiting: [pool] }, [pool])
     open(ADMIN, '/comments?c=CMT-4')
@@ -247,7 +247,7 @@ describe('panel inbox', () => {
     const text = within(detail).getByText('متن نویسنده 4')
     expect(text.compareDocumentPosition(anchorLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(text).toHaveClass('text-fs-lg', 'leading-loose')
-    expect(within(detail).getAllByText('سمیرا احمدی')[0]).toHaveClass('text-fs-caption', 'font-bold')
+    expect(within(detail).getAllByText('سمیرا احمدی')[0]).toHaveClass('text-fs-xxs', 'font-bold')
   })
 
   it('marks the open comment’s row as selected; the others stay plain', async () => {

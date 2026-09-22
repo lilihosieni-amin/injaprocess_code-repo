@@ -262,7 +262,7 @@ function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
       <div className={`${BOX} mb-s7`}>
         {/* Panel L1819–1825: the comment itself, above its anchor (4528a04) */}
         <div className="mb-s6 min-w-0">
-          <div className="text-fs-caption font-bold text-ink">{c.author.name}</div>
+          <div className="text-fs-xxs font-bold text-ink">{c.author.name}</div>
           {c.author.role && <div className="text-fs-xxs text-muted mt-half">{roleLabel(c.author.role)}</div>}
         </div>
         <div className="text-fs-lg text-ink leading-loose whitespace-pre-line [text-wrap:pretty]">{c.text}</div>
