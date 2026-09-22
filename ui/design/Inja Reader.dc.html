@@ -747,9 +747,9 @@
               </div>
 
               <div style="padding:18px">
-                <button onClick="{{ c.openAnchor }}" style="display:inline-flex;align-items:center;gap:5px;border:0;background:transparent;padding:0;font-family:inherit;font-size:11.5px;color:#a99fc4;font-weight:600;cursor:pointer;text-align:start;line-height:1.6">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M15 18l-6-6 6-6"></path></svg>
-                  دربارهٔ <span style="color:#4A25A9;font-weight:700;text-decoration:underline dotted;text-underline-offset:3px">{{ c.anchor }}</span>
+                <button onClick="{{ c.openAnchor }}" style="display:inline-flex;align-items:center;gap:5px;border:0;padding:3px 9px 3px 7px;border-radius:999px;background:#F6F3FB;font-family:inherit;font-size:10.5px;font-weight:600;color:#8a7db0;cursor:pointer;text-align:start;line-height:1.5;max-width:100%" style-hover="background:#F0E9FB;color:#4A25A9">
+                  <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.anchor }}</span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:.7"><path d="M15 18l-6-6 6-6"></path></svg>
                 </button>
 
                 <sc-if value="{{ c.editing }}">
@@ -759,6 +759,14 @@
                   <div style="font-size:18px;font-weight:700;color:#2A1D5E;line-height:1.85;margin-top:8px;text-wrap:pretty">{{ c.text }}</div>
                 </sc-if>
 
+                <sc-if value="{{ c.hasMore }}">
+                  <button onClick="{{ c.toggleMore }}" style="display:flex;align-items:center;gap:8px;width:100%;margin-top:14px;padding:11px 0 0;border:0;border-top:1px solid #F0E9FB;background:transparent;font-family:inherit;font-size:13px;font-weight:700;color:#4A25A9;cursor:pointer;text-align:start">
+                    <span style="flex:1">{{ c.moreLabel }}</span>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="{{ c.moreChevron }}"></path></svg>
+                  </button>
+                </sc-if>
+
+                <sc-if value="{{ c.expanded }}">
                 <sc-if value="{{ c.byOther }}">
                   <div style="font-size:13px;color:#8a7db0;margin-top:12px">نوشتهٔ {{ c.author }}</div>
                 </sc-if>
@@ -778,6 +786,7 @@
                   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8a7db0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><circle cx="12" cy="12" r="9"></circle><path d="M12 8h.01M11 12h1v4h1"></path></svg>
                   <div style="font-size:14px;color:#5a5175;line-height:1.9;text-wrap:pretty">{{ c.note }}</div>
                 </div>
+                </sc-if>
 
                 <sc-if value="{{ c.canApprove }}">
                   <sc-if value="{{ c.amending }}">
@@ -993,7 +1002,7 @@ class Component extends DCLogic {
     diRole: null, deptDrawer: false, resolveNote: '', conf: {}, cmtState: {}, resolvedConflicts: {}, confirmDialog: false, hist: [], cmtDrawer: false, flowMenu: false, plistMenu: false,
     adminMenu: false, userQ: '', userSel: 'u2', newUser: false, newRole: 3, disabledUsers: {},
     overrides: {}, auditTab: 'user', auditPage: {}, aF: { range: '30' },
-    note: null, noteText: '', showOrig: null, actUser: null, actPage: 0, actF: {}, calY: 0, calM: 0, aCalY: 0, aCalM: 0, aQ: {}, policy: {}, views: false, pwCur: '', pwNew: '', pwRep: '',
+    note: null, noteText: '', showOrig: null, actUser: null, cmtOpen: null, actPage: 0, actF: {}, calY: 0, calM: 0, aCalY: 0, aCalM: 0, aQ: {}, policy: {}, views: false, pwCur: '', pwNew: '', pwRep: '',
     supDlg: false, supPick: null, supOf: {}, supQ: '',
     editUser: false, editRole: null, editScopes: null, roleOf: {}, scopesOf: {},
     newPw: '', newPwShow: false, newScopes: null, newSup: '', dd: null,
@@ -2710,6 +2719,12 @@ class Component extends DCLogic {
         // کامنت ردشده بسته است — نه ویرایش، نه پس گرفتن؛ اگر لازم است کامنت تازه بگذارد
         const authorControls = own && c.st === 'awaiting' && !c.approvals;
         const mineTurn = me.approve && !own && c.st === 'awaiting' && c.approver === me.name;
+        const histCount = (c.notes || []).length + (c.st === 'rejected' || c.st === 'addressed' ? 1 : 0);
+        const ownEditable = authorControls;
+        // دراپ‌دون فقط متن‌های زمینه‌ای را می‌گیرد؛ دکمه‌ها همیشه بیرون می‌مانند
+        const hasMoreC = histCount > 0 || !own || (c.st === 'awaiting' && (c.approvals || own)) || c.st === 'approved';
+        // هر حالت باز (ویرایش، یادداشت، رد) کارت را باز نگه می‌دارد
+        const expandedC = s.cmtOpen === c.id || s.amend === c.id || s.note === c.id || s.rej === c.id;
         return {
           anchor: c.kind === 'department' ? c.deptName : c.nodeLabel ? 'گام «' + c.nodeLabel + '»' : 'کل «' + c.procName + '»',
           openAnchor: () => c.kind === 'department' ? go({ screen: 'deptinfo', dept: c.dept }) : go({ screen: 'flow', pid: c.process, dept: c.dept, flowView: 'steps',
@@ -2727,6 +2742,11 @@ class Component extends DCLogic {
               : own ? 'تا تأیید نشده می‌توانید متنش را عوض کنید.' : '')
             : c.st === 'approved' ? 'رسید به ادیتور.' : '',
           noteDisplay: (c.st === 'awaiting' && (c.approvals || own)) || c.st === 'approved' ? 'flex' : 'none',
+          // نگاه اول: لنگر و متن. بقیه پشت یک دکمهٔ باز/بسته تا حواس پرت نشود
+          hasMore: hasMoreC, expanded: expandedC,
+          moreLabel: 'جزئیات',
+          moreChevron: expandedC ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6',
+          toggleMore: () => set({ cmtOpen: expandedC ? null : c.id }),
           canApprove: mineTurn, amending: s.note === c.id, rejecting: s.rej === c.id,
           approveLabel: s.note === c.id ? 'ثبت یادداشت و تأیید' : 'درست است، تأیید می‌کنم',
           amendLabel: 'انصراف',
