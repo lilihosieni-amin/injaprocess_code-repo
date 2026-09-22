@@ -6,7 +6,14 @@ import type { SessionDescriptor } from '../auth/session'
 import type { Comment, CommentDetail, CommentTrailItem, InboxTab } from '../api/comments'
 import { SurfaceProvider } from '../ui/surface'
 import { ToastProvider } from '../write/ToastProvider'
+import { Route, Routes, useLocation } from 'react-router-dom'
 import { CommentsScreen } from './CommentsScreen'
+
+/** Where a link out of /comments landed, and the origin it carried. */
+function Where() {
+  const loc = useLocation()
+  return <p data-testid="from">{(loc.state as { from?: string } | null)?.from ?? ''}</p>
+}
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -207,6 +214,19 @@ describe('panel inbox', () => {
     open(ADMIN, '/comments?c=CMT-7')
     expect(await screen.findByRole('link', { name: 'مشاهده در فلوچارت' }))
       .toHaveAttribute('href', '/processes/dining-001/flow?node=dining-001-n010')
+  })
+
+  it('«مشاهده در فلوچارت» carries the comment it was opened from', async () => {
+    const pool = cmt(7)
+    stub({ waiting: [pool] }, [pool])
+    renderAt('*', (
+      <ToastProvider><SurfaceProvider surface="panel"><Routes>
+        <Route path="/comments" element={<CommentsScreen />} />
+        <Route path="*" element={<Where />} />
+      </Routes></SurfaceProvider></ToastProvider>
+    ), '/comments?c=CMT-7', ADMIN)
+    fireEvent.click(await screen.findByRole('link', { name: 'مشاهده در فلوچارت' }))
+    expect(await screen.findByTestId('from')).toHaveTextContent('/comments?c=CMT-7')
   })
 
   it('the resolve box has no «رفتن به فرآیند»; the anchor box keeps «مشاهده در فلوچارت»', async () => {

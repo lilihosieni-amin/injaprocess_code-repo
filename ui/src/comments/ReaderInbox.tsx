@@ -14,6 +14,7 @@ import { Pager } from '../ui/Pager'
 import { TextField } from '../ui/TextField'
 import { LoadFailedScreen, ScreenSkeleton } from '../ui/states'
 import { useToast } from '../write/ToastProvider'
+import { fromComment } from '../shell/back'
 import { DecisionModal, type Decision } from './DecisionModal'
 
 /** Reader L1999–2001. */
@@ -201,7 +202,7 @@ function InboxCard({ c, open, onToggle }: { c: Comment; open: boolean; onToggle:
           // D31: the anchor no longer stands, so there is nothing to open (as the Panel).
           <span className={PILL}><span className="truncate">{anchorText(c)}</span></span>
         ) : (
-          <Link to={anchorHref(c)} className={`${PILL} no-underline cursor-pointer hover:bg-tile-v hover:text-violet`}>
+          <Link to={anchorHref(c)} state={fromComment(c.id)} className={`${PILL} no-underline cursor-pointer hover:bg-tile-v hover:text-violet`}>
             <span className="truncate">{anchorText(c)}</span>
             <Icon d="M15 18l-6-6 6-6" px={10} stroke={2.6} className="flex-none opacity-70" />
           </Link>

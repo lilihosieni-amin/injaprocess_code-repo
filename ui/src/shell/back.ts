@@ -167,3 +167,19 @@ function inSection(pathname: string, root: string): boolean {
 export function sheetHere(pathname: string, to: string): boolean {
   return traySection(pathname) === to || inSection(pathname, to)
 }
+
+/**
+ * A page opened from the comments page (lili, 2026-09-22) carries
+ * `{ from: '/comments?c=CMT-n' }` in its router location state, and every
+ * «بازگشت» — the reader's back bar, the panel's crumb strip, the reader's
+ * flowchart toolbar — returns there instead of up the trail or back in history.
+ * Only a `/comments` path is honoured; anything else answers `undefined` and the
+ * control behaves as it always did.
+ */
+export function commentOrigin(state: unknown): string | undefined {
+  const from = (state as { from?: unknown } | null | undefined)?.from
+  return typeof from === 'string' && /^\/comments(\?|$)/.test(from) ? from : undefined
+}
+
+/** The location state a link out of `/comments` carries for comment `id`. */
+export const fromComment = (id: string) => ({ from: `/comments?c=${encodeURIComponent(id)}` })

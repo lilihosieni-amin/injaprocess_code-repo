@@ -120,7 +120,7 @@ const DEPTS = [{ code: 'dining', name: 'سالن', count: 3, subs: 0 }]
  */
 function renderPanel(
   caps: Capability[],
-  entry: string,
+  entry: string | { pathname: string; state?: unknown },
   { pending = [] as unknown[], depts = DEPTS as unknown[], scopes, pendingApprovals = 0 }: {
     pending?: unknown[]; depts?: unknown[]; scopes?: string[]; pendingApprovals?: number
   } = {},
@@ -2235,7 +2235,7 @@ function GoBack() {
  * is a mock that cannot tell the two apart, and `signedOut()` counts calls on
  * this same spy.
  */
-function renderReader(depts: Department[], entry: string, over: Partial<SessionDescriptor> = {}) {
+function renderReader(depts: Department[], entry: string | { pathname: string; state?: unknown }, over: Partial<SessionDescriptor> = {}) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
     const url = String(typeof input === 'string' ? input : (input as Request).url ?? input)
     const body = url.includes('/api/departments') ? depts : { ok: true }
@@ -2254,6 +2254,7 @@ function renderReader(depts: Department[], entry: string, over: Partial<SessionD
             <Route path="/departments/:code/overview" element={<p>خلاصهٔ دپارتمان</p>} />
             <Route path="/processes/:pid" element={<p>خلاصهٔ فرآیند</p>} />
             <Route path="/processes/:pid/flow" element={<p>فلوچارت</p>} />
+            <Route path="/processes/:pid/steps" element={<p>گام‌به‌گام</p>} />
             <Route path="/profile" element={<p>محتوای پروفایل</p>} />
           </Route>
         </Routes>
@@ -3292,5 +3293,40 @@ describe('what the reader chrome’s class strings compile to', () => {
       'flex: none',
     ]))
     expect(winner(cluster, 'gap')).not.toBe('var(--space-5)')
+  })
+})
+
+describe('a page opened from the comments page returns to that comment', () => {
+  const FROM = { from: '/comments?c=CMT-12' }
+  const history = (idx: number) => Object.defineProperty(window.history, 'state', { value: { idx }, configurable: true })
+
+  it('reader: the back bar on the step view goes to the comment, not back in history', async () => {
+    history(3)
+    renderReader(THREE, { pathname: '/processes/dining-001/steps', state: FROM })
+    expect(await screen.findByRole('link', { name: 'بازگشت' })).toHaveAttribute('href', '/comments?c=CMT-12')
+  })
+
+  it('reader: the back bar on a department overview goes to the comment', async () => {
+    renderReader(THREE, { pathname: '/departments/dining/overview', state: FROM })
+    expect(await screen.findByRole('link', { name: 'بازگشت' })).toHaveAttribute('href', '/comments?c=CMT-12')
+  })
+
+  it('reader: without it, the overview goes up to its department as before', async () => {
+    renderReader(THREE, '/departments/dining/overview')
+    expect(await screen.findByRole('link', { name: 'بازگشت' })).toHaveAttribute('href', '/departments/dining')
+  })
+
+  it('panel: the crumb strip on the flowchart and on a department goes to the comment', async () => {
+    history(3)
+    const { unmount } = renderPanel(['view', 'edit'], { pathname: '/processes/dining-001/flow', state: FROM })
+    expect(await screen.findByRole('link', { name: 'بازگشت' })).toHaveAttribute('href', '/comments?c=CMT-12')
+    unmount()
+    renderPanel(['view', 'edit'], { pathname: '/departments/dining', state: FROM })
+    expect(await screen.findByRole('link', { name: 'بازگشت' })).toHaveAttribute('href', '/comments?c=CMT-12')
+  })
+
+  it('panel: without it, a department goes up to the list as before', async () => {
+    renderPanel(['view', 'edit'], '/departments/dining')
+    expect(await screen.findByRole('link', { name: 'بازگشت' })).toHaveAttribute('href', '/departments')
   })
 })

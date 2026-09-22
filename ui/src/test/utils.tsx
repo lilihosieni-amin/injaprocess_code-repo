@@ -38,7 +38,11 @@ export function createWrapper() {
 // or "the button is absent" passes for the wrong reason. Omit it for a screen
 // that renders no capability-dependent control; a screen that does renders none
 // of them without it.
-export function renderAt(path: string, element: ReactElement, initialUrl: string, session?: SessionDescriptor) {
+export function renderAt(
+  path: string, element: ReactElement,
+  initialUrl: string | { pathname: string; search?: string; state?: unknown },
+  session?: SessionDescriptor,
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   if (session) client.setQueryData(['session'], session)
   return render(

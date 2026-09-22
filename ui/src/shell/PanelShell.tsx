@@ -12,7 +12,7 @@ import { Icon } from '../ui/Icon'
 import { Logo } from '../ui/Logo'
 import { toFa } from '../lib/format'
 import { panelCrumbs } from './crumbs'
-import { answersHistory, canGoBack, sheetHere, traySection } from './back'
+import { answersHistory, canGoBack, commentOrigin, sheetHere, traySection } from './back'
 import { useScrollMemory } from './scroll'
 
 // §6.0 — the nav tray's shell. These entries *navigate*, so they are links in a
@@ -136,7 +136,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
   // `SignOutConfirm` because the mutation is here and because two call sites —
   // the bar and the ≤1080 sheet — raise the same one question.
   const [signingOut, setSigningOut] = useState(false)
-  const { pathname } = useLocation()
+  const { pathname, state } = useLocation()
   const nav = useNavigate()
   const canEdit = can(session, 'edit')
   const sections = canEdit || can(session, 'manage_users') ? [...NAV, COMMENTS] : NAV
@@ -157,6 +157,8 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
    *  predicate and its reasoning live in `./back`. Two process views and an
    *  entry's own facts screen: the routes whose trail cannot know the way in. */
   const byHistory = answersHistory(pathname)
+  // Opened from the comments page: «بازگشت» returns to that comment (`./back`).
+  const origin = commentOrigin(state)
   // §6.0 labels the sheet's administration group. `useId` because the label is
   // what names the group to a screen reader, and two panel shells on one page
   // (the test file mounts several) must not both claim the same id.
@@ -454,7 +456,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
       data-r-crumbbar aria-label="مسیر"
       className="flex items-center gap-s5 px-topbar py-crumb-y bg-tile-v2 border-b border-line flex-none"
     >
-      {back?.to !== undefined && (byHistory && canGoBack() ? (
+      {back?.to !== undefined && (!origin && byHistory && canGoBack() ? (
         /* Same box, same glyph, same word — a `<button>` only because there is
            no href that means "the entry before this one". A `<Link>` whose
            `onClick` called `nav(-1)` would still advertise a URL to the middle
@@ -468,7 +470,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
           بازگشت
         </button>
       ) : (
-        <Link to={back.to} className={`${GHOST} gap-s3 px-s6 py-back-y rounded-input text-fs-sm2 font-bold flex-none`}>
+        <Link to={origin ?? back.to} className={`${GHOST} gap-s3 px-s6 py-back-y rounded-input text-fs-sm2 font-bold flex-none`}>
           {/* **R44** — "in flowchart screen, the back button should be on top
               menu too. like other page." One route used to be excepted here,
               and this guard is where: `!onFlow &&`, an anchored test for

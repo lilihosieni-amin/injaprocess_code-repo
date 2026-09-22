@@ -16,6 +16,7 @@ import { TextField } from '../ui/TextField'
 import { Timeline, type TimelineNode } from '../ui/Timeline'
 import { LoadFailedScreen, ScreenSkeleton } from '../ui/states'
 import { useToast } from '../write/ToastProvider'
+import { fromComment } from '../shell/back'
 import { DecisionModal, type Decision } from './DecisionModal'
 
 /** Panel L4192–4194. */
@@ -286,7 +287,7 @@ function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
             این کامنت به فرآیندی اشاره دارد که بعداً جایگزین شده است. متن اصلی و عکس لحظه‌ای آن نگه داشته شده و به‌طور خودکار به چیز دیگری وصل نمی‌شود.
           </div>
         )}
-        {flow && <Link to={flow}
+        {flow && <Link to={flow} state={fromComment(c.id)}
           className="mt-s7 inline-flex items-center gap-button-icon py-option px-s7 rounded-input font-bold text-fs-sm2 no-underline bg-card text-violet border-hairline border-line">
           مشاهده در فلوچارت
         </Link>}

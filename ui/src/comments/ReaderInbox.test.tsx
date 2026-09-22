@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { screen, fireEvent, within, waitFor, render } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { renderAt } from '../test/utils'
 import { HEAD, VIEWER } from '../test/sessions'
 import type { SessionDescriptor } from '../auth/session'
@@ -29,6 +29,12 @@ function cmt(n: number, over: Partial<Comment> = {}): Comment {
     approvals: 0, notes: [], rejectReason: null, addressed: null, actions: NO,
     ...over,
   }
+}
+
+/** Where a link out of /comments landed, and the origin it carried. */
+function Where() {
+  const loc = useLocation()
+  return <p data-testid="from">{(loc.state as { from?: string } | null)?.from ?? ''}</p>
 }
 
 const page = (items: Comment[]) => ({ items, total: items.length, page: 1, pages: 1 })
@@ -307,6 +313,18 @@ describe('reader inbox', () => {
     await waitFor(() => expect(posted(spy)).toHaveLength(1))
     expect(posted(spy)[0][0]).toBe('/api/comments/CMT-2/withdraw')
     expect(await screen.findByText('پس گرفته شد — در سابقه می‌ماند')).toBeInTheDocument()
+  })
+
+  it('the anchor pill carries the comment it was opened from', async () => {
+    stub({ waiting: [waiting()] })
+    renderAt('*', (
+      <ToastProvider><SurfaceProvider surface="reader"><Routes>
+        <Route path="/comments" element={<CommentsScreen />} />
+        <Route path="*" element={<Where />} />
+      </Routes></SurfaceProvider></ToastProvider>
+    ), '/comments', HEAD)
+    fireEvent.click(await screen.findByRole('link', { name: 'گام «خوشامد»' }))
+    expect(await screen.findByTestId('from')).toHaveTextContent('/comments?c=CMT-1')
   })
 
   it('never renders the word «اصلاح» — an approver adds a note, never an amendment', async () => {
