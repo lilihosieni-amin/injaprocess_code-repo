@@ -232,10 +232,13 @@ def list_comments(request: Request, process: str | None = None,
                   department: str | None = None, user=Depends(require_session)):
     if (process is None) == (department is None):
         raise HTTPException(status_code=422, detail="process یا department")
+    # Closed comments (addressed, rejected, withdrawn) live only on the comments
+    # page (inbox, detail); every list and count outside it shows the open ones.
+    open_ = "c.state IN ('awaiting','approved') AND "
     if process is not None:
-        rows = _visible(request, user, "c.process_id = ?", [process], "c.id")
+        rows = _visible(request, user, open_ + "c.process_id = ?", [process], "c.id")
     else:
-        rows = _visible(request, user, "c.anchor_kind = 'department' AND c.department = ?",
+        rows = _visible(request, user, open_ + "c.anchor_kind = 'department' AND c.department = ?",
                         [department], "c.id")
     return _page(request, user, rows)
 

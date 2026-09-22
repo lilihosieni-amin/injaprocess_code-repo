@@ -176,3 +176,34 @@ def test_an_anchor_id_with_a_trailing_newline_is_404(people):
         r = people["viewer"].post("/api/comments", json={
             "anchorKind": kind, "anchorId": aid, "text": "x"})
         assert r.status_code == 404, (kind, r.text)
+
+
+def test_closed_comments_leave_the_anchor_lists_but_not_the_inbox(people):
+    """Only awaiting and approved comments are listed by process or department;
+    addressed, rejected and withdrawn stay on the comments page (inbox, detail)."""
+    def new(kind, anchor, text):
+        return people["viewer"].post("/api/comments", json={
+            "anchorKind": kind, "anchorId": anchor, "text": text}).json()["id"]
+
+    ids = {}
+    for kind, anchor in (("process", "cooking-001"), ("department", "cooking")):
+        for st in ("awaiting", "approved", "addressed", "rejected", "withdrawn"):
+            ids[kind, st] = new(kind, anchor, f"{kind}-{st}")
+        for st in ("approved", "addressed"):
+            people["head"].post(f"/api/comments/{ids[kind, st]}/approve", json={})
+            people["admin"].post(f"/api/comments/{ids[kind, st]}/approve", json={})
+        people["editor"].post(f"/api/comments/{ids[kind, 'addressed']}/address", json={})
+        people["head"].post(f"/api/comments/{ids[kind, 'rejected']}/reject", json={"reason": "نه"})
+        people["viewer"].post(f"/api/comments/{ids[kind, 'withdrawn']}/withdraw")
+
+    for who in ("viewer", "head", "admin", "editor"):
+        by_proc = people[who].get("/api/comments?process=cooking-001").json()
+        assert sorted(c["state"] for c in by_proc) == ["approved", "awaiting"], who
+        by_dept = people[who].get("/api/comments?department=cooking").json()
+        assert sorted(c["state"] for c in by_dept) == ["approved", "awaiting"], who
+
+    own = people["viewer"].get("/api/comments/inbox?tab=own").json()
+    assert sorted(c["state"] for c in own["items"]) == sorted(
+        ["awaiting", "approved", "addressed", "rejected", "withdrawn"] * 2)
+    for st in ("addressed", "rejected", "withdrawn"):
+        assert people["viewer"].get(f"/api/comments/{ids['process', st]}").json()["state"] == st

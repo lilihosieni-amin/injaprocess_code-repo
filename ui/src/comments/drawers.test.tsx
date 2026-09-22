@@ -168,11 +168,12 @@ describe('department drawer', () => {
   })
 
   it('Panel cards carry the id, the author and the inbox link', async () => {
-    stub([], [cmt(7, { state: 'addressed' }, { kind: 'department', id: 'dining', processId: null })])
+    // The server lists open comments only (awaiting, approved) outside /comments.
+    stub([], [cmt(7, { state: 'approved' }, { kind: 'department', id: 'dining', processId: null })])
     dept(EDITOR, 'panel')
     fireEvent.click(await fab())
     expect(await screen.findByText('CMT-7')).toBeInTheDocument()
-    expect(screen.getByText('رسیدگی‌شده')).toBeInTheDocument()
+    expect(screen.getByText('رسیده به ادیتور')).toBeInTheDocument()
     expect(screen.getByText('سمیرا احمدی')).toBeInTheDocument()
     expect(screen.getByText('خواننده')).toBeInTheDocument() // Panel L2903: « · {authorRole}»
     expect(screen.getByRole('link', { name: 'باز کردن در صندوق کامنت‌ها' })).toHaveAttribute('href', '/comments?c=CMT-7')
