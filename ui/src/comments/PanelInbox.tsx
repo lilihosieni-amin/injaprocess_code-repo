@@ -10,6 +10,8 @@ import { useSession } from '../auth/useSession'
 import { STATUS, ageText, deptLabel, roleLabel, statusLabel } from '../lib/comments'
 import { jalali, toFa } from '../lib/format'
 import { Icon } from '../ui/Icon'
+import { IdBadge } from '../ui/IdBadge'
+import { copyText } from '../lib/clipboard'
 import { NavTabTray } from '../ui/NavTabTray'
 import { Pager } from '../ui/Pager'
 import { TextField } from '../ui/TextField'
@@ -254,6 +256,12 @@ function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
           className="hidden max760:flex items-center gap-s3 py-s4 px-s6 rounded-input font-bold text-fs-sm2 cursor-pointer bg-card text-violet border-hairline border-line">
           <Icon name="chevronStart" px={15} stroke={2.4} />
           فهرست
+        </button>
+        {/* The id the Editor quotes to the Telegram bot (design pre-3e5794e: violet
+            mono chip beside the status). A click copies it. */}
+        <button type="button" onClick={() => { if (copyText(c.id)) toast.show('شناسه کپی شد') }}
+          title="کپی شناسه" className="border-0 bg-transparent p-0 cursor-pointer">
+          <IdBadge tone="violet">{c.id}</IdBadge>
         </button>
         <span className={`text-fs-xxs font-semibold py-hint px-note-x rounded-pill ${st.bg} ${st.fg}`}>{statusLabel(c.state, 'panel')}</span>
         <span className="text-fs-xs text-faint">{ageText(c.createdAt)}</span>

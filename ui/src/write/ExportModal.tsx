@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Button, Spinner } from '../ui/Button'
 import { Dialog } from '../ui/Overlay'
 import { Icon } from '../ui/Icon'
+import { copyViaTextarea } from '../lib/clipboard'
 
 export type ExportModalProps = {
   title: string
@@ -12,22 +13,6 @@ export type ExportModalProps = {
   onClose: () => void
 }
 
-/** Clipboard write for non-secure contexts, where navigator.clipboard is
- *  undefined (the app is reachable over plain http locally, and the modal must
- *  still copy there). Returns whether the copy actually happened, so the button
- *  never claims success the browser refused. */
-function copyViaTextarea(text: string): boolean {
-  const t = document.createElement('textarea')
-  t.value = text
-  t.style.position = 'fixed'
-  t.style.opacity = '0'
-  document.body.appendChild(t)
-  t.select()
-  let ok = false
-  try { ok = document.execCommand('copy') } catch { ok = false }
-  document.body.removeChild(t)
-  return ok
-}
 
 /** The two glyphs beside the heading — a tick when the file is there, the
  *  warning triangle when it is not. Both are the deliverable's own paths

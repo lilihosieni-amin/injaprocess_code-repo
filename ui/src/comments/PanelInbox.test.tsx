@@ -250,6 +250,19 @@ describe('panel inbox', () => {
     expect(within(detail).getAllByText('سمیرا احمدی')[0]).toHaveClass('text-fs-xxs', 'font-bold')
   })
 
+  it('shows the comment id in the detail header and copies it on click (the id the Editor quotes to the bot)', async () => {
+    const c = cmt(8)
+    stub({ waiting: [c] }, [c], EDITOR)
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    open(EDITOR, '/comments?c=CMT-8')
+    const anchorLabel = await screen.findByText('این کامنت به چه چیزی اشاره دارد؟')
+    const detail = anchorLabel.closest('[data-r-cmtdetail]') as HTMLElement
+    const chip = within(detail).getByRole('button', { name: 'CMT-8' })
+    fireEvent.click(chip)
+    expect(writeText).toHaveBeenCalledWith('CMT-8')
+  })
+
   it('marks the open comment’s row as selected; the others stay plain', async () => {
     const a = cmt(5), b = cmt(6)
     stub({ waiting: [a, b] }, [a, b])
