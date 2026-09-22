@@ -46,6 +46,8 @@ export function ReaderInbox() {
   const { data: target } = useComment(cref ?? '', !!cref)
   const [picked, setPicked] = useState<InboxTab | null>(null)
   const [page, setPage] = useState(1)
+  // Reader `cmtOpen` (4528a04): one id, so opening a card closes the other.
+  const [openId, setOpenId] = useState<string | null>(null)
   const tab: InboxTab = picked ?? (target ? (target.author.isMe ? 'own' : 'all') : 'waiting')
   const shown: InboxTab = approver ? tab : 'own'
   const { data, error, refetch } = useInbox(shown, shown === 'all' ? page : 1)
@@ -79,7 +81,9 @@ export function ReaderInbox() {
               چیزی اینجا نیست
             </div>
           )}
-          {data.items.map((c) => <InboxCard key={c.id} c={c} />)}
+          {data.items.map((c) => (
+            <InboxCard key={c.id} c={c} open={openId === c.id} onToggle={(on) => setOpenId(on ? c.id : null)} />
+          ))}
         </div>
         {shown === 'all' && data.pages > 1 && (
           <Pager from={from} to={from + data.items.length - 1} count={data.total}
@@ -123,10 +127,12 @@ const GHOST = `${SUB} border-hairline border-line bg-card text-violet`
 const DANGER = `${SUB} p-s7 text-fs-body-lead border-hairline border-border-danger bg-tile-c2 text-danger`
 const SOLID = `${SUB} p-button-x text-fs-lg border-0 text-card disabled:opacity-60`
 const FIELD = 'text-role-textarea p-s7 rounded-tile leading-loose'
+// Reader L750 (4528a04): `padding:3px 9px 3px 7px` — 9 at the inline start.
+const PILL = 'inline-flex items-center gap-s2 max-w-full py-hint ps-option pe-button-icon rounded-pill bg-value-current text-fs-micro font-semibold text-muted text-start leading-cmt-pill'
 
 type Mode = null | 'note' | 'reject' | 'edit'
 
-function InboxCard({ c }: { c: Comment }) {
+function InboxCard({ c, open, onToggle }: { c: Comment; open: boolean; onToggle: (open: boolean) => void }) {
   const toast = useToast()
   const approve = useApproveComment()
   const reject = useRejectComment()
@@ -139,6 +145,11 @@ function InboxCard({ c }: { c: Comment }) {
   const notes = history(c)
   const info = infoLine(c)
   const busy = approve.isPending || reject.isPending || edit.isPending || withdraw.isPending
+  // Reader L2722–2727 (4528a04): at first glance the anchor and the text; the
+  // context sits behind «جزئیات», and any open mode holds the card open.
+  const own = c.author.isMe
+  const hasMore = notes.length > 0 || !own || (c.state === 'awaiting' && (!!c.approvals || own)) || c.state === 'approved'
+  const expanded = open || mode !== null
 
   const switchTo = (m: Mode, seed = '') => { setMode(mode === m ? null : m); setText(seed) }
   const fail = (e: unknown) => toast.show((e instanceof ApiError && e.detail) || 'انجام نشد')
@@ -154,7 +165,9 @@ function InboxCard({ c }: { c: Comment }) {
     setAsk('reject')
   }
   function confirm() {
-    if (ask === 'reject') {
+    if (ask === 'withdraw') {
+      withdraw.mutate(c.id, { onSuccess: done('پس گرفته شد — در سابقه می‌ماند'), onError: fail })
+    } else if (ask === 'reject') {
       reject.mutate({ ref: c.id, reason: text.trim() },
         { onSuccess: done('رد شد و با دلیل به نویسنده برگشت'), onError: fail })
     } else {
@@ -186,13 +199,11 @@ function InboxCard({ c }: { c: Comment }) {
       <div className="p-s9">
         {c.anchor.orphan ? (
           // D31: the anchor no longer stands, so there is nothing to open (as the Panel).
-          <div className="text-fs-xs text-faint font-semibold leading-snug">
-            دربارهٔ <span className="text-violet font-bold">{anchorText(c)}</span>
-          </div>
+          <span className={PILL}><span className="truncate">{anchorText(c)}</span></span>
         ) : (
-          <Link to={anchorHref(c)} className="inline-flex items-center gap-s2 text-fs-xs text-faint font-semibold text-start leading-snug no-underline">
-            <Icon d="M15 18l-6-6 6-6" px={11} stroke={2.4} className="flex-none" />
-            دربارهٔ <span className="text-violet font-bold underline decoration-dotted underline-offset-anchor">{anchorText(c)}</span>
+          <Link to={anchorHref(c)} className={`${PILL} no-underline cursor-pointer hover:bg-tile-v hover:text-violet`}>
+            <span className="truncate">{anchorText(c)}</span>
+            <Icon d="M15 18l-6-6 6-6" px={10} stroke={2.6} className="flex-none opacity-70" />
           </Link>
         )}
 
@@ -200,7 +211,17 @@ function InboxCard({ c }: { c: Comment }) {
           ? area('حرفتان را ساده بنویسید…', 4)
           : <div className="text-fs-dialog font-bold text-ink leading-sub mt-s4 whitespace-pre-line [text-wrap:pretty]">{c.text}</div>}
 
-        {!c.author.isMe && <div className="text-fs-sm text-muted mt-s6">نوشتهٔ {c.author.name}</div>}
+        {hasMore && (
+          // Reader L762–767
+          <button type="button" aria-expanded={expanded} onClick={() => onToggle(!expanded)}
+            className="flex items-center gap-s4 w-full mt-s7 pt-option-y px-0 pb-0 border-t border-tile-v bg-transparent text-fs-sm font-bold text-violet cursor-pointer text-start">
+            <span className="flex-1">جزئیات</span>
+            <Icon d={expanded ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6'} px={15} stroke={2.4} className="flex-none" />
+          </button>
+        )}
+
+        {expanded && (<>
+        {!own && <div className="text-fs-sm text-muted mt-s6">نوشتهٔ {c.author.name}</div>}
 
         {notes.length > 0 && (
           <div className="flex flex-col gap-s7 mt-s8">
@@ -222,6 +243,7 @@ function InboxCard({ c }: { c: Comment }) {
             <div className="text-fs-body text-ink-current leading-loose [text-wrap:pretty]">{info}</div>
           </div>
         )}
+        </>)}
 
         {c.actions.approve && (
           <>
@@ -265,8 +287,7 @@ function InboxCard({ c }: { c: Comment }) {
               <button type="button" onClick={() => switchTo('edit', c.text)} className={`${GHOST} p-s7 text-fs-body-lead`}>عوض کردن متن</button>
             )}
             {c.actions.withdraw && (
-              <button type="button" disabled={busy} className={DANGER}
-                onClick={() => withdraw.mutate(c.id, { onSuccess: done('پس گرفته شد — در سابقه می‌ماند'), onError: fail })}>
+              <button type="button" disabled={busy} className={DANGER} onClick={() => setAsk('withdraw')}>
                 پس گرفتن
               </button>
             )}

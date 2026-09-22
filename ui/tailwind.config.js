@@ -283,6 +283,7 @@ export default {
         // is 40 and 42. Pointing this key back at `--lh-lockup` would silently
         // paint the panel's number inside the reader.
         lockup: 'var(--role-lh-lockup)',
+        'cmt-pill': 'var(--lh-cmt-pill)', // 1.5 — the reader inbox card's anchor pill (Reader L750)
       },
       borderRadius: {
         // The segmented tray and its tab, per surface (roles.css).

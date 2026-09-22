@@ -959,4 +959,7 @@
   --width-cmt-action: 120px;      /* a decision button, `min-width:120px` (L1880) */
   --width-cmt-action-wide: 150px; /* the note/reject confirm button, `min-width:150px` (L1886) */
   --width-cmt-resolve: 140px;     /* the resolve box's two buttons, `min-width:140px` (L1909) */
+  /* The reader inbox card's anchor pill, `line-height:1.5` (Inja Reader.dc.html
+     L750, 4528a04). No leading token holds 1.5. */
+  --lh-cmt-pill: 1.5;
 }

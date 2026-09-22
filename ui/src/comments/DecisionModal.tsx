@@ -1,7 +1,7 @@
 import { Dialog } from '../ui/Overlay'
 import { useSurface } from '../ui/surface'
 
-export type Decision = 'approve' | 'note' | 'reject' | 'resolve'
+export type Decision = 'approve' | 'note' | 'reject' | 'resolve' | 'withdraw'
 
 /** Reader L962–975 (`cmtAsk`), copy from L2651–2658. */
 const COPY: Record<Decision, { title: string; body: string; ok: string; tone: string }> = {
@@ -26,6 +26,12 @@ const COPY: Record<Decision, { title: string; body: string; ok: string; tone: st
     title: 'این کامنت رسیدگی‌شده ثبت شود؟',
     body: 'کامنت بسته می‌شود و نتیجه‌اش به همهٔ کسانی که آن را دیده‌اند نشان داده می‌شود.',
     ok: 'ثبت می‌کنم', tone: 'bg-violet shadow-violet',
+  },
+  // The Reader author's «پس گرفتن» asks first (lili, 2026-09-22).
+  withdraw: {
+    title: 'این کامنت را پس می‌گیرید؟',
+    body: 'کامنت از زنجیره خارج می‌شود و در سابقه می‌ماند.',
+    ok: 'پس می‌گیرم', tone: 'bg-coral shadow-coral',
   },
 }
 
