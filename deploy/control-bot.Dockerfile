@@ -11,7 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # while 2.1.220 was current, capping claude-opus-5 output at 32K instead of 64K),
 # and an auto-upgrading CLI underneath the pipeline is the failure class behind
 # ADRs 0002-0007. Bump this version deliberately, then rebuild + re-verify.
-RUN npm install -g @anthropic-ai/claude-code@2.1.220
+# NODE_OPTIONS: Node 20's happy-eyeballs gives each connect attempt 250ms, which a
+# slow (VPN) link never meets, so the install dies with ETIMEDOUT. Off for this line only.
+RUN NODE_OPTIONS=--no-network-family-autoselection npm install -g @anthropic-ai/claude-code@2.1.220
 
 # uv, for the pinned tool install. Installed from PyPI (the astral.sh install
 # script host is not reachable from the build network); uv lands on the default
