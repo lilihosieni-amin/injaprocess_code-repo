@@ -217,7 +217,9 @@ function InboxCard({ c, open, onToggle }: { c: Comment; open: boolean; onToggle:
           <button type="button" aria-expanded={expanded} onClick={() => onToggle(!expanded)}
             className="flex items-center gap-s4 w-full mt-s7 pt-option-y px-0 pb-0 border-t border-tile-v bg-transparent text-fs-sm font-bold text-violet cursor-pointer text-start">
             <span className="flex-1">جزئیات</span>
-            <Icon d={expanded ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6'} px={15} stroke={2.4} className="flex-none" />
+            {expanded
+              ? <Icon d="M6 15l6-6 6 6" px={15} stroke={2.4} className="flex-none" />
+              : <Icon name="chevronDown" px={15} stroke={2.4} className="flex-none" />}
           </button>
         )}
 

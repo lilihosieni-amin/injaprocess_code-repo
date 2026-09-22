@@ -321,7 +321,6 @@ export default {
         sheet: 'var(--radius-sheet)',              // 22px — the drawer-as-sheet
       },
       borderWidth: { hairline: 'var(--border-hairline)', note: 'var(--border-note)' }, // note — Reader L766
-      textUnderlineOffset: { anchor: 'var(--underline-anchor)' }, // Reader L753
       flexBasis: { 'tab-half': 'var(--basis-tab-half)' }, // Reader L72
       boxShadow: {
         card: 'var(--shadow-card)', 'card-hover': 'var(--shadow-card-hover)',

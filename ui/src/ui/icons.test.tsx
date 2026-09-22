@@ -798,7 +798,7 @@ describe('Icon', () => {
       'sc.icon', 'newPwIcon', 'confDlgIcon',
     ])
     expect(boundSites(DELIVERABLES[1][1])).toEqual([
-      'd.icon', 'p.chevron', 'bs.chevron', 'st.chevron', 'e.d',
+      'd.icon', 'p.chevron', 'bs.chevron', 'st.chevron', 'e.d', 'c.moreChevron',
     ])
     // …and the strings those sites are fed. They USED to be the same seventeen
     // in both files, which was itself a finding: the reader binds `confDlgIcon`
@@ -807,12 +807,14 @@ describe('Icon', () => {
     // count: a count goes green again the first time one glyph leaves and
     // another arrives, and the four strings below are exactly what a reader of
     // this file needs to know before quoting either deliverable.
-    expect(BOUND.map(([n, ds]) => [n, ds.size])).toEqual([['panel', 15], ['reader', 17]])
+    expect(BOUND.map(([n, ds]) => [n, ds.size])).toEqual([['panel', 15], ['reader', 18]])
     const only = (a: number, b: number) =>
       [...BOUND[a][1]].filter((d) => !BOUND[b][1].has(d)).sort()
     expect(only(0, 1)).toEqual([PANEL_LENS, PANEL_LENS + STRIKE].sort())
+    // 4528a04 gave the reader card's «جزئیات» toggle a bound chevron
+    // (`c.moreChevron`); its closed glyph is the one string the panel has not.
     expect(only(1, 0)).toEqual(
-      [READER_LENS, READER_LENS + STRIKE, EXPORT_DOC, EXPORT_LIST].sort())
+      [READER_LENS, READER_LENS + STRIKE, EXPORT_DOC, EXPORT_LIST, 'M6 9l6 6 6-6'].sort())
 
     // WHAT THIS SET TAKES FROM THE BOUND DIALECT. Four keys, and every one of
     // them was called authored or undrawn at some point in this file's history.
@@ -820,7 +822,8 @@ describe('Icon', () => {
       (Object.keys(ICONS) as (keyof typeof ICONS)[]).map((n) => [n, boundIn(n)]),
     )).toEqual({
       chevronStart: [], chevronEnd: ['panel', 'reader'], chevronPrev: [], chevronNext: [],
-      chevronDown: [], chevronUp: [],   // …the same three points backwards — below
+      chevronDown: ['reader'],          // the reader card's closed «جزئیات» (4528a04)
+      chevronUp: [],                    // …the same three points backwards — below
       check: ['panel', 'reader'],       // the confirm dialog's OK arm
       search: [], user: [], userBust: [], dots: [], file: [], inbox: [], logout: [],
       home: [], menu: [], comment: [], funnel: [], trash: [],
