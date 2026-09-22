@@ -345,12 +345,15 @@ def require_session(request: Request) -> sqlite3.Row:
     return user
 
 
-def descriptor(conn: sqlite3.Connection, user: sqlite3.Row) -> dict:
+def descriptor(conn: sqlite3.Connection, user: sqlite3.Row,
+               comments: sqlite3.Connection | None = None) -> dict:
     """What `GET /api/auth/me` says about the signed-in person (D47).
 
     Field names are the SPA's (`ui/src/auth/session.ts`), which is the only
     consumer. Capabilities and scopes are reported, never enforced here.
     """
+    # here, not at the top: comment_rules → access → auth is a cycle
+    from . import comment_rules
     role = conn.execute("SELECT name, capabilities FROM roles WHERE id = ?",
                         (user["role_id"],)).fetchone()
     scopes = [r["scope"] for r in conn.execute(
@@ -366,10 +369,9 @@ def descriptor(conn: sqlite3.Connection, user: sqlite3.Row) -> dict:
         "scopes": scopes,
         "supervisor": supervisor["username"] if supervisor is not None else None,
         "canSupervise": bool(user["can_supervise"]),
-        # Nothing produces approvals yet — comments arrive in a later phase. The
-        # key is here from the start because the reader shell draws a badge from
-        # it, and an absent key reads as `undefined` rather than as none.
-        "pendingApprovals": 0,
+        # D68: what the viewer can act on now — comments.db's business.
+        "pendingApprovals": (comment_rules.pending_count(conn, comments, user)
+                             if comments is not None else 0),
     }
 
 

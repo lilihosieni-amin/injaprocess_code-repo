@@ -13,6 +13,7 @@ import { UserDetail } from './screens/UserDetail'
 import { Profile } from './screens/Profile'
 import { FactsList } from './facts/FactsList'
 import { FactDetail } from './facts/FactDetail'
+import { CommentsScreen } from './comments/CommentsScreen'
 
 export const appRoutes: RouteObject[] = [
   { path: '/login', element: <SignIn /> },
@@ -61,6 +62,8 @@ export const appRoutes: RouteObject[] = [
       // the catch-all below sends every unknown path to /departments, so a
       // missing route is a silent redirect and not a blank page.
       { path: '/profile', element: <Profile /> },
+      // P4 — the comments inbox; the screen picks the surface's own inbox.
+      { path: '/comments', element: <CommentsScreen /> },
     ],
   },
   { path: '*', element: <Navigate to="/departments" replace /> },

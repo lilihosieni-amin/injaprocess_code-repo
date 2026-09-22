@@ -236,11 +236,13 @@ export default {
         'fs-h1-reader-list': 'var(--fs-h1-reader-list)', // 30px
         'fs-h1-reader-dept': 'var(--fs-h1-reader-dept)', // 24px
         'fs-body-reader': 'var(--fs-body-reader)',       // 15px
+        'fs-compose-reader': 'var(--fs-compose-reader)', // 15.5px — Reader composer textarea (L952)
         // R3 — the four type roles that CHANGE with the surface. Everything
         // else on this scale is a fixed step; these four are the scale layer,
         // and they are the only writable form the roles have: guards.test.ts
         // bans `text-[…]`, so a role with no key here cannot be written at all.
         'role-body': 'var(--role-fs-body)',    // 14px panel / 15px reader
+        'role-count': 'var(--role-fs-count)',  // 11px panel / 11.5px reader — the FAB badge
         'role-dense': 'var(--role-fs-dense)',  // 13px panel / 14.5px reader
         'role-title': 'var(--role-fs-title)',  // 22px panel / 30px reader
         'role-hero': 'var(--role-fs-hero)',    // 34px panel / 26px reader
@@ -249,6 +251,7 @@ export default {
         // textarea one step above it. --role-fs-dense cannot express that — owner
         // ruling R12 makes it one size on both surfaces.
         'role-textarea': 'var(--role-fs-textarea)', // 13px panel / 16px reader
+        'role-tab': 'var(--role-fs-tab)',           // 12.5px panel / 13.5px reader — the tray tab
       },
       fontWeight: {
         regular: 'var(--fw-regular)', semibold: 'var(--fw-semibold)',
@@ -282,6 +285,8 @@ export default {
         lockup: 'var(--role-lh-lockup)',
       },
       borderRadius: {
+        // The segmented tray and its tab, per surface (roles.css).
+        'role-tab': 'var(--role-tab-radius)', 'role-tray': 'var(--role-tray-radius)',
         badge: 'var(--radius-badge)', chip: 'var(--radius-chip)', control: 'var(--radius-control)',
         card: 'var(--radius-card)', doc: 'var(--radius-doc)', panel: 'var(--radius-panel)',
         button: 'var(--radius-md)',
@@ -314,7 +319,9 @@ export default {
         // Written `rounded-t-sheet` at its one consumer, src/ui/Overlay.tsx.
         sheet: 'var(--radius-sheet)',              // 22px — the drawer-as-sheet
       },
-      borderWidth: { hairline: 'var(--border-hairline)' },
+      borderWidth: { hairline: 'var(--border-hairline)', note: 'var(--border-note)' }, // note — Reader L766
+      textUnderlineOffset: { anchor: 'var(--underline-anchor)' }, // Reader L753
+      flexBasis: { 'tab-half': 'var(--basis-tab-half)' }, // Reader L72
       boxShadow: {
         card: 'var(--shadow-card)', 'card-hover': 'var(--shadow-card-hover)',
         coral: 'var(--shadow-coral)', violet: 'var(--shadow-violet)', green: 'var(--shadow-green)',
@@ -328,6 +335,7 @@ export default {
         // §4.2 — the comment FAB's own two-layer coral shadow. No other shadow
         // token matches it, so `shadow-coral` is not a substitute.
         fab: 'var(--shadow-fab)',
+        composer: 'var(--shadow-composer)', // P4 — Reader L904/L941, Panel L2878
         // The department feature card's heavier rest shadow — one use, and the
         // ledger's "Referred to the owner" #9 reads it as a role rather than as
         // drift. If that is overturned the card takes `shadow-card` and this key
@@ -350,18 +358,22 @@ export default {
         'page-label': 'var(--width-page-label)', // 74px  — the pager's page label
         stat: 'var(--width-stat)',               // 96px  — the header stat tile
         tab: 'var(--width-tab)',                 // 132px — an audit tab
-        count: 'var(--size-count)',              // 21px  — the FAB count badge
+        count: 'var(--role-count)',              // 21px panel / 22px reader — the FAB count badge
         // …and the chrome's own count badge, which is the same shape — a floor
         // on one axis, a fixed box on the other — so it is carried the same way
         // and appears on `width` nowhere. 19px, not `count`'s 21px: that one is
         // the FAB's.
         'count-chrome': 'var(--size-count-chrome)', // 19px — the top-bar badge
+        'count-sheet': 'var(--size-count-sheet)',   // 22px — the menu sheet's count pill, Panel L2993
         // The flow-bar mint (R47). A second menu popover FLOOR: `menu` above is
         // the 265px the panel shell's «مدیریت» popover is drawn at, and this is
         // the 225px the flowchart's ⋯ menu is (panel 576, reader 336). Two
         // menus, two floors — collapsing them would crop one label or pad the
         // other, which is the reading `menu`'s own token comment took.
         'menu-flow': 'var(--width-menu-flow)',   // 225px — the flow bar's ⋯ menu
+        'cmt-action': 'var(--width-cmt-action)',           // 120px — Panel L1880
+        'cmt-action-wide': 'var(--width-cmt-action-wide)', // 150px — Panel L1886
+        'cmt-resolve': 'var(--width-cmt-resolve)',         // 140px — Panel L1909
       },
       // §5.2 Dropdown — the popover's scroll cap. On `maxHeight` and not on
       // `spacing`: a cap is not a step, the same reason the three search-icon
@@ -440,7 +452,6 @@ export default {
         'stat-x-grid': 'var(--pad-stat-x-grid)',              // 17px
         'stat-grid': 'var(--space-stat-grid)',                // 20px
         'stat-label': 'var(--space-stat-label)',              // 7px
-        'tab-y-audit': 'var(--pad-tab-y-audit)',              // 9px
         'tab-flow': 'var(--gap-tab-flow)',                    // 3px
         'note-y': 'var(--pad-note-y)',                        // 9px
         'note-x': 'var(--pad-note-x)',                        // 11px
@@ -466,6 +477,9 @@ export default {
         'crumb-y': 'var(--pad-crumb-y)',                      // 9px  — the breadcrumb strip
         'back-y': 'var(--pad-back-y)',                        // 7px  — its «بازگشت» button
         'topbar-reader': 'var(--pad-topbar-reader)',          // 20px — the reader's chrome
+        'role-tab-y': 'var(--role-pad-tab-y)',               // 9px panel / 11px reader — the tray tab
+        'role-tab-x': 'var(--role-pad-tab-x)',               // 10px panel / 8px reader
+        'cmt-empty-y': 'var(--pad-cmt-empty-y)',              // 34px — the inbox empty card, Reader L739
         // The reader-chrome mint. `button-icon` is the FIFTH 7px key on this
         // scale (`popover`, `stat-label`, `stat-dot`, `back-y` are the others)
         // and the first that is a button's icon gap; `button-x` is the design's
@@ -480,6 +494,7 @@ export default {
         // margin and the reader's chrome gutter. Its vertical 12 is `py-s6` and
         // needs nothing new.
         'toast-x': 'var(--pad-toast-x)',                      // 20px — the toast's inline padding
+        'drawer-section': 'var(--space-drawer-section)',      // 20px — P4 step comments in the flow drawer (Reader L632)
         // The flow-bar mint (owner ruling R47) — six of the nine names the
         // flowchart screen needed, and every one of them a number this scale
         // already carries under another role. `flowbar-y` is the SIXTH 11px key,
@@ -525,6 +540,8 @@ export default {
         // off, as it does for every key above.
         subtitle: 'var(--width-subtitle)',         // 440px — departments subtitle
         intro: 'var(--width-intro)',               // 600px — intro paragraph
+        'cmt-detail': 'var(--width-cmt-detail)',   // 660px — Panel L1806
+        'cmt-none': 'var(--width-cmt-none)',       // 320px — Panel L1938
       },
       // The ten `--size-*` tokens R3 adds are square boxes, so each is named once
       // and carried on both scales — `w-glyph`/`h-glyph` is one name on two
@@ -579,6 +596,7 @@ export default {
         // has. NOT `logo-bar`, which is also 38px and is the logo IMAGE.
         'menu-more-reader': 'var(--size-menu-more-reader)', // 38px — the reader's
         login: 'var(--width-login)',                    // 380px — the sign-in card
+        composer: 'var(--width-composer)',              // 380px — P4 composer + dept drawer
         dot: 'var(--size-dot)',                         // 9px  — the table state dot
         chev: 'var(--size-chev)',                       // 30px — the table chevron cell
         'glyph-tile': 'var(--size-glyph-tile)',         // 42px — §6.15's glyph tile
@@ -587,6 +605,7 @@ export default {
         // design sets a width on it and no height. NOT `menu-more-reader`, which
         // is 38px too and is the reader chrome's own square button.
         'flowback-mobile': 'var(--width-flowback-mobile)', // 38px — at ≤760
+        'cmt-list': 'var(--width-cmt-list)',            // 400px — Panel L1771
       },
       height: {
         tile: 'var(--role-tile)', tool: 'var(--size-tool)', avatar: 'var(--size-avatar)',
@@ -620,10 +639,11 @@ export default {
         // The FAB badge is `min-width:21px; height:21px` — a floor on one axis
         // and a fixed box on the other — so `count` is on `minWidth` above and
         // on `height` here, and on `width` nowhere: it never sets one.
-        count: 'var(--size-count)',
+        count: 'var(--role-count)',
         // …and the chrome's badge, 19px, carried the same way for the same
         // reason. Both shells draw it; neither draws it at 21.
         'count-chrome': 'var(--size-count-chrome)',
+        'count-sheet': 'var(--size-count-sheet)',
       },
       // §5.2 — the search field's icon sits `--inset-search-icon` from the edge.
       // It is an inset, not spacing: naming it here keeps `start-search-icon`

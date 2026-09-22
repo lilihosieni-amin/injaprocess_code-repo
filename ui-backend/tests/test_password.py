@@ -196,20 +196,25 @@ def test_the_two_writes_run_without_opening_a_transaction(data_root, tmp_path):
     first time two requests overlap.
     """
     client, cfg = signed_in_client(data_root, tmp_path / "app.db")
-    conn = client.app.state.db
+    # `app.state.db` is a connection per worker thread (`db.PerThread`), so a
+    # trace set from this thread would watch the wrong one. One request at a
+    # time, so a single plain connection in its place is safe and is traced.
+    conn = client.app.state.db = db.connect(client.app.state.cfg.app_db)
     statements: list[str] = []
     conn.set_trace_callback(statements.append)
     try:
         assert client.post("/api/auth/password",
                            json={"current": PW, "next": "brandnew"}).status_code == 204
     finally:
+        in_transaction = conn.in_transaction
         conn.set_trace_callback(None)
+        conn.close()
     assert statements, "the trace callback saw nothing; this test proves nothing"
     opened = [s for s in statements
               if s.strip().upper().startswith(("BEGIN", "COMMIT", "ROLLBACK",
                                                "SAVEPOINT", "RELEASE"))]
     assert opened == []
-    assert conn.in_transaction is False
+    assert in_transaction is False
 
 
 def test_the_two_refusals_do_not_say_the_same_thing(data_root, tmp_path):

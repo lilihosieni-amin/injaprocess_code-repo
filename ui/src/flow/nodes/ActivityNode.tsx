@@ -20,6 +20,14 @@ export function ActivityNode({ data }: NodeProps<Node<FlowNodeData>>) {
           className="absolute top-1 right-1 min-w-[17px] h-[17px] px-1 flex items-center justify-center bg-coral text-white rounded-full text-[9.5px] font-extrabold cursor-pointer"
         >! <span>{toFa(data.conflicts)}</span></button>
       )}
+      {/* P4 — Reader L523–528 (= Panel L819–822). Only the flow screen passes a
+          count; the export never does, so it draws nothing there. */}
+      {(data.commentCount ?? 0) > 0 && (
+        <span title="کامنت دارد" className="absolute bottom-1 end-[5px] inline-flex items-center gap-[3px] py-px ps-1.5 pe-1 bg-tile-v text-violet rounded-pill text-[9px] font-bold">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+          {toFa(data.commentCount!)}
+        </span>
+      )}
       <span className="id-badge bg-tile-v2 text-muted" dir="ltr">{n.id}</span>
       <div className="font-bold text-[12.5px] text-ink leading-tight mt-1 break-words">{n.label}</div>
       {n.actor && (

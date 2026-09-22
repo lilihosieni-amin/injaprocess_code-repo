@@ -4,6 +4,12 @@ import { panelCrumbs, readerBack, readerHere } from './crumbs'
 const name = (code: string) => ({ dining: 'سالن', cooking: 'پخت' }[code] ?? code)
 
 describe('panelCrumbs', () => {
+  it('names the comments inbox under «دپارتمان‌ها» (Panel L4784, P4)', () => {
+    expect(panelCrumbs('/comments', () => '')).toEqual([
+      { label: 'دپارتمان‌ها', to: '/departments' }, { label: 'صندوق کامنت‌ها' },
+    ])
+  })
+
   it('gives the home screen a trail of one, going nowhere', () => {
     expect(panelCrumbs('/departments', name)).toEqual([{ label: 'دپارتمان‌ها' }])
   })
@@ -90,7 +96,7 @@ describe('panelCrumbs', () => {
     for (const path of [
       '/departments/dining', '/departments/dining/overview',
       '/processes/dining-003', '/processes/dining-003/flow',
-      '/users', '/users/09120000000', '/visibility', '/profile', '/facts',
+      '/users', '/users/09120000000', '/visibility', '/profile', '/facts', '/comments',
     ]) {
       const trail = panelCrumbs(path, name)
       expect(trail.length, path).toBeGreaterThan(1)

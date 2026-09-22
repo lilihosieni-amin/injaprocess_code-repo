@@ -1,10 +1,11 @@
 """Every endpoint, read through the permission gate (spec D56, §11 tests 6 and 10).
 
-Thirty-two routes. Twenty-eight are gated on one capability at one target; four
+Thirty-four routes. Twenty-eight are gated on one capability at one target; six
 are not — three span departments and are filtered per row rather than gated,
 because a list that refuses outright would take a two-department head's whole
-screen away over one department they cannot reach, and one reads the estate's
-workbook roll, which belongs to no department.
+screen away over one department they cannot reach, one reads the estate's
+workbook roll, which belongs to no department, and two list comments, filtered
+per row by D66.
 
 Eighteen of the twenty-eight name a department. The other ten name `*`: the two
 visibility routes, because there is one global policy (D16) and so no department
@@ -193,7 +194,12 @@ GLOBAL_TARGET = ("/api/visibility", "/api/visibility/node_actor",
 #: reads the estate's workbook roll, which belongs to no department at all
 #: (QF-4). All four still refuse a stranger, which is what this list is for.
 FILTERED = ["/api/departments", "/api/pending", "/api/facts",
-            "/api/facts/branches"]
+            "/api/facts/branches",
+            #: The comment listings: filtered per row by D66 (who sees which
+            #: comment), never refused — an author keeps their own comments
+            #: after losing the department. Their rules are pinned in
+            #: test_comments_api.py and test_comment_rules.py.
+            "/api/comments/inbox?tab=all", "/api/comments?department=cooking"]
 
 #: The facts routes, whose capability arm is an **OR over `PANEL_CAPABILITIES`**
 #: answering the uniform **404** — not a single capability answering 403.

@@ -190,12 +190,24 @@ const SCALE: { role: string; panel: string; reader: string; panelPx: string; rea
   { role: '--role-fs-textarea', panel: 'var(--fs-sm)', reader: 'var(--fs-doc-body)', panelPx: '13px', readerPx: '16px' },
   { role: '--role-iconbtn', panel: 'var(--size-iconbtn)', reader: 'var(--size-iconbtn-reader)', panelPx: '40px', readerPx: '42px' },
   { role: '--role-fab', panel: 'var(--size-fab)', reader: 'var(--size-fab-reader)', panelPx: '52px', readerPx: '56px' },
+  // The FAB's count badge, Panel L2870 (21px/11px) vs Reader L897 (22px/11.5px).
+  { role: '--role-count', panel: 'var(--size-count)', reader: 'var(--size-count-reader)', panelPx: '21px', readerPx: '22px' },
+  { role: '--role-fs-count', panel: 'var(--fs-xxs)', reader: 'var(--fs-xs)', panelPx: '11px', readerPx: '11.5px' },
   // The fourteenth row, and the only one that is not a length. The brand lockup
   // is drawn 1.25 in the panel (`Inja Panel.dc.html:120`) and 1.3 in the reader
   // (`Inja Reader.dc.html:136`); the shell mint first collapsed the two onto the
   // panel's number, and the owner ruled it back out as a per-surface role. The
   // guard below carries the matching carve-out.
   { role: '--role-lh-lockup', panel: 'var(--lh-lockup)', reader: 'var(--lh-lockup-reader)', panelPx: '1.25', readerPx: '1.3' },
+  // P4 — the segmented tray (NavTabTray). The panel keeps owner ruling's 9/10,
+  // 12.5px, radius 9 in a radius-12 tray; the reader's comments tray draws
+  // `padding:11px 8px; border-radius:10px; font-size:13.5px` in a radius-13 tray
+  // (Inja Reader.dc.html L731–733).
+  { role: '--role-pad-tab-y', panel: 'var(--pad-tab-y-audit)', reader: 'var(--pad-tab-y-reader)', panelPx: '9px', readerPx: '11px' },
+  { role: '--role-pad-tab-x', panel: 'var(--space-5)', reader: 'var(--space-4)', panelPx: '10px', readerPx: '8px' },
+  { role: '--role-fs-tab', panel: 'var(--fs-sm2)', reader: 'var(--fs-menu)', panelPx: '12.5px', readerPx: '13.5px' },
+  { role: '--role-tab-radius', panel: 'var(--radius-sm)', reader: 'var(--radius-control)', panelPx: '9px', readerPx: '10px' },
+  { role: '--role-tray-radius', panel: 'var(--radius-md)', reader: 'var(--radius-lg)', panelPx: '12px', readerPx: '13px' },
 ]
 
 describe('R3 — the two scales differ where the ruling says they differ', () => {
@@ -245,7 +257,9 @@ describe('R3 — the two scales differ where the ruling says they differ', () =>
     // --role-fs-textarea in. It is 14 now because the reader-chrome ruling added
     // --role-lh-lockup — a genuinely new row, the first since, and the first that
     // is a leading rather than a length.
-    expect(SCALE).toHaveLength(14)
+    // 19 after P4 added the segmented tray's five rows, 21 after the FAB count
+    // badge's two rows (--role-count / --role-fs-count).
+    expect(SCALE).toHaveLength(21)
   })
 
   it('leaves the padding the two surfaces share on :root alone', () => {

@@ -51,7 +51,7 @@ export function FAB({
         <span
           data-fab-badge
           aria-hidden
-          className="absolute -top-half -start-half min-w-count h-count px-s3 inline-flex items-center justify-center rounded-pill bg-violet text-card text-fs-xxs font-bold border-2 border-ink"
+          className="absolute -top-half -start-half min-w-count h-count px-s3 inline-flex items-center justify-center rounded-pill bg-violet text-card text-role-count font-bold border-2 border-ink"
         >
           {toFa(count)}
         </span>

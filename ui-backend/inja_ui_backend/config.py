@@ -16,6 +16,10 @@ class Settings:
     #: DATA_ROOT rather than inside it — it is operational state and must never
     #: appear in the data-repo working tree.
     app_db: Path
+    #: Comments and their approval workflow (D1). Beside `app_db` by default; the
+    #: one store shared with control-bot, so never inside DATA_ROOT and never the
+    #: same file as `app_db` (D5).
+    comments_db: Path
     session_signing_key: str
     session_ttl: int
     #: How many reverse proxies stand in front of this process, and therefore how
@@ -88,10 +92,22 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
             " session id; DATA_ROOT is readable by the pipeline runtime and is a"
             " git working tree that gets pushed. Put it on its own volume"
             " (the deployed stack uses /state/app.db).")
+    comments_db = (Path(env["COMMENTS_DB"]) if env.get("COMMENTS_DB")
+                   else app_db.parent / "comments.db")
+    resolved_cdb = comments_db.resolve()
+    if resolved_cdb == resolved_root or resolved_root in resolved_cdb.parents:
+        raise RuntimeError(
+            f"COMMENTS_DB must not be inside DATA_ROOT: {resolved_cdb} is inside"
+            f" {resolved_root}. DATA_ROOT is a git working tree that gets pushed.")
+    if resolved_cdb == resolved_db:
+        raise RuntimeError(
+            "COMMENTS_DB must not be APP_DB: comments.db is mounted into control-bot"
+            " and app.db must never be (D5).")
     return Settings(
         data_root=data_root,
         schema_dir=schema_dir,
         app_db=app_db,
+        comments_db=comments_db,
         session_signing_key=env["SESSION_SIGNING_KEY"],
         # `or` and not a default argument: `config/ui-backend.env.example` leaves
         # EXPORT_USERNAME, EXPORT_DIR and UI_STATIC_DIR blank on purpose, so "clear

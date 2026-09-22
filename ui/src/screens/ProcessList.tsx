@@ -20,6 +20,7 @@ import { ExportMenu, useExportActions } from '../write/ExportMenu'
 import { refusalStatus } from '../api/client'
 import { ScreenSkeleton } from '../ui/states'
 import { RefusalScreen } from './Refusal'
+import { DeptFab } from '../comments/DeptDrawer'
 
 /**
  * The row menu's glyph — `Inja Panel.dc.html:356`, three filled dots stacked.
@@ -687,6 +688,7 @@ export function ProcessList() {
           that starts the export, and `[data-r-plistactions]` — where the bar's
           own copy lives — is `display:none` at the width this one is used at. */}
       {exports.modal}
+      <DeptFab code={code} />
     </div>
   )
 }

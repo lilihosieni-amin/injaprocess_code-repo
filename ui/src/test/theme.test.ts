@@ -320,6 +320,7 @@ const EXPECTED: Record<string, string | string[]> = {
   // R3's scale layer. These four are the ONLY utilities that name a --role-*
   // property rather than a token, which is what makes one class two sizes.
   'text-role-body': 'var(--role-fs-body)',
+  'text-role-count': 'var(--role-fs-count)',
   'text-role-dense': 'var(--role-fs-dense)',
   'text-role-title': 'var(--role-fs-title)',
   'text-role-hero': 'var(--role-fs-hero)',
@@ -559,13 +560,12 @@ const EXPECTED: Record<string, string | string[]> = {
   'px-stat-x-grid': 'var(--pad-stat-x-grid)',
   'my-stat-grid': 'var(--space-stat-grid)',
   'mt-stat-label': 'var(--space-stat-label)',
-  'py-tab-y-audit': 'var(--pad-tab-y-audit)',
   'min-w-tab': 'var(--width-tab)',
   'gap-tab-flow': 'var(--gap-tab-flow)',
   'py-note-y': 'var(--pad-note-y)',
   'px-note-x': 'var(--pad-note-x)',
-  'h-count': 'var(--size-count)',
-  'min-w-count': 'var(--size-count)',
+  'h-count': 'var(--role-count)',
+  'min-w-count': 'var(--role-count)',
   // The single minting pass. The stacking ladder reads the ROLE and not the
   // token — the same shape `w-tile -> --role-tile -> --size-tile` has — so the
   // ladder's semantic layer stays in roles.css, which is the file that IS the
@@ -632,6 +632,8 @@ const EXPECTED: Record<string, string | string[]> = {
   'leading-lockup': 'var(--role-lh-lockup)',
   'min-w-count-chrome': 'var(--size-count-chrome)',
   'h-count-chrome': 'var(--size-count-chrome)',
+  'min-w-count-sheet': 'var(--size-count-sheet)',
+  'h-count-sheet': 'var(--size-count-sheet)',
   'px-inbox-x': 'var(--pad-inbox-x)',
   'py-crumb-y': 'var(--pad-crumb-y)',
   'py-back-y': 'var(--pad-back-y)',
@@ -655,6 +657,31 @@ const EXPECTED: Record<string, string | string[]> = {
   // and it compiles, paints identically, and moves the wrong element the day
   // the empty card or the reader's chrome changes.
   'px-toast-x': 'var(--pad-toast-x)',
+  // P4 — the flow drawer's step comment section (Reader L632).
+  'mt-drawer-section': 'var(--space-drawer-section)',
+  // P4 — the composer's three mints (Reader L952, L903–904/L940–941).
+  'text-fs-compose-reader': 'var(--fs-compose-reader)',
+  'shadow-composer': 'var(--shadow-composer)',
+  'w-composer': 'var(--width-composer)',
+  // P4 — the reader inbox's three mints (Reader L766, L739, L753).
+  'border-s-note': 'var(--border-note)',
+  'py-cmt-empty-y': 'var(--pad-cmt-empty-y)',
+  'underline-offset-anchor': 'var(--underline-anchor)',
+  // P4 fix — the segmented tray's per-surface roles (Reader L731–733, L72).
+  'py-role-tab-y': 'var(--role-pad-tab-y)',
+  'px-role-tab-x': 'var(--role-pad-tab-x)',
+  'text-role-tab': 'var(--role-fs-tab)',
+  'rounded-role-tab': 'var(--role-tab-radius)',
+  'rounded-role-tray': 'var(--role-tray-radius)',
+  'basis-tab-half': 'var(--basis-tab-half)',
+  // P4 Task 13 — the panel inbox's six lengths (Panel L1771, L1806, L1938,
+  // L1880, L1886, L1909).
+  'w-cmt-list': 'var(--width-cmt-list)',
+  'max-w-cmt-detail': 'var(--width-cmt-detail)',
+  'max-w-cmt-none': 'var(--width-cmt-none)',
+  'min-w-cmt-action': 'var(--width-cmt-action)',
+  'min-w-cmt-action-wide': 'var(--width-cmt-action-wide)',
+  'min-w-cmt-resolve': 'var(--width-cmt-resolve)',
   // The flow-bar mint (owner ruling R47). Nine names for the flowchart screen,
   // which F16 froze for the whole rebuild, and every one of them a number this
   // theme already carries under another role — so every one of them is a pairing
@@ -851,7 +878,7 @@ describe('R1 (structural) — every design token has a utility name', () => {
     // ruling removed. --role-fs-textarea is the role that carries the genuine
     // per-surface difference the dense role was being asked to express.
     for (const role of ['--role-fs-body', '--role-fs-textarea', '--role-fs-title',
-      '--role-fs-hero', '--role-tile', '--role-iconbtn', '--role-fab']) {
+      '--role-fs-hero', '--role-tile', '--role-iconbtn', '--role-fab', '--role-count', '--role-fs-count']) {
       expect([...(roles.get(role) ?? [])].length, role).toBe(2)
     }
     // …and the role R12 collapsed resolves to exactly one, so a reader override
@@ -1516,7 +1543,7 @@ const UNPAINTED: string[] = [
   'bg-link', 'bg-link-hover', 'text-violet-on-dark', 'text-violet-on-dark-body',
   'text-strong', 'text-ghost',
   'text-ok',
-  'text-danger', 'text-link', 'text-link-hover',
+  'text-link', 'text-link-hover',
   // `border-border-ok` left this list under owner ruling R48. R47 had kept it
   // here on purpose and said why: its only site is the design's confirm PILL —
   // `border:1.5px solid` the green edge when the mark is on (panel 599, 3585) —
@@ -1549,7 +1576,7 @@ const UNPAINTED: string[] = [
   // the disclosure, the tick), and Chrome's UA stylesheet gives a button its
   // OWN font — so the app's stack has to be written back on each of them, which
   // is the one place in the product where naming the family is not redundant.
-  'font-regular',   'shadow-sheet', 'shadow-drawer',
+  'font-regular',
   'shadow-card-dark', 'shadow-stat-dark', 'shadow-guide-hover', 'shadow-ring-flash',
   'p-screen-x', 'p-screen-y',
   'p-topbar', 'p-half', 'gap-topbar',
@@ -1568,16 +1595,15 @@ const UNPAINTED: string[] = [
   'w-avatar',
   'h-avatar', 'w-logo-bar', 'h-logo-bar', 'w-touch', 'h-touch', 'w-tile-reader',
   'h-tile-reader', 'w-iconbtn-reader',
-  'h-iconbtn-reader', 'w-fab-reader',
+  'h-iconbtn-reader',
   // Owner ruling R36 gave the nested rung a consumer. `w-tick-nested`,
   // `h-tick-nested`, `rounded-tick-nested`, `w-tick-glyph-nested` and
   // `h-tick-glyph-nested` came off this list here: the design draws a 16px tick
   // at radius 5 inside another option (panel 1386), and ScopePicker's nested
   // view menu and Dropdown's multi-select option both draw it now that a tick
   // takes the rung its site calls for. CEILING below follows them down by five.
-  'h-fab-reader', 'max-w-doc',
+  'max-w-doc',
     'max-w-audit', 'duration-fast',
-  'p-compose',
   'py-tick-nested-y', 'py-dropdown-y-dialog',
   'py-dropdown-y-filter', 'px-dropdown-x-filter',
   'my-stat-grid',
@@ -1852,7 +1878,12 @@ const UNPAINTED: string[] = [
 // other vocabulary for. The list is still exactly the orphans, every one of them
 // is still explained by a family, and the next task that consumes one of these
 // three lowers this line again.
-const CEILING = 107
+// P4 (comments) consumed four: `text-danger` (lib/comments STATUS, the step
+// comment buttons), `shadow-sheet` and `shadow-drawer` (the process drawer) and
+// `p-compose` (the composer). CEILING follows them down by four.
+// P4 Task 13: the panel inbox's nothing-selected tile is 56×56 (Panel L1939),
+// which is `w-fab-reader`/`h-fab-reader`. CEILING follows them down by two.
+const CEILING = 101
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
@@ -2190,8 +2221,17 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
     //   · **One ARRIVED in the spelling half.** `bg-warn-edge` is still painted
     //     nowhere itself, but `border-warn-edge` now has a consumer, so the
     //     token under it reaches the screen. Spelling +1, painted-nowhere −1.
-    expect(buckets.filter((b) => b.spelling).length).toBe(43)
-    expect(buckets.filter((b) => !b.spelling).length).toBe(64)
+    // **44 / 59 after P4 (comments)**, from 43 / 64:
+    //   · **Four left the list entirely.** `text-danger`, `shadow-sheet`,
+    //     `shadow-drawer` and `p-compose` are consumed by the comment UI.
+    //     Painted-nowhere −4.
+    //   · **One ARRIVED in the spelling half.** `bg-danger` is still painted
+    //     nowhere itself, but `text-danger` now has a consumer, so `--danger`
+    //     reaches the screen. Spelling +1, painted-nowhere −1.
+    // **42 / 59 after P4 Task 13**: `w-fab-reader` and `h-fab-reader` left the
+    //   spelling half — the panel inbox's 56×56 tile (Panel L1939). Spelling −2.
+    expect(buckets.filter((b) => b.spelling).length).toBe(42)
+    expect(buckets.filter((b) => !b.spelling).length).toBe(59)
 
     // A family that stops covering anything is an argument nobody is paying
     // for, and the next name added beside it inherits the same absence of

@@ -8,6 +8,7 @@ creates a fresh database and upgrades an existing one.
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
 
 # Every migration is (version, sql). Append only — never edit a shipped one.
@@ -111,30 +112,30 @@ SCHEMA_VERSION = MIGRATIONS[-1][0]
 
 def connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
-    # `check_same_thread=False`: the app opens one connection at startup, on the
-    # main thread, and every request handler then runs in one of FastAPI's
-    # threadpool workers -- the routers are plain `def`, deliberately, so argon2
-    # does not block the event loop. Without this the first request dies with
-    # "SQLite objects created in a thread can only be used in that same thread".
-    # Safe because CPython's sqlite3 reports `threadsafety == 3` here (SQLite
-    # built in serialized mode), so the library serializes concurrent use of one
-    # connection itself.
+    # THE RULE: **one connection per thread.** A `sqlite3.Connection` must never
+    # be used by two threads at once. SQLite's serialized mode (`threadsafety ==
+    # 3`) only protects SQLite's own C state; Python's `Connection` and its
+    # cursors carry state of their own (the statement cache, the current
+    # statement's row), and two threads calling `execute()`/`fetchone()` on one
+    # object interleave it: rows come back from the other thread's query, or
+    # `IndexError` / `InterfaceError` is raised. Sharing one connection across
+    # FastAPI's threadpool made ~5-8% of requests fail under 24 parallel GETs.
     #
-    # INVARIANT, and it is the whole of what makes the sharing safe: **no request
-    # handler may open an explicit transaction on the shared connection.** A
-    # transaction is connection state, not statement state, so serialization does
-    # not help with one: with `isolation_level=None` Python opens none implicitly,
-    # and today every handler is a single autocommitted statement, so there is
-    # nothing to interleave. The moment a handler wraps writes in `BEGIN...COMMIT`
-    # -- creating a user and their scopes together, or revoking every other session
-    # when a password changes -- two concurrent requests share one transaction:
-    # the second `BEGIN` raises "cannot start a transaction within a transaction",
-    # or, worse, one thread's `COMMIT` commits the other thread's half-written
-    # work. Anything needing atomicity across statements must therefore open its
-    # own connection (`db.connect`) and use it on that one thread. The only
-    # explicit transactions in the package are `migrate` below, which runs once at
-    # startup before any request, and `seed.py`, which is an operator CLI on its
-    # own connection.
+    # So the app never hands a handler this connection directly: `app.state.db`
+    # (and `app.state.comments_db`) is a `PerThread`, which gives each worker
+    # thread a connection of its own (the routers are plain `def`, deliberately,
+    # so argon2 does not block the event loop — hence many threads).
+    #
+    # `check_same_thread=False` stays only so a connection opened on one thread
+    # may be *handed* to another (a test's `app.state.db = conn`); it is not
+    # permission to use one from two threads at the same time.
+    #
+    # Still no explicit transaction on `app.state.db` from a handler: a
+    # threadpool thread is reused by later requests, so a transaction left open
+    # there would leak into someone else's request. Anything needing atomicity
+    # across statements opens its own connection (`db.connect`) and closes it.
+    # The only other explicit transactions are `migrate` below (once, at
+    # startup) and `seed.py` (an operator CLI on its own connection).
     conn = sqlite3.connect(str(path), isolation_level=None,
                            check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -144,6 +145,49 @@ def connect(path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=5000")
     return conn
+
+
+class _Owned:
+    """Closes its connection when the last reference goes.
+
+    A `sqlite3.Connection` sits in a reference cycle with its statement cache,
+    so dropping it only closes it at the next cyclic GC pass. This holder is
+    acyclic, so plain refcounting runs `__del__` the moment a thread's
+    `threading.local` is cleared, i.e. when the thread exits.
+    """
+
+    __slots__ = ("conn",)
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def __del__(self):
+        self.conn.close()
+
+
+class PerThread:
+    """A stand-in for one shared connection that is really one per thread.
+
+    Every attribute (`execute`, `in_transaction`, ...) is forwarded to the
+    calling thread's own `connect(path)`, opened on first use and closed when
+    that thread exits (`_Owned`), so the number open is bounded by the threads
+    alive (the threadpool's size), not by the number of requests.
+
+    Attribute *reads* only: no `with`, no attribute assignment (setting
+    `row_factory` here sets it on the proxy, not on any connection), and a call
+    with a lasting effect, such as `set_trace_callback`, affects only the
+    calling thread's connection.
+    """
+
+    def __init__(self, path: Path):
+        self._path = path
+        self._local = threading.local()
+
+    def __getattr__(self, name: str):
+        owned = getattr(self._local, "owned", None)
+        if owned is None:
+            owned = self._local.owned = _Owned(connect(self._path))
+        return getattr(owned.conn, name)
 
 
 def _current_version(conn: sqlite3.Connection) -> int:
@@ -156,9 +200,11 @@ def _current_version(conn: sqlite3.Connection) -> int:
     return got[0] if got else 0
 
 
-def migrate(conn: sqlite3.Connection) -> int:
+def migrate(conn: sqlite3.Connection,
+            migrations: list[tuple[int, str]] | None = None) -> int:
+    migrations = MIGRATIONS if migrations is None else migrations
     version = _current_version(conn)
-    for target, sql in MIGRATIONS:
+    for target, sql in migrations:
         if target <= version:
             continue
         # The DDL and the version bump must land together or not at all. The

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useProcess } from '../api/hooks'
 import { linearize, groupTitle, type Block, type Junction } from '../lib/linearize'
 import { toFa } from '../lib/format'
@@ -8,6 +8,9 @@ import { Icon } from '../ui/Icon'
 import { LoadFailedScreen, ScreenSkeleton } from '../ui/states'
 import { RefusalScreen } from './Refusal'
 import type { ActivityNode } from '../api/types'
+import { StepCommentButton } from '../comments/NodeComments'
+import { useNodeCommentCounts } from '../comments/state'
+import { ProcessDrawer, ProcessFab } from '../comments/ProcessDrawer'
 
 /**
  * The hand pointing at a step — `Inja Panel.dc.html:620`, drawn beside the
@@ -48,19 +51,27 @@ const GATE: Record<Junction, string> = { AND: '&', OR: 'O', XOR: 'X' }
  * which is the amber the same line of the design gives its card, and it carries
  * the «مراحل این کار را ببین» pill that no other step has. Reported.
  */
-function Step({ block, onEnter }: {
+function Step({ block, onEnter, cmt }: {
   block: Extract<Block, { kind: 'step' }>
   onEnter: (sub: string) => void
+  cmt?: Comments
 }) {
-  const [open, setOpen] = useState(false)
   const n = block.node as ActivityNode
+  // `?step=<node>` — a comment's anchor link opens its step (Reader L2715–2716,
+  // `stepOpen`) and brings it into view, once, on arrival.
+  const target = useSearchParams()[0].get('step') === n.id
+  const [open, setOpen] = useState(target)
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => { if (target) box.current?.scrollIntoView?.({ block: 'center' }) }, [target])
   const sub = n.subprocess ?? null
   // A sub-process step has no body of its own to open — the press goes into the
   // child process instead, which is what its pill promises.
   const expandable = sub === null && (n.actor?.trim() || n.description?.trim())
+  const count = cmt?.counts[n.id] ?? 0
 
   return (
     <div
+      ref={box}
       data-step={block.num}
       className={
         'rounded-card shadow-card overflow-hidden border-2 '
@@ -78,7 +89,7 @@ function Step({ block, onEnter }: {
         </span>
         <span className="flex-1 min-w-0 flex flex-col items-start gap-s4">
           <span className="font-bold text-fs-lg text-ink leading-snug text-start">{n.label}</span>
-          {(block.cond || sub || block.back.some((r) => r.num)) && (
+          {(block.cond || sub || block.back.some((r) => r.num) || count > 0) && (
             <span className="flex flex-wrap items-center gap-s3">
               {/* The edge label that leads INTO this step — «اگر: پرداخت نقدی».
                   Without it a branch's steps read as unconditional. */}
@@ -104,6 +115,12 @@ function Step({ block, onEnter }: {
                 <span className="inline-flex items-center gap-s3 text-fs-xs font-bold px-s5 py-s1 rounded-pill bg-violet text-card">
                   <Icon name="chevronEnd" px={12} stroke={2.6} />
                   مراحل این کار را ببین
+                </span>
+              )}
+              {/* P4 — Reader L458 (= Panel L754). */}
+              {count > 0 && (
+                <span className="text-fs-micro font-semibold py-hint px-option rounded-pill bg-tile-v text-violet">
+                  {toFa(count)} کامنت
                 </span>
               )}
             </span>
@@ -148,6 +165,12 @@ function Step({ block, onEnter }: {
               </p>
             </div>
           )}
+          {/* P4 — Reader L482–487 (= Panel L778–781). Only a step that opens
+              has a body to hold it; the others are covered by the process FAB. */}
+          {cmt && (
+            <StepCommentButton pid={cmt.pid} department={cmt.department} processName={cmt.processName}
+              id={n.id} label={n.label} />
+          )}
         </div>
       )}
     </div>
@@ -162,11 +185,18 @@ function Step({ block, onEnter }: {
  * point, so a branch ends where the paths rejoin and the steps after it are
  * drawn once, at the outer level, rather than repeated per branch.
  */
-function Blocks({ blocks, onEnter }: { blocks: Block[]; onEnter: (sub: string) => void }) {
+/**
+ * The comment context a top-level step is given (P4). A step inside an XOR/AND
+ * branch is given none: the design's `br.steps` (Reader L400–440) draws no chip
+ * and no button, and D30 sends comments there to the process.
+ */
+type Comments = { pid: string; department: string; processName: string; counts: Record<string, number> }
+
+function Blocks({ blocks, onEnter, cmt }: { blocks: Block[]; onEnter: (sub: string) => void; cmt?: Comments }) {
   return (
     <div className="flex flex-col gap-s7">
       {blocks.map((b, i) => b.kind === 'step' ? (
-        <Step key={b.node.id} block={b} onEnter={onEnter} />
+        <Step key={b.node.id} block={b} onEnter={onEnter} cmt={cmt} />
       ) : (
         <div key={`g${i}`} className="rounded-feature border border-steps-group-border bg-steps-group p-s7">
           <div className="flex items-center gap-s6 px-s3 pb-s7">
@@ -243,6 +273,7 @@ export function Steps() {
   const { pid = '' } = useParams()
   const nav = useNavigate()
   const { data: proc, error, refetch } = useProcess(pid)
+  const counts = useNodeCommentCounts(pid)
 
   // Placed after every hook, so the early returns never change hook order.
   const refused = refusalStatus(error)
@@ -257,44 +288,55 @@ export function Steps() {
 
   const blocks = linearize(proc)
 
+  // P4 — the step view keeps the flow's floating button and process drawer
+  // (Reader: `flowView: 'steps'` is a mode of the flow screen, so `openFab`
+  // and the L680 drawer are there too). Siblings AFTER the scroller, never a
+  // wrapper around it: `shell/scroll.ts` scrolls the screen's first element.
+  // The drawer is pinned by the shell, not the scroller, so it stays put while
+  // the steps scroll.
   return (
-    <div
-      data-screen="steps"
-      data-r-pad
-      className="flex-1 overflow-auto bg-ink py-screen-y px-screen-x max760:px-s7 max760:py-s9"
-    >
-      {/* `--width-steps` 760px, minted for this screen and never writable until
-          now. §8's scroll box flips its own children back in `base.css`, so the
-          direction is pinned nowhere in this file. */}
-      <div data-col className="max-w-steps mx-auto">
-        <h1 data-h1 className="font-extrabold text-fs-steps-title text-role-title-on-field text-center leading-snug m-0">
-          {proc.name}
-        </h1>
-        {/* `:618` — the one instruction on the screen, on `--tile-v5`, whose own
-            token comment names this site: "sub-process node fill, steps hint
-            strip". `flex-row-reverse` in the deliverable is what puts the glyph
-            after the sentence in reading order; written as DOM order here, so
-            the accessible name and the painted order are the same thing. */}
-        <div className="flex items-center justify-center gap-s5 mt-s8 px-s9 py-s7 rounded-tile bg-tile-v5">
-          <span data-body className="text-fs-menu font-semibold text-violet leading-normal">
-            روی هر مرحله بزنید تا توضیح کامل و مسئول آن را ببینید.
-          </span>
-          <Icon d={HAND} px={20} className="flex-none text-violet" />
-        </div>
-        <div className="mt-s9">
-          {blocks.length > 0 ? (
-            <Blocks blocks={blocks} onEnter={(sub) => nav(`/processes/${sub}/steps`)} />
-          ) : (
-            /* A process whose flowchart has no activity in it yet. The list is
-               not withheld here and never can be — a step's label and its order
-               are outside the visibility policy — so this is «nobody has drawn
-               it», which is a thing that can be said out loud. */
-            <p className="rounded-card border border-dashed border-line bg-card p-s11 text-center text-fs-sm2 text-faint m-0">
-              هنوز گامی برای این فرآیند ثبت نشده است.
-            </p>
-          )}
+    <>
+      <div
+        data-screen="steps"
+        data-r-pad
+        className="flex-1 overflow-auto bg-ink py-screen-y px-screen-x max760:px-s7 max760:py-s9"
+      >
+        {/* `--width-steps` 760px, minted for this screen and never writable until
+            now. §8's scroll box flips its own children back in `base.css`, so the
+            direction is pinned nowhere in this file. */}
+        <div data-col className="max-w-steps mx-auto">
+          <h1 data-h1 className="font-extrabold text-fs-steps-title text-role-title-on-field text-center leading-snug m-0">
+            {proc.name}
+          </h1>
+          {/* `:618` — the one instruction on the screen, on `--tile-v5`, whose own
+              token comment names this site: "sub-process node fill, steps hint
+              strip". `flex-row-reverse` in the deliverable is what puts the glyph
+              after the sentence in reading order; written as DOM order here, so
+              the accessible name and the painted order are the same thing. */}
+          <div className="flex items-center justify-center gap-s5 mt-s8 px-s9 py-s7 rounded-tile bg-tile-v5">
+            <span data-body className="text-fs-menu font-semibold text-violet leading-normal">
+              روی هر مرحله بزنید تا توضیح کامل و مسئول آن را ببینید.
+            </span>
+            <Icon d={HAND} px={20} className="flex-none text-violet" />
+          </div>
+          <div className="mt-s9">
+            {blocks.length > 0 ? (
+              <Blocks blocks={blocks} onEnter={(sub) => nav(`/processes/${sub}/steps`)}
+                cmt={{ pid, department: proc.department, processName: proc.name, counts }} />
+            ) : (
+              /* A process whose flowchart has no activity in it yet. The list is
+                 not withheld here and never can be — a step's label and its order
+                 are outside the visibility policy — so this is «nobody has drawn
+                 it», which is a thing that can be said out loud. */
+              <p className="rounded-card border border-dashed border-line bg-card p-s11 text-center text-fs-sm2 text-faint m-0">
+                هنوز گامی برای این فرآیند ثبت نشده است.
+              </p>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+      <ProcessDrawer pid={pid} department={proc.department} />
+      <ProcessFab pid={pid} />
+    </>
   )
 }

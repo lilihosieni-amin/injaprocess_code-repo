@@ -121,8 +121,8 @@ const DEPTS = [{ code: 'dining', name: 'سالن', count: 3, subs: 0 }]
 function renderPanel(
   caps: Capability[],
   entry: string,
-  { pending = [] as unknown[], depts = DEPTS as unknown[], scopes }: {
-    pending?: unknown[]; depts?: unknown[]; scopes?: string[]
+  { pending = [] as unknown[], depts = DEPTS as unknown[], scopes, pendingApprovals = 0 }: {
+    pending?: unknown[]; depts?: unknown[]; scopes?: string[]; pendingApprovals?: number
   } = {},
 ) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
@@ -132,7 +132,7 @@ function renderPanel(
       status: 200, headers: { 'Content-Type': 'application/json' },
     }))
   })
-  const who = scopes === undefined ? session(caps) : { ...session(caps), scopes }
+  const who = { ...session(caps), ...(scopes === undefined ? {} : { scopes }), pendingApprovals }
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
@@ -154,6 +154,7 @@ function renderPanel(
                 there. */}
             <Route path="/facts" element={<p>محتوا</p>} />
             <Route path="/facts/:fid" element={<p>محتوا</p>} />
+            <Route path="/comments" element={<p>محتوا</p>} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -657,6 +658,31 @@ describe('PanelShell chrome', () => {
       expect(within(sheet).getByRole('link', { name: new RegExp(name) }), name).toBeInTheDocument()
     }
     expect(within(sheet).getByRole('button', { name: /صندوق بازبینی/ })).toBeInTheDocument()
+  })
+
+  it('adds «صندوق کامنت‌ها» to the tray and the sheet for an Editor or Admin, the sheet row counting in Persian', async () => {
+    // Panel L4784 `navDefs`; the badge is the sheet's only (L2993, `pendingForMe`).
+    const { unmount } = renderPanel(['view', 'manage_users'], '/departments', { pendingApprovals: 2 })
+    const tray = screen.getByRole('navigation', { name: 'بخش‌های اصلی' })
+    const link = within(tray).getByRole('link', { name: 'صندوق کامنت‌ها' })
+    expect(link).toHaveAttribute('href', '/comments')
+    expect(link.textContent).toBe('صندوق کامنت‌ها')
+    await userEvent.click(screen.getAllByRole('button', { name: 'فهرست' })[0])
+    const row = within(screen.getByRole('dialog')).getByRole('link', { name: /صندوق کامنت‌ها/ })
+    expect(row).toHaveAttribute('href', '/comments')
+    expect(row.textContent).toBe('صندوق کامنت‌ها۲')
+    unmount()
+    // …and a caller who is neither gets no entry that the screen would refuse.
+    renderPanel(['view', 'view_audit'], '/departments')
+    expect(screen.queryByRole('link', { name: /صندوق کامنت‌ها/ })).toBeNull()
+  })
+
+  it('lights the sheet’s comments row on the inbox', async () => {
+    renderPanel(['view', 'edit'], '/comments')
+    await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+    const row = within(screen.getByRole('dialog')).getByRole('link', { name: /صندوق کامنت‌ها/ })
+    expect(row.className).toMatch(/\bbg-violet\b/)
+    expect(row.textContent).toBe('صندوق کامنت‌ها')
   })
 
   it('counts the sheet’s inbox in Persian, which is the count a phone can see', async () => {
@@ -1732,23 +1758,24 @@ describe('what the panel chrome’s class strings compile to', () => {
     expect(pill.textContent).toBe('۲')
     const p = await paint(pill.className)
     expect(declarations(p)).toEqual(new Set([
-      'min-width: var(--size-count-chrome)',
-      'height: var(--size-count-chrome)',
+      'min-width: var(--size-count-sheet)',
+      'height: var(--size-count-sheet)',
       'padding-left: var(--space-3)',
       'padding-right: var(--space-3)',
       'display: flex',
       'align-items: center',
       'justify-content: center',
-      'border-radius: var(--radius-round)',
+      'border-radius: var(--radius-pill)',
       'background-color: var(--coral)',
       'color: var(--card)',
       'font-size: var(--fs-xxs)',
       'font-weight: var(--fw-bold)',
       'flex: none',
     ]))
-    // Round, not merely rounded: `--radius-pill` is 20px and would draw a
-    // stadium on a 19px box, which is the same shape one corner short.
-    expect(winner(p, 'border-radius')).not.toBe('var(--radius-pill)')
+    // Panel L2993 writes `border-radius:999px`: a stadium once two digits widen
+    // the 22px box. `--radius-pill` (20px) scales down to the same stadium;
+    // `--radius-round` (50%) would draw an ellipse instead.
+    expect(winner(p, 'border-radius')).toBe('var(--radius-pill)')
     // …and it does not shrink away when a long label pushes at it, which is
     // what `flex-none` is for beside a `flex:1` sibling.
     expect(winner(p, 'flex')).toBe('none')
@@ -2597,21 +2624,27 @@ describe('ReaderShell chrome', () => {
   })
 
   it('counts the approvals waiting for you in Persian, and drops the badge at zero', async () => {
-    // Audit S4 and S5 together: a latin digit in a 44×44 coral square.
+    // Audit S4 and S5 together: a latin digit in a 44×44 coral square. Reader
+    // 142–146: the badge now hangs off the 42×42 comments button, and the
+    // button's own name carries the count, so the badge is decoration.
     const zero = renderReader(THREE, '/departments')
     await screen.findByText('فهرست دپارتمان‌ها')
-    expect(screen.queryByRole('status')).toBeNull()
+    const bare = screen.getByRole('link', { name: 'کامنت‌ها' })
+    expect(bare).toHaveAttribute('href', '/comments')
+    expect(bare).toHaveClass('w-iconbtn', 'h-iconbtn', 'rounded-button')
+    expect(bare.querySelector('span[aria-hidden]')).toBeNull()
     zero.unmount()
     renderReader(THREE, '/departments', { pendingApprovals: 4 })
-    const badge = await screen.findByRole('status')
+    const btn = await screen.findByRole('link', { name: /^کامنت‌ها/ })
+    const badge = btn.querySelector('span[aria-hidden]') as HTMLElement
     expect(badge).toHaveTextContent('۴')
     expect(badge.textContent).not.toMatch(/[0-9]/)
     expect(badge).toHaveClass('rounded-round', 'min-w-count-chrome', 'h-count-chrome')
     // S5 — the badge is not interactive, so it must not carry the touch floor.
     expect(badge.className).not.toMatch(/\bmin-[wh]-touch\b/)
-    // …and it says what it is counting. A bare «۴» in a coral disc is a number
-    // with no sentence attached, and this is the app's only notification channel.
-    expect(badge.getAttribute('aria-label')).toContain('۴')
+    // …and the button says what it is counting. A bare «۴» in a coral disc is a
+    // number with no sentence attached, and this is the app's only channel.
+    expect(btn.getAttribute('aria-label')).toBe('کامنت‌ها، ۴ در انتظار تأیید شما')
   })
 
   it('shows the badge for a reader with EXACTLY ONE comment waiting', async () => {
@@ -2622,9 +2655,9 @@ describe('ReaderShell chrome', () => {
     // product's only channel (F15), so for that reader the badge is not part of
     // the signal, it IS the signal.
     renderReader(THREE, '/departments', { pendingApprovals: 1 })
-    const badge = await screen.findByRole('status')
-    expect(badge).toHaveTextContent('۱')
-    expect(badge.getAttribute('aria-label')).toContain('۱')
+    const btn = await screen.findByRole('link', { name: /^کامنت‌ها/ })
+    expect(btn.querySelector('span[aria-hidden]')).toHaveTextContent('۱')
+    expect(btn.getAttribute('aria-label')).toContain('۱')
   })
 
   it('names the screen the back bar is on, resolved from the departments it already holds', async () => {
@@ -3188,9 +3221,9 @@ describe('what the reader chrome’s class strings compile to', () => {
     const { cls, unmount } = readerChrome('/departments')
     await screen.findByText('فهرست دپارتمان‌ها')
     unmount()
-    const { container, unmount: drop } = renderReader(THREE, '/departments', { pendingApprovals: 4 })
-    await screen.findByRole('status')
-    const badge = await paint((container.querySelector('[role="status"]') as HTMLElement).className)
+    const { unmount: drop } = renderReader(THREE, '/departments', { pendingApprovals: 4 })
+    const btn = await screen.findByRole('link', { name: /^کامنت‌ها/ })
+    const badge = await paint((btn.querySelector('span[aria-hidden]') as HTMLElement).className)
     drop()
     void cls
     // `Inja Reader.dc.html:145` — `min-width:19px; height:19px; padding:0 4px;
@@ -3205,6 +3238,8 @@ describe('what the reader chrome’s class strings compile to', () => {
     expect(winner(badge, 'color')).toBe('var(--card)')
     expect(winner(badge, 'font-size')).toBe('var(--fs-micro)')
     expect(winner(badge, 'padding-left')).toBe('var(--space-1)')
+    // …ringed in the WHITE `--card` (`border:2px solid #fff`), as the panel's.
+    expect(winner(badge, 'border-color')).toBe('var(--card)')
   })
 
   it('carries the bar’s title on a flex:1 span that truncates rather than wraps', async () => {

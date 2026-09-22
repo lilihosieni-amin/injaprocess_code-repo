@@ -121,6 +121,12 @@ describe('traySection', () => {
     expect(traySection('/facts/F-00011')).toBe('/facts')
   })
 
+  it('lights «صندوق کامنت‌ها» on the comments inbox (Panel L4784, P4)', () => {
+    expect(traySection('/comments')).toBe('/comments')
+    expect(sheetHere('/comments', '/comments')).toBe(true)
+    expect(sheetHere('/comments', '/departments')).toBe(false)
+  })
+
   it('lights neither on an administration screen, where the design lights «مدیریت»', () => {
     for (const path of ['/users', '/users/7', '/visibility', '/profile']) {
       expect(traySection(path), path).toBeNull()

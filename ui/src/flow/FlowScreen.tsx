@@ -1,4 +1,4 @@
-import { useNavigate, useParams, useLocation, Link } from 'react-router-dom'
+import { useNavigate, useParams, useLocation, useSearchParams, Link } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
 import { ReactFlowProvider, useReactFlow, type Connection } from '@xyflow/react'
 import { useConfirmations, useDepartments, useProcess, useProcesses, usePutProcess, useRelayout, useCreateProcess, useResolvePending } from '../api/hooks'
@@ -19,6 +19,9 @@ import { IdBadge } from '../ui/IdBadge'
 import { pushDismissible, popDismissible, isTopDismissible } from '../ui/dismissibleStack'
 import { DeleteNodeConfirm } from './DeleteNodeConfirm'
 import { DetailDrawer } from './DetailDrawer'
+import { ProcessDrawer, ProcessFab } from '../comments/ProcessDrawer'
+import { useComments, useNodeCommentCounts } from '../comments/state'
+import { NodeComments } from '../comments/NodeComments'
 import { JunctionLegend } from './JunctionLegend'
 import type { ActivityNode } from '../api/types'
 
@@ -105,7 +108,15 @@ function FlowEditor() {
   const createProcess = useCreateProcess()
   const resolve = useResolvePending(pid)
   const [pendingDel, setPendingDel] = useState<string | null>(null)
-  const [detailId, setDetailId] = useState<string | null>(null)
+  // `?node=` opens that step's detail — the comments inbox's «مشاهده در
+  // فلوچارت» (Panel L4228 `openFlow` passes `node: anchorId`).
+  const initialNode = useSearchParams()[0].get('node')
+  const [detailId, setDetailId] = useState<string | null>(initialNode)
+  // A step's detail replaces the process's comment drawer — Reader L1846–1847,
+  // `set({ node: n.id, cmtDrawer: false })`.
+  const comments = useComments()
+  const openDetail = (id: string) => { comments?.closeDrawer(); setDetailId(id) }
+  const commentCounts = useNodeCommentCounts(pid)
   const [mode, setMode] = useState<'pan' | 'select'>('pan')
   const rf = useReactFlow()
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -286,12 +297,12 @@ function FlowEditor() {
    */
   function onNodeClick(id: string) {
     const n = proc.nodes.find((x) => x.id === id)
-    if (n && n.type === 'junction') { if (editing) ed.select(id); setDetailId(id); return }
+    if (n && n.type === 'junction') { if (editing) ed.select(id); openDetail(id); return }
     if (editing) { ed.select(id); return }
     if (!n || n.type !== 'activity') return
     const sub = (n as ActivityNode).subprocess
     if (sub) { nav(`/processes/${sub}/flow`); return }
-    setDetailId(id)
+    openDetail(id)
   }
 
   return (
@@ -1002,14 +1013,16 @@ function FlowEditor() {
           // not to a frame around all of it. `entryNode` is the one rule for
           // "where does this process begin", shared with the step view.
           focusId={entryNode(proc)?.id}
+          commentCounts={commentCounts}
           onNodeClick={onNodeClick}
           onConnect={(c: Connection) => c.source && c.target && ed.connect(c.source, c.target)}
-          onOpenDetail={setDetailId}
+          onOpenDetail={openDetail}
           onCommitPositions={(u) => ed.moveNodes(u)}
           onSetEdgeLabel={(f, t, v) => ed.setEdgeLabel(f, t, v)}
           onDeleteEdge={(f, t) => ed.deleteEdge(f, t)}
         />
         <JunctionLegend />
+        <ProcessDrawer pid={pid} department={proc.department} />
         {(() => {
           if (!detailId) return null
           const detailNode = proc.nodes.find((x) => x.id === detailId)
@@ -1020,6 +1033,13 @@ function FlowEditor() {
               editing={editing}
               conflicts={(proc.pending ?? []).map((pending, index) => ({ pending, index })).filter((x) => x.pending.status === 'open' && x.pending.node === detailId)}
               process={proc}
+              // Steps and junctions alike (Reader L626 sits outside `isActivity`;
+              // D30: a node anchor is a step or a junction). A junction has no
+              // label, so it is named by the title its drawer shows.
+              comments={(detailNode.type === 'activity' || detailNode.type === 'junction') && (
+                <NodeComments pid={pid} department={proc.department} processName={proc.name} id={detailNode.id}
+                  label={detailNode.type === 'activity' ? detailNode.label : `دروازهٔ منطقی ${detailNode.junctionType}`} />
+              )}
               onClose={() => setDetailId(null)}
               onEdit={() => {}}
               onAccept={(index) => resolve.mutate({ index, decision: 'accept' })}
@@ -1049,6 +1069,7 @@ function FlowEditor() {
         <ConfirmAction row={mark} department={dept} render="dialog"
           open={asking} onOpenChange={setAsking} />
       )}
+      <ProcessFab pid={pid} hidden={!!detailId} />
       {pendingDel && (() => {
         const n = proc.nodes.find((x) => x.id === pendingDel)
         const label = n && 'label' in n ? (n as { label: string }).label : pendingDel

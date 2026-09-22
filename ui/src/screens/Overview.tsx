@@ -16,6 +16,7 @@ import { refusalStatus } from '../api/client'
 import { LoadFailedScreen, ScreenSkeleton } from '../ui/states'
 import { RefusalScreen } from './Refusal'
 import type { Overview as OverviewT } from '../api/types'
+import { DeptFab } from '../comments/DeptDrawer'
 
 type Draft = {
   description: string
@@ -370,6 +371,7 @@ export function Overview() {
           )}
         </Section>
       </div>
+      <DeptFab code={code} />
     </div>
   )
 

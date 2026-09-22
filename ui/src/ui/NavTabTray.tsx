@@ -10,14 +10,14 @@ export interface NavTab { id: string; label: string }
  * identical and is not one — those entries navigate, so PanelShell composes the
  * same shell around links rather than importing this and lying about the role.
  *
- * OWNER RULING — the tab is padded `9px 10px` (`py-tab-y-audit px-s5`). The
+ * OWNER RULING — the panel tab is padded `9px 10px` (`--role-pad-tab-y`/`-x`). The
  * two trays this replaces draw `padding:8px 6px` (`Inja Panel.dc.html:953`)
  * and `padding:9px 10px` (`:1511`), one instance each, so dominance cannot
  * settle it and it went to the owner. `px-s7` — 14px — was neither, and is a
  * number the design never draws. The larger of the two was ruled, so the drawn
  * height stays closest to F11's floor and the inset below stays small.
  *
- * F11 — the tab is 36.75px tall as drawn (`py-tab-y-audit` 9px twice around a
+ * F11 — the panel tab is 36.75px tall as drawn (9px of padding twice around a
  * 12.5px `--fs-sm2` line box, which inherits the base layer's unitless 1.5),
  * and the floor is 44. The plan's one rule for every control on the design's
  * 30/32/34/36/40/42 ladder decides the rest, and it supersedes any per-task
@@ -56,13 +56,18 @@ export interface NavTab { id: string; label: string }
  * tray and `min-width:132px` (`min-w-tab`) under every tab. Those two are also
  * one decision — a floor without a wrap overflows, because that tray's six tabs
  * need 6x132 and no tray is that wide — and they are the six-tab tray's and not
- * the three-tab tray's. Unconditional `min-w-tab` would push the comments tray
- * (356px of usable width, three tabs, 404px of floor) onto two rows, which the
- * design does not draw. So it is a prop, and the default is the tray the
- * comments screen draws.
+ * the three-tab tray's. So it is a prop.
+ *
+ * `halfOnMobile` is the reader comments tray's own wrap (Reader L71–72): at
+ * <=760 the tray wraps and each tab is `flex:1 1 calc(50% - 4px)`, two per row.
+ *
+ * P4 — padding, type size and both radii are ROLES (roles.css): the values
+ * above on the panel, and on the reader the comments tray's `11px 8px`, 13.5px,
+ * radius 10 in a radius-13 tray (Reader L731–733). Drawn there the tab is
+ * 11x2 + 13.5x1.5 = 42.25px, so the same 4px inset still clears 44.
  */
 export function NavTabTray({
-  tabs, value, onChange, label, stretch = true, wrap = false, className = '',
+  tabs, value, onChange, label, stretch = true, wrap = false, halfOnMobile = false, className = '',
 }: {
   tabs: NavTab[]
   value: string
@@ -79,6 +84,8 @@ export function NavTabTray({
    * squashing to nothing.
    */
   wrap?: boolean
+  /** Reader L71–72: at <=760 the tray wraps, two tabs to a row. */
+  halfOnMobile?: boolean
   className?: string
 }) {
   const box = useRef<HTMLDivElement>(null)
@@ -107,7 +114,7 @@ export function NavTabTray({
       role="tablist"
       aria-label={label}
       onKeyDown={onKeyDown}
-      className={`flex gap-s1 p-s1 rounded-button bg-tile-v2 ${wrap ? 'flex-wrap' : ''} ${className}`}
+      className={`flex gap-s1 p-s1 rounded-role-tray bg-tile-v2 ${wrap ? 'flex-wrap' : ''} ${halfOnMobile ? 'max760:flex-wrap' : ''} ${className}`}
     >
       {tabs.map((t) => {
         const active = t.id === value
@@ -119,7 +126,7 @@ export function NavTabTray({
             aria-selected={active}
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(t.id)}
-            className={`relative before:absolute before:content-[""] before:-inset-[4px] px-s5 py-tab-y-audit rounded-tool border-0 cursor-pointer text-fs-sm2 font-bold ${stretch ? 'flex-1' : ''} ${wrap ? 'min-w-tab' : ''} ${active ? 'bg-violet text-card' : 'bg-transparent text-violet'}`}
+            className={`relative before:absolute before:content-[""] before:-inset-[4px] px-role-tab-x py-role-tab-y rounded-role-tab border-0 cursor-pointer text-role-tab font-bold ${stretch ? 'flex-1' : ''} ${wrap ? 'min-w-tab' : ''} ${halfOnMobile ? 'max760:basis-tab-half max760:min-w-0' : ''} ${active ? 'bg-violet text-card' : 'bg-transparent text-violet'}`}
           >
             {t.label}
           </button>

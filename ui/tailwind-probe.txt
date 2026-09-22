@@ -45,7 +45,7 @@ text-fs-h1-reader-home text-fs-h1-reader-list text-fs-h1-reader-dept
 text-fs-body-reader
 text-body text-caption text-subtitle text-title text-prose
 # R3 — the four type roles that change with the surface.
-text-role-body text-role-dense text-role-title text-role-hero
+text-role-body text-role-dense text-role-title text-role-hero text-role-count
 font-sans font-mono
 font-regular font-semibold font-bold font-extrabold
 leading-tight leading-snug leading-normal leading-relaxed leading-loose
@@ -102,7 +102,7 @@ py-empty-y-inline
 w-pager h-pager min-w-page-label
 leading-none px-stat-x min-w-stat py-stat-y-grid px-stat-x-grid my-stat-grid
 mt-stat-label
-py-tab-y-audit min-w-tab gap-tab-flow
+min-w-tab gap-tab-flow
 py-note-y px-note-x
 h-count min-w-count
 max1080:hidden max760:hidden
@@ -127,7 +127,7 @@ gap-stat-dot
 # the summary screen were left writing their own values out; these nine are what
 # Tasks 12, 13 and 16 need. `min-w-menu` is NOT here — it is on line 62 already,
 # and the mint gave it a token (--width-menu) rather than a new name.
-mt-hint leading-lockup min-w-count-chrome h-count-chrome
+mt-hint leading-lockup min-w-count-chrome h-count-chrome min-w-count-sheet h-count-sheet
 px-inbox-x py-crumb-y py-back-y px-topbar-reader
 grid-cols-idef0
 # The reader-chrome mint. The owner's ruling on ReaderShell — the reader takes
@@ -138,6 +138,23 @@ gap-button-icon px-button-x w-menu-more-reader h-menu-more-reader
 # 978); the 12 is `py-s6` and the 20 had four owners in tokens.css, none of them
 # a toast. Both toast components wrote Tailwind's own `px-5` for it.
 px-toast-x
+# P4 — a step's comment section in the flow detail drawer, `margin-top:20px`
+# (Reader L632 = Panel L928). 20 has five owners already, none a drawer section.
+mt-drawer-section
+# P4 — the composer's three mints: its Reader textarea type (Reader L952), its
+# shadow and its 380px width (Reader L903–904, L940–941; Panel L2844, L2877–2878).
+text-fs-compose-reader shadow-composer w-composer
+# P4 — the reader inbox's three mints: a history entry's 3px inline-start edge
+# (Reader L766), the empty card's 34px (L739), the anchor's underline offset (L753).
+border-s-note py-cmt-empty-y underline-offset-anchor
+# P4 fix — the segmented tray reads the surface: its tab's padding, type and
+# radius and the tray's radius are roles (Reader L731–733), and the reader's
+# comments tray halves each tab at <=760 (Reader L72).
+py-role-tab-y px-role-tab-x text-role-tab rounded-role-tab rounded-role-tray basis-tab-half
+# P4 Task 13 — the panel inbox: list pane 400 (Panel L1771), detail column 660
+# (L1806), nothing-selected copy 320 (L1938), decision buttons 120/150 (L1880,
+# L1886) and the resolve pair 140 (L1909).
+w-cmt-list max-w-cmt-detail max-w-cmt-none min-w-cmt-action min-w-cmt-action-wide min-w-cmt-resolve
 # Owner ruling R35 — the drawer-as-bottom-sheet's 22px top corners (§5.2). The
 # ladder has no 22 rung; the modal's sheet is 20 and the centred dialog 24.
 # Written `rounded-t-sheet` at its one consumer, so the bare stem below is the

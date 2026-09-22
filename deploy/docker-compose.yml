@@ -93,6 +93,8 @@ services:
       VERTEX_VISION_MODEL: gemini-3.1-pro-preview
       GCS_BUCKET: injafood-transcribe-staging
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/vertex-sa.json
+      # comments.db — the engine `comments` CLI reads this (D5); shared with ui-backend.
+      COMMENTS_DB: /comments/comments.db
     # AC-7 is enforced by the Phase-3 in-container hooks + the bot's can_use_tool
     # callback (setting_sources=["project"], approved_directory=/data): the agent's
     # file operations are confined to /data, and the engine CLIs/code are baked
@@ -105,6 +107,7 @@ services:
       - /opt/inja/data-repo:/data
       - claude-credentials:/root/.claude   # subscription credential (rw)
       - control-bot-state:/state           # bot SQLite state — DATABASE_URL=sqlite:////state/bot.db
+      - ui-comments:/comments   # comments.db only — app.db is never mounted here (D5)
       # Vertex service-account key — outside both repos, read-only, and outside
       # /data so the agent's own file operations cannot reach it (AC-7 above).
       - /opt/inja/secrets/vertex-sa.json:/secrets/vertex-sa.json:ro
@@ -170,6 +173,9 @@ services:
       # would be worthless (spec D7).
       TRUSTED_PROXY_HOPS: "1"
       EXPORT_DIR: /exports
+      # comments.db (D1/D5) — outside DATA_ROOT and outside app.db, shared with
+      # control-bot on the ui-comments volume below.
+      COMMENTS_DB: /comments/comments.db
     volumes:
       - /opt/inja/data-repo:/data
       # app.db — mounted ONLY here (ARD §16): the activity record must be
@@ -179,6 +185,9 @@ services:
       # generated export documents — build artifacts, deliberately outside the
       # data-repo so they never appear in its working tree (D8)
       - ui-exports:/exports
+      # comments.db — shared with control-bot (D5), which reads it via the
+      # engine `comments` CLI.
+      - ui-comments:/comments
 
   proxy:
     image: caddy:2
@@ -220,3 +229,5 @@ volumes:
   # ui-exports this is NOT a cache — emptying it deletes every account, and
   # `inja-seed` is the only way to make a first Editor again.
   ui-state:
+  # comments.db — mounted into ui-backend AND control-bot (D5); never app.db.
+  ui-comments:

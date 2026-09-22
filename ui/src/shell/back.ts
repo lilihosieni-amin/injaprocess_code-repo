@@ -113,6 +113,7 @@ export function answersHistory(pathname: string): boolean {
  */
 export function traySection(pathname: string): string | null {
   if (inSection(pathname, '/facts')) return '/facts'
+  if (inSection(pathname, '/comments')) return '/comments'
   // The three administration targets `PanelShell`'s own `adminItems` lists;
   // `/users/{id}` is inside `/users` by the same section test the tray uses.
   return ADMIN.some((root) => inSection(pathname, root)) ? null : '/departments'

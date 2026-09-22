@@ -98,7 +98,7 @@ subscription, so rule it out now rather than on the invoice.
 
 ## Backup & restore
 
-Four separate things need backing up, and `git-push` covers only the first.
+Five separate things need backing up, and `git-push` covers only the first.
 
 - **Off-site baseline:** `git-push` is the off-site baseline — it backs up
   data-repo **minus audio** (raw audio under `meetings/audio/` is gitignored and
@@ -125,6 +125,12 @@ Four separate things need backing up, and `git-push` covers only the first.
   [`02-secrets-and-auth.md`](02-secrets-and-auth.md) § 5. Use `.backup`, not
   `cp`: the file is in WAL mode and a plain copy taken mid-write can be torn.
   Treat the result as a secret — it is a file of password hashes.
+- **`comments.db` — not covered by anything yet either.** It lives on the
+  `ui-comments` Docker volume, outside the data-repo, and holds every comment
+  and its resolution. Same gap as `app.db`: `git-push` never sees it, the same
+  not-yet-built `state-backup` service is what closes it, and until then take
+  the backup by hand with the second `.backup` recipe in
+  [`02-secrets-and-auth.md`](02-secrets-and-auth.md) § 5.
 - **Restore:** re-clone data-repo from GitHub, then restore `meetings/audio/`
   and `attachments/sheets/` from their snapshots, and copy the newest `app.db` backup onto the
   `ui-state` volume with the service stopped. With no `app.db` backup to restore,

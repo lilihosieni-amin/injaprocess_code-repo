@@ -124,7 +124,7 @@ def logout(request: Request, response: Response):
 
 @router.get("/me")
 def me(request: Request, user=Depends(require_session)):
-    return descriptor(get_conn(request), user)
+    return descriptor(get_conn(request), user, request.app.state.comments_db)
 
 
 @router.post("/password", status_code=204)

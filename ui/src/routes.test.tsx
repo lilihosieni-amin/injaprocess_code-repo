@@ -152,6 +152,7 @@ describe('routing', () => {
       '/processes/:pid', '/processes/:pid/flow', '/processes/:pid/steps',
       '/facts', '/facts/:fid',
       '/visibility', '/users', '/users/:id', '/profile',
+      '/comments',
       '*',
     ])
   })

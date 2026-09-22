@@ -3,14 +3,17 @@ from __future__ import annotations
 import dataclasses
 import logging
 import os
+import threading
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import db
+from . import comment_jobs, comments_db, db
 from .config import Settings, load_settings
 from .routers import auth as auth_router
+from .routers import comments as comments_router
 from .routers import confirmations as confirmations_router
 from .routers import departments as departments_router
 from .routers import export_files as export_files_router
@@ -139,6 +142,29 @@ def _log_export_gate(cfg: Settings) -> None:
                     "answers 401 to everyone but a signed-in UI user")
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Drain the CLI's outbox and reconcile stuck comments every 30 seconds
+    (`comment_jobs.loop`), on a daemon thread of its own connections.
+
+    Reads `app.state.cfg` rather than closing over a `cfg` passed to
+    `create_app` directly: `_prepare_exports` below only finishes preparing it
+    (and setting `app.state.cfg`) *after* `FastAPI(...)` is constructed, so at
+    construction time there is no prepared `cfg` yet to close over — but by the
+    time this actually runs, at startup, `app.state.cfg` is set. A `TestClient`
+    used without `with` never drives the ASGI lifespan, so this body never
+    runs and no thread starts for such a test.
+    """
+    stop = threading.Event()
+    t = threading.Thread(target=comment_jobs.loop, args=(app.state.cfg, stop),
+                         name="comment-jobs", daemon=True)
+    t.start()
+    try:
+        yield
+    finally:
+        stop.set()
+
+
 def create_app(cfg: Settings | None = None) -> FastAPI:
     # before anything that logs: `_prepare_exports` and `_log_export_gate` below
     # are the first records this service emits, and they are the ones that were
@@ -159,7 +185,7 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
     # If you want Swagger back, put it behind the session rather than deleting
     # these three arguments.
     app = FastAPI(title="inja-ui-backend", docs_url=None, redoc_url=None,
-                  openapi_url=None)
+                  openapi_url=None, lifespan=_lifespan)
     # before `app.state.cfg`: the handlers must see the settings the directory
     # preparation actually succeeded with, not the ones the environment asked for
     cfg = _prepare_exports(cfg)
@@ -169,10 +195,18 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
     # on every start, so the same code path creates a fresh database and upgrades
     # an existing one. Not seeded here — the first Editor is created by an
     # operator with a password, never by application startup.
-    conn = db.connect(cfg.app_db)
-    db.migrate(conn)
+    # A connection per worker thread (`db.PerThread`), never one shared.
+    first = db.connect(cfg.app_db)
+    db.migrate(first)
+    first.close()
+    conn = db.PerThread(cfg.app_db)
     app.state.db = conn
+    # comments.db (D1): migrated on every start like app.db, and handed out the
+    # same way — a connection per worker thread, no transaction from a handler.
+    comments_db.open_comments(cfg.comments_db).close()
+    app.state.comments_db = db.PerThread(cfg.comments_db)
     app.include_router(auth_router.router)
+    app.include_router(comments_router.router)
     app.include_router(confirmations_router.router)
     app.include_router(departments_router.router)
     app.include_router(exports_router.router)

@@ -38,6 +38,7 @@ const FLAT: Record<string, string> = {
   visibility: 'سیاست نمایش محتوا',
   profile: 'پروفایل و گذرواژه',
   facts: 'داده‌های کمّی',
+  comments: 'صندوق کامنت‌ها',
 }
 
 /**
@@ -214,10 +215,7 @@ export function readerBack(pathname: string, root: string): string | undefined {
  * deliberately does not touch: one answers where back goes, this answers what
  * here is called, and a screen can need either without the other.
  *
- * `/comments` is the one row of the deliverable's table this app has no route
- * for — `src/routes.tsx` has no entry and the catch-all sends it to
- * `/departments` — and it is transcribed here whole rather than dropped, so the
- * table is not re-derived from the mockup the day the comments inbox lands.
+ * `/comments` is the comments inbox (P4, `comments/CommentsScreen.tsx`).
  */
 export function readerHere(pathname: string, root: string): {
   title?: string; deptCode?: string; about?: boolean
