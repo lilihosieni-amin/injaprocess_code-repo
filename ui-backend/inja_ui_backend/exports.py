@@ -63,6 +63,7 @@ REPORT_IDS: tuple[str, ...] = tuple(r.id for r in REGISTRY)
 def by_id(report_id: str) -> Report | None:
     return next((r for r in REGISTRY if r.id == report_id), None)
 
+
 #: The literal the built template carries where its data belongs.
 DATA_SLOT = "__INJA_EXPORT_DATA__"
 
