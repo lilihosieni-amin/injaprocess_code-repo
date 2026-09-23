@@ -17,7 +17,6 @@ from .routers import comments as comments_router
 from .routers import confirmations as confirmations_router
 from .routers import departments as departments_router
 from .routers import export_files as export_files_router
-from .routers import exports as exports_router
 from .routers import facts as facts_router
 from .routers import pending as pending_router
 from .routers import processes as processes_router
@@ -210,11 +209,11 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
     app.include_router(comments_router.router)
     app.include_router(confirmations_router.router)
     app.include_router(departments_router.router)
-    app.include_router(exports_router.router)
     app.include_router(facts_router.router)
     app.include_router(pending_router.router)
     app.include_router(processes_router.router)
     app.include_router(reports_router.registry_router)
+    app.include_router(reports_router.router)
     # Both of `routers/users.py`'s routers, and unconditionally: user
     # administration is not behind a feature switch, and everything registered
     # after the SPA mount below is swallowed by its catch-all — `/api/users`

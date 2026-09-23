@@ -1,0 +1,1151 @@
+import asyncio
+import json
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+from inja_ui_backend import exports as exports_mod
+from inja_ui_backend import pdf as pdf_mod
+from inja_ui_backend.access import NOT_FOUND
+from inja_ui_backend.app import create_app
+from inja_ui_backend.auth import COOKIE_NAME
+from inja_ui_backend.tests_helpers import cfg_for, seeded_session
+
+TEMPLATE = '<!doctype html><script id="inja-export-data">__INJA_EXPORT_DATA__</script>'
+
+
+def confirm_everything(cfg, code: str) -> None:
+    """Vouch for every active process and the overview of `code`.
+
+    D22 — the bundle publishes only confirmed content, so without this every
+    export test here would assert things about an empty document, and the ones
+    checking a 200 would get a 409. Written straight to the store on its own
+    connection: what these tests are about is the export, not the confirmation
+    endpoint (`test_confirmations_api.py` owns that).
+    """
+    from inja_ui_backend import db, storage
+    from inja_ui_backend.fingerprint import fingerprint
+    from inja_ui_backend.store import confirmations
+
+    conn = db.connect(cfg.app_db)
+    try:
+        db.migrate(conn)
+        ov = storage.overview_path(cfg.data_root, code)
+        if ov.is_file():
+            confirmations.set_confirmation(
+                conn, target=code, fingerprint=fingerprint(storage.read_json(ov)),
+                by="09120000000", at=1770000000)
+        for path in storage.list_process_files(cfg.data_root, code):
+            doc = storage.read_json(path)
+            if doc.get("tombstoned"):
+                continue
+            confirmations.set_confirmation(
+                conn, target=doc["id"], fingerprint=fingerprint(doc),
+                by="09120000000", at=1770000000)
+    finally:
+        conn.close()
+
+
+def _cfg(data_root, tmp_path, *, template_dir=True, template_files=True, exports=True):
+    """`template_dir` is the *setting*; `template_files` is what the build left in it.
+
+    They are separate because they fail for different reasons: an unset
+    UI_EXPORT_TEMPLATE_DIR is a missing setting, while a configured directory with
+    no `{kind}.html` in it is a build that never ran. Both answer 503, but only
+    keeping them apart exercises both guards.
+    """
+    cfg = cfg_for(data_root)
+    tdir = tmp_path / "templates"
+    if template_dir:
+        tdir.mkdir(exist_ok=True)
+        if template_files:
+            (tdir / "flowchart.html").write_text(TEMPLATE, encoding="utf-8")
+            (tdir / "steps.html").write_text(TEMPLATE, encoding="utf-8")
+    return cfg.__class__(**{**cfg.__dict__,
+                           "export_dir": (tmp_path / "exports") if exports else None,
+                           "export_template_dir": tdir if template_dir else None})
+
+
+def _guard_logs(caplog):
+    return [r.getMessage() for r in caplog.records
+            if r.name == "inja_ui_backend.routers.reports"]
+
+
+def _ascii_letters(text):
+    """The Latin letters in `text` — a client-facing detail must have none.
+
+    Digits, punctuation and the parenthesised setting names the 503s carry are
+    not letters, so this catches prose ("unknown department") without banning
+    «(EXPORT_DIR)»-style identifiers where they belong.
+    """
+    return [c for c in text if "a" <= c.lower() <= "z"]
+
+
+def _client(cfg):
+    c = TestClient(create_app(cfg))
+    c.cookies.set(COOKIE_NAME, seeded_session(cfg))
+    return c
+
+
+def test_the_build_writes_a_file(data_root, tmp_path):
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    r = _client(cfg).post("/api/departments/cooking/reports/flowchart")
+    assert r.status_code == 200
+    assert "__INJA_EXPORT_DATA__" not in _written(cfg, "cooking", "flowchart")
+
+
+def test_the_written_files_name_is_stable_across_calls(data_root, tmp_path):
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    c = _client(cfg)
+    assert c.post("/api/departments/cooking/reports/steps").status_code == 200
+    first = next((cfg.export_dir / "cooking").glob("steps-*.html")).name
+    assert c.post("/api/departments/cooking/reports/steps").status_code == 200
+    second = next((cfg.export_dir / "cooking").glob("steps-*.html")).name
+    assert first == second
+
+
+def test_a_stored_document_with_no_id_does_not_500_the_export(data_root, tmp_path):
+    """`build_payload` already tolerates this (`doc.get("id")`, never `doc["id"]`)
+    — it simply cannot confirm a document with no id and drops it. The handler's
+    own two reads of `active` used the bare key and would 500 a request the rest
+    of the pipeline handles cleanly.
+
+    `cooking-002.json` is a legal filename under `list_process_files`'s
+    `{code}-\\d{3}` pattern; what is missing is the `id` field inside it, which
+    is a separate thing from the name on disk.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    (cfg.data_root / "departments" / "cooking" / "processes" / "cooking-002.json"
+     ).write_text(json.dumps({"name": "NOIDDOC"}, ensure_ascii=False),
+                  encoding="utf-8")
+
+    r = _client(cfg).post("/api/departments/cooking/reports/steps")
+
+    assert r.status_code == 200, r.text
+    # never confirmable with no id, so it must never reach the published file
+    assert "NOIDDOC" not in _written(cfg, "cooking", "steps")
+
+
+def test_export_requires_a_session(data_root, tmp_path):
+    c = TestClient(create_app(_cfg(data_root, tmp_path)))   # no cookie
+    assert c.post("/api/departments/cooking/reports/steps").status_code == 401
+
+
+def test_unknown_kind_is_404(data_root, tmp_path, caplog):
+    """Persian to the client, the English name of the offending kind to the log.
+
+    `ExportModal` renders `detail` verbatim inside an otherwise Persian dialog,
+    so no 404 on this handler may answer in English — the same split the 503
+    branches already make.
+
+    The detail no longer names the kind. Every 404 in this service carries
+    `access.NOT_FOUND` and nothing else (D56): the permission gate in front of
+    this handler answers 404 for a report outside the caller's scope, and a
+    handler 404 that said "unknown kind" would tell a prober that this one WAS
+    inside their scope. The offending kind is still in the log, where only an
+    operator reads it.
+    """
+    c = _client(_cfg(data_root, tmp_path))
+    with caplog.at_level("INFO"):
+        r = c.post("/api/departments/cooking/reports/poster")
+    assert r.status_code == 404
+    assert r.json()["detail"] == NOT_FOUND
+    assert not _ascii_letters(r.json()["detail"])
+    assert any("unknown report kind" in m and "poster" in m for m in _guard_logs(caplog))
+
+
+def test_department_without_an_overview_is_409_and_still_says_what_to_do(
+        data_root, tmp_path, caplog):
+    """A registered department with no `overview.json` is a *data* fault, not a
+    missing resource — so it is a 409 and keeps its guidance.
+
+    This is the likeliest failure of the lot: only one department has an
+    `overview.json` today. It is the only message on the handler that tells a
+    user what to go and fill in, and the uniform-404 rule would have cost it —
+    a 404 that describes itself describes the caller's scope boundary (D56).
+    A 409 is outside that partition: reaching this line at all means the gate
+    already admitted the caller, so "reachable, but not in a state that can be
+    exported" tells them nothing they were not already told by being let in.
+    Still Persian, because `ExportModal` renders it verbatim.
+    """
+    c = _client(_cfg(data_root, tmp_path))
+    with caplog.at_level("WARNING"):
+        r = c.post("/api/departments/dining/reports/flowchart")
+    assert r.status_code == 409
+    assert r.json()["detail"] != NOT_FOUND, (
+        "the guidance was folded back into the uniform 404 body")
+    assert "معرفی" in r.json()["detail"]
+    assert not _ascii_letters(r.json()["detail"])
+    assert any("overview.json" in m and "dining" in m for m in _guard_logs(caplog))
+
+
+def test_an_overview_that_vanishes_mid_export_is_refused_rather_than_500(
+        data_root, tmp_path, caplog, monkeypatch):
+    """The handler reads the overview three times on a full build, and only the
+    last of those three is what stands between a vanished department and a bare
+    500.
+
+    Once for the cache check (`_current_key`, guarded — a miss there just means
+    "build it"), once inside `build_payload` (unguarded, but always the *content*
+    the cache check just confirmed is there), and once more for the token the
+    file is about to be written under — the same `_current_key` call, on the
+    same connection, and the one place left where the department can have gone
+    away in the meantime. A `merge` run or an operator clearing a department
+    between the build starting and that last read is exactly that window.
+
+    It answers what the missing-overview branch answers and in the same bytes,
+    which is the same rule `NOT_PUBLISHABLE` states: the two reasons a department
+    cannot be published are not this response's to tell apart.
+
+    The **third** read specifically. A stub that failed on either of the first
+    two would be caught earlier — by the cache check or by `build_payload` — and
+    pass this test with the guard under it never once running, which is why the
+    count is asserted.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    target = data_root / "departments" / "cooking" / "overview.json"
+    real_read_text = Path.read_text
+    reads = {"n": 0}
+
+    def vanish(self, *a, **kw):
+        if self == target:
+            reads["n"] += 1
+            if reads["n"] > 2:
+                raise FileNotFoundError(2, "No such file or directory", str(self))
+        return real_read_text(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "read_text", vanish)
+    c = _client(cfg)
+    with caplog.at_level("WARNING"):
+        r = c.post("/api/departments/cooking/reports/flowchart")
+    assert reads["n"] > 2, (
+        "the handler read the overview twice or fewer times, so the third read"
+        " this test is about never happened and the guard under it was never"
+        " exercised")
+    assert r.status_code == 409, r.text
+    assert not _ascii_letters(r.json()["detail"])
+    # …the very body a department with no overview at all is refused with: same
+    # status and same bytes, or the prose says which of the two states this is.
+    assert r.json()["detail"] == c.post(
+        "/api/departments/dining/reports/flowchart").json()["detail"]
+    assert any("cooking" in m and "flowchart" in m and "went away mid-build" in m
+               for m in _guard_logs(caplog)), _guard_logs(caplog)
+    assert list(cfg.export_dir.rglob("*.html")) == [], (
+        "a refused export left a document in the public folder")
+
+
+def test_every_404_on_this_handler_is_the_same_404(data_root, tmp_path):
+    """One assertion covering both 404 guards at once.
+
+    A third guard added later would pass every test above — it would have its
+    own name and its own message — and would still re-open by prose what the
+    status code closes: which of two guesses landed inside the caller's scope.
+    Byte-identical bodies, and no English in either of them, is the property
+    that survives a guard nobody has written yet.
+
+    The department with no overview is deliberately **not** in that set, and the
+    last two assertions are what stop it drifting back in: it is a 409, so it is
+    not in the 404 partition and its self-describing body costs nothing. Folding
+    it back to 404 while keeping its prose would put the disclosure back, and a
+    test that only compared the 404 bodies it happened to list would not see it.
+    """
+    c = _client(_cfg(data_root, tmp_path))
+    bodies = set()
+    for path in ("/api/departments/cooking/reports/poster",       # unknown kind
+                 "/api/departments/marketing/reports/flowchart"):  # unknown department
+        r = c.post(path)
+        assert r.status_code == 404, path
+        assert not _ascii_letters(r.json()["detail"]), path
+        bodies.add(r.text)
+    assert len(bodies) == 1, f"the 404s can be told apart: {bodies}"
+
+    no_overview = c.post("/api/departments/dining/reports/flowchart")
+    assert no_overview.status_code != 404, (
+        "the missing overview is back in the 404 partition, where its wording"
+        " separates 'not there' from 'not yours'")
+    assert no_overview.text not in bodies
+
+
+def test_missing_export_dir_is_503(data_root, tmp_path, caplog):
+    """EXPORT_DIR was never set: a deployment fault, so it is logged as well as 503."""
+    c = _client(_cfg(data_root, tmp_path, exports=False))
+    with caplog.at_level("WARNING"):
+        r = c.post("/api/departments/cooking/reports/flowchart")
+    assert r.status_code == 503
+    assert "EXPORT_DIR" in r.json()["detail"]
+    assert any("EXPORT_DIR" in m for m in _guard_logs(caplog))
+
+
+def test_unconfigured_template_dir_is_503(data_root, tmp_path, caplog):
+    """UI_EXPORT_TEMPLATE_DIR was never set — the setting itself is missing."""
+    c = _client(_cfg(data_root, tmp_path, template_dir=False))
+    with caplog.at_level("WARNING"):
+        r = c.post("/api/departments/cooking/reports/flowchart")
+    assert r.status_code == 503
+    assert "UI_EXPORT_TEMPLATE_DIR" in r.json()["detail"]
+    assert any("UI_EXPORT_TEMPLATE_DIR" in m for m in _guard_logs(caplog))
+
+
+def test_template_file_absent_from_a_configured_dir_is_503(data_root, tmp_path, caplog):
+    """The directory is configured and real, but `flowchart.html` was never built.
+
+    Distinct from the unset-directory case above: here the request reaches the
+    `is_file()` guard. The assertions name that guard's own answer — "not found",
+    not the read fallback's "could not be read" — so deleting the guard and letting
+    the read's OSError handler cover for it does not keep this test green.
+    """
+    cfg = _cfg(data_root, tmp_path, template_files=False)
+    assert cfg.export_template_dir.is_dir()
+    assert not (cfg.export_template_dir / "flowchart.html").exists()
+    with caplog.at_level("WARNING"):
+        r = _client(cfg).post("/api/departments/cooking/reports/flowchart")
+    assert r.status_code == 503
+    assert r.json()["detail"] == "قالب خروجی یافت نشد: flowchart.html"
+    assert any("the export template is missing" in m and "flowchart.html" in m
+               for m in _guard_logs(caplog))
+
+
+def test_unreadable_template_is_503(data_root, tmp_path, caplog, monkeypatch):
+    """The file passes `is_file()` and then the read fails anyway.
+
+    A permissions error, or a deletion racing the check, is still a deployment
+    fault: it must not escape as an unlogged 500.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    target = cfg.export_template_dir / "flowchart.html"
+    real_read_text = Path.read_text
+
+    def boom(self, *a, **kw):
+        if self == target:
+            raise PermissionError(13, "Permission denied")
+        return real_read_text(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "read_text", boom)
+    with caplog.at_level("WARNING"):
+        r = _client(cfg).post("/api/departments/cooking/reports/flowchart")
+    assert r.status_code == 503
+    assert any("could not be read" in m and "flowchart.html" in m
+               for m in _guard_logs(caplog))
+
+
+def test_unknown_department_is_404(data_root, tmp_path, caplog):
+    """The registry guard runs before any path is built from the URL's `code`."""
+    c = _client(_cfg(data_root, tmp_path))
+    with caplog.at_level("INFO"):
+        r = c.post("/api/departments/marketing/reports/flowchart")
+    assert r.status_code == 404
+    assert r.json()["detail"] == NOT_FOUND
+    assert not _ascii_letters(r.json()["detail"])
+    assert any("unknown department" in m and "marketing" in m for m in _guard_logs(caplog))
+
+
+def test_template_without_a_data_slot_is_503(data_root, tmp_path, caplog):
+    """A template that exists but was built wrong is a deployment fault.
+
+    It is not a 404 (the department's data is fine) and not an unhandled 500:
+    retrying will never fix it, so it must answer 503 and leave a log line an
+    operator can act on.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    (cfg.export_template_dir / "flowchart.html").write_text(
+        "<!doctype html><title>no slot here</title>", encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        r = _client(cfg).post("/api/departments/cooking/reports/flowchart")
+    assert r.status_code == 503
+    # the operator-facing English goes to the log; the client gets Persian
+    assert r.json()["detail"] == "قالب خروجی نامعتبر است"
+    assert any("template" in m and "__INJA_EXPORT_DATA__" in m
+               for m in _guard_logs(caplog))
+
+
+def test_unwritable_export_dir_is_logged_and_leaks_no_path(data_root, tmp_path, caplog):
+    """A disk-full or permissions fault on the write is operator-actionable.
+
+    `str(OSError)` carries the offending absolute path, so it belongs in the log
+    and never in the response body.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    c = _client(cfg)
+    # the department folder the write needs is occupied by a file: the
+    # `mkdir(parents=True, exist_ok=True)` inside the atomic write raises OSError
+    (cfg.export_dir / "cooking").write_text("not a directory", encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        r = c.post("/api/departments/cooking/reports/flowchart")
+    assert r.status_code == 500
+    detail = r.json()["detail"]
+    assert detail == "نوشتن فایل خروجی انجام نشد"
+    assert str(cfg.export_dir) not in detail and "cooking" not in detail
+    assert any("could not be written" in m and str(cfg.export_dir) in m
+               for m in _guard_logs(caplog))
+
+
+def test_the_export_route_does_not_shadow_api_404s(data_root, tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html><title>inja</title>", encoding="utf-8")
+    cfg = _cfg(data_root, tmp_path)
+    cfg = cfg.__class__(**{**cfg.__dict__, "static_dir": dist})
+    c = TestClient(create_app(cfg))
+    # the SPA shell answers deep links…
+    assert "inja" in c.get("/departments").text
+    # …but an unknown API path stays a JSON 404…
+    assert c.get("/api/does-not-exist").status_code == 404
+    assert "inja" not in c.get("/api/does-not-exist").text
+    # …and an export path is answered by the gate, never by the shell. The
+    # session is checked before the file is looked for, so this is 401 rather
+    # than 404: whether a given token exists is not something to tell a stranger.
+    nope = c.get("/exports/cooking/nope.html")
+    assert nope.status_code == 401
+    assert "inja" not in nope.text
+    # …and past the gate it is still the route answering, not the catch-all: a
+    # reader with a session who follows a replaced link is owed a plain 404, and
+    # this is the only place that pins it *while the SPA is mounted*.
+    c.cookies.set(COOKIE_NAME, seeded_session(cfg))
+    gone = c.get("/exports/cooking/nope.html")
+    assert gone.status_code == 404
+    assert "inja" not in gone.text
+
+
+def test_a_real_export_is_served_while_the_spa_is_mounted(data_root, tmp_path):
+    """The ordering test above proves it with a *missing* file; this one with a real one.
+
+    A mount registered after the SPA catch-all would answer this with the shell
+    and a 200, which a status-only assertion could not tell from success.
+    """
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html><title>inja</title>", encoding="utf-8")
+    cfg = _cfg(data_root, tmp_path)
+    cfg = cfg.__class__(**{**cfg.__dict__, "static_dir": dist})
+    confirm_everything(cfg, "cooking")
+    c = _client(cfg)
+    assert c.post("/api/departments/cooking/reports/flowchart").status_code == 200
+    written = next((cfg.export_dir / "cooking").glob("flowchart-*.html"))
+    url = "/exports/" + written.relative_to(cfg.export_dir).as_posix()
+
+    r = c.get(url)
+    assert r.status_code == 200
+    assert "inja-export-data" in r.text          # the export itself…
+    assert "<title>inja</title>" not in r.text   # …not the SPA shell
+
+
+def _with_spa(cfg, tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir(exist_ok=True)
+    (dist / "index.html").write_text("<!doctype html><title>inja</title>", encoding="utf-8")
+    return cfg.__class__(**{**cfg.__dict__, "static_dir": dist})
+
+
+def _app_logs(caplog):
+    return [r.getMessage() for r in caplog.records if r.name == "inja_ui_backend.app"]
+
+
+def test_a_misconfigured_export_dir_costs_only_the_export_feature(data_root, tmp_path, caplog):
+    """EXPORT_DIR points at a path that is really a regular file.
+
+    `mkdir(parents=True, exist_ok=True)` raises on that, and unguarded it would
+    take `create_app` — and with it the entire UI — down at startup. The export
+    feature must turn itself off instead, and say so in the log.
+    """
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("x", encoding="utf-8")
+    cfg = _cfg(data_root, tmp_path)
+    cfg = _with_spa(cfg.__class__(**{**cfg.__dict__, "export_dir": blocker}), tmp_path)
+
+    with caplog.at_level("ERROR"):
+        app = create_app(cfg)                       # must not raise
+    c = TestClient(app)
+    c.cookies.set(COOKIE_NAME, seeded_session(cfg))
+
+    # the rest of the UI is up
+    assert c.get("/api/auth/me").status_code == 200
+    assert "inja" in c.get("/departments").text
+    # the export feature answers exactly as it does when EXPORT_DIR is unset
+    r = c.post("/api/departments/cooking/reports/flowchart")
+    assert r.status_code == 503
+    assert "EXPORT_DIR" in r.json()["detail"]
+    # …and an old link is a 404, not the admin shell
+    assert c.get("/exports/cooking/flowchart-abc.html").status_code == 404
+    assert any("EXPORT_DIR" in m and str(blocker) in m for m in _app_logs(caplog))
+
+
+def test_export_links_are_404_when_exports_are_off(data_root, tmp_path):
+    """A bookmarked export link must not turn into the admin login page.
+
+    With no EXPORT_DIR the `/exports` mount is skipped, so the path falls through
+    to the SPA catch-all — which would answer the HTML shell with a 200 and leave
+    a staff member staring at a login form instead of a plain "gone".
+    """
+    cfg = _with_spa(_cfg(data_root, tmp_path, exports=False), tmp_path)
+    c = TestClient(create_app(cfg))
+    # SPA deep links still work…
+    assert "inja" in c.get("/departments").text
+    # …but nothing under /exports pretends to
+    for path in ("/exports/cooking/flowchart-abc.html", "/exports/", "/exports/cooking/"):
+        r = c.get(path)
+        assert r.status_code == 404, path
+        assert "inja" not in r.text, path
+
+
+def _written(cfg, code: str, kind: str) -> str:
+    """The document the build actually put on disk, as text.
+
+    The file and not the response is where every assertion about *content*
+    belongs on this endpoint: the response no longer names the document at all
+    (D28), and a scan of it would say nothing about what was published anyway.
+    Globbed rather than read off the response, and the single match asserted
+    here pins the one-file-per-department-and-kind prune (D27) as much as it
+    locates the file — a second match means the prune broke, not that this
+    helper guessed wrong.
+    """
+    matches = list((cfg.export_dir / code).glob(f"{kind}-*.html"))
+    assert len(matches) == 1, matches
+    return matches[0].read_text(encoding="utf-8")
+
+
+def _payload_of(cfg, code: str, kind: str) -> dict:
+    html = _written(cfg, code, kind)
+    body = html[html.index(">", html.index("inja-export-data")) + 1: html.rindex("</script>")]
+    return json.loads(body)
+
+
+def test_payload_in_the_written_file_has_no_pending(data_root, tmp_path):
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    assert _client(cfg).post(
+        "/api/departments/cooking/reports/flowchart").status_code == 200
+    payload = _payload_of(cfg, "cooking", "flowchart")
+    assert payload["processes"], "nothing was published, so this asserts nothing"
+    assert all(p["pending"] == [] for p in payload["processes"])
+
+
+def test_an_unconfirmed_process_is_absent_from_the_published_file(data_root, tmp_path):
+    """The record gate, on the artifact rather than on the listing.
+
+    Both halves, over one corpus, because a gate applied to one and not the other
+    is the door shut and the window open — which is exactly the shape this
+    endpoint was found in: the three gated boundaries refused an unconfirmed
+    `cooking`, and the export published it.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    c = _client(cfg)
+
+    # only the overview vouched for: the department is publishable, its one
+    # process is not
+    from inja_ui_backend import db, storage
+    from inja_ui_backend.fingerprint import fingerprint
+    from inja_ui_backend.store import confirmations
+    conn = db.connect(cfg.app_db)
+    try:
+        confirmations.set_confirmation(
+            conn, target="cooking",
+            fingerprint=fingerprint(storage.read_json(
+                storage.overview_path(cfg.data_root, "cooking"))),
+            by="09120000000", at=1770000000)
+    finally:
+        conn.close()
+
+    r = c.post("/api/departments/cooking/reports/steps")
+    assert r.status_code == 200, r.text
+    assert _payload_of(cfg, "cooking", "steps")["processes"] == []
+    assert "cooking-001" not in _written(cfg, "cooking", "steps")
+    assert "خرید و پرداخت هزینه" not in _written(cfg, "cooking", "steps")
+    first_name = next((cfg.export_dir / "cooking").glob("steps-*.html")).name
+
+    # …and the same request once an Editor has vouched for it publishes it, or
+    # the absence above is a bundle that never carries anything.
+    confirm_everything(cfg, "cooking")
+    again = c.post("/api/departments/cooking/reports/steps")
+    assert again.status_code == 200, again.text
+    assert [p["id"] for p in _payload_of(cfg, "cooking", "steps")["processes"]] == [
+        "cooking-001"]
+    # …and the key moved with the payload. It has to: the key is what decides
+    # whether an already-rendered file may be reused, so a key that listed a
+    # process the bundle does not publish (or omitted one it does) would keep
+    # serving the document from before the Editor vouched for anything.
+    second_name = next((cfg.export_dir / "cooking").glob("steps-*.html")).name
+    assert second_name != first_name, (
+        "confirming a process changed what the bundle contains and not its key")
+
+
+def test_a_tombstoned_process_is_absent_from_the_published_file(data_root, tmp_path):
+    """D17 excludes a tombstone entirely, and the mark is not a way back in.
+
+    Confirmed on purpose: the confirmation endpoint refuses a tombstoned target,
+    but a row left behind by a process tombstoned *after* it was vouched for is
+    the ordinary way one exists — so "it happens to be unconfirmed" must not be
+    what keeps it out of a permanent public file.
+    """
+    from inja_ui_backend import db, storage
+    from inja_ui_backend.fingerprint import fingerprint
+    from inja_ui_backend.store import confirmations
+
+    cfg = _cfg(data_root, tmp_path)
+    path = storage.proc_path(cfg.data_root, "cooking-001")
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    doc["tombstoned"] = True
+    doc["superseded_by"] = []
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    conn = db.connect(cfg.app_db)
+    try:
+        db.migrate(conn)
+        confirmations.set_confirmation(
+            conn, target="cooking",
+            fingerprint=fingerprint(storage.read_json(
+                storage.overview_path(cfg.data_root, "cooking"))),
+            by="09120000000", at=1770000000)
+        confirmations.set_confirmation(conn, target="cooking-001",
+                                       fingerprint=fingerprint(doc),
+                                       by="09120000000", at=1770000000)
+    finally:
+        conn.close()
+
+    r = _client(cfg).post("/api/departments/cooking/reports/steps")
+    assert r.status_code == 200, r.text
+    assert _payload_of(cfg, "cooking", "steps")["processes"] == []
+    assert "خرید و پرداخت هزینه" not in _written(cfg, "cooking", "steps")
+
+
+def test_a_department_with_nothing_confirmed_cannot_be_exported(data_root, tmp_path):
+    """D22/D23 — an unconfirmed department has nothing to publish, and the answer
+    says what to go and do rather than hiding behind the uniform 404."""
+    cfg = _cfg(data_root, tmp_path)
+    r = _client(cfg).post("/api/departments/cooking/reports/steps")
+    assert r.status_code == 409
+    assert "تأیید" in r.json()["detail"]
+    assert not list(cfg.export_dir.rglob("*.html")), (
+        "a refused export still wrote a document into the public folder")
+
+
+def test_the_refusal_cannot_tell_a_missing_overview_from_an_unconfirmed_one(
+        data_root, tmp_path, caplog):
+    """The existence oracle this endpoint would otherwise be.
+
+    `cooking` has an `overview.json` and nobody has confirmed it; `dining` has
+    none at all. `GET /api/departments/{code}/overview` — the gated read of the
+    very same document — answers `NOT_FOUND` for both, precisely so that a caller
+    cannot use it to map what exists. This endpoint asks for no `view` at all: an
+    `export_pdf` holder scoped `dept:{code}/report:{kind}` reaches it, and so does
+    a plain `reader`, whose default role carries `export_pdf`. Two different
+    answers here would hand exactly those callers the distinction the read
+    endpoint refuses them.
+
+    Status **and** body, byte for byte: the uniform-404 rule next door exists
+    because prose re-opens what a status code closes, and a 409 is no different.
+
+    The operator's log is where the two are still told apart, and the last two
+    assertions are what stop that from quietly becoming one message: an operator
+    reading it must still know which state they are looking at.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    c = _client(cfg)
+    with caplog.at_level("INFO"):
+        unconfirmed = c.post("/api/departments/cooking/reports/steps")
+        missing = c.post("/api/departments/dining/reports/steps")
+
+    assert unconfirmed.status_code == missing.status_code == 409
+    assert unconfirmed.text == missing.text, (
+        "the export separates a department whose introduction exists from one"
+        " whose does not, out of the one route that never asks for `view`")
+    assert not _ascii_letters(unconfirmed.json()["detail"])
+
+    logs = _guard_logs(caplog)
+    assert any("cooking" in m and "confirmation" in m for m in logs), logs
+    assert any("dining" in m and "overview.json" in m for m in logs), logs
+
+    # The two bodies above are identical by design, so the level is the only
+    # place left where an operator can still tell the two states apart — and
+    # exchanging the two `except` blocks would leave every assertion above
+    # green while silently swapping which state logs at which level.
+    guard_records = [r for r in caplog.records
+                     if r.name == "inja_ui_backend.routers.reports"]
+    unconfirmed_record = next(r for r in guard_records
+                              if "cooking" in r.getMessage()
+                              and "confirmation" in r.getMessage())
+    missing_record = next(r for r in guard_records
+                          if "dining" in r.getMessage()
+                          and "overview.json" in r.getMessage())
+    assert unconfirmed_record.levelname == "INFO", (
+        "the unconfirmed-overview branch is the ordinary state of a department"
+        " still being worked on and must log at INFO")
+    assert missing_record.levelname == "WARNING", (
+        "the missing-overview branch is a real data gap and must log at WARNING")
+
+
+def test_moving_a_visibility_switch_changes_the_written_files_name(data_root, tmp_path):
+    """§11 test 22, end to end. If this fails, the already-rendered document keeps
+    serving the field the Editor just switched off — a content leak, not a stale
+    page."""
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    c = _client(cfg)
+    assert c.post("/api/departments/cooking/reports/steps").status_code == 200
+    first = next((cfg.export_dir / "cooking").glob("steps-*.html")).name
+    assert c.put("/api/visibility/process_summary",
+                 json={"visible": True}).status_code == 200
+    assert c.post("/api/departments/cooking/reports/steps").status_code == 200
+    second = next((cfg.export_dir / "cooking").glob("steps-*.html")).name
+    assert first != second
+
+
+def test_a_flipped_switch_changes_what_the_published_file_contains(data_root, tmp_path):
+    """The other half of the test above, and the one that makes it matter.
+
+    A key that moved is only interesting because the *document* moved. This is
+    also the one assertion that fails for a `build_payload` reading
+    `store.policy.DEFAULTS` instead of `current`: the file's name would still
+    change, because `policy.version` is read separately, while every reader kept
+    getting D17's defaults for ever.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    c = _client(cfg)
+    summary = "از دریافت درخواست خرید"      # the fixture's own `summary`, in part
+
+    assert c.post("/api/departments/cooking/reports/steps").status_code == 200
+    assert summary not in _written(cfg, "cooking", "steps")
+
+    assert c.put("/api/visibility/process_summary",
+                 json={"visible": True}).status_code == 200
+    assert c.post("/api/departments/cooking/reports/steps").status_code == 200
+    assert summary in _written(cfg, "cooking", "steps"), (
+        "an Editor switched a field on and the published document did not change:"
+        " the payload is being built from D17's defaults rather than the policy")
+    # …and the old document is gone from the public folder rather than sitting
+    # there under its old name still carrying the other version — the single
+    # match `_written` asserts is that same prune (D27).
+
+
+def test_editing_a_process_changes_the_written_files_name_and_content(data_root, tmp_path):
+    """The content half of D27's key.
+
+    A key that ignored the content would serve the previous document under the
+    previous name for ever — the same failure as the policy clause, reached by
+    the likelier route.
+    """
+    from inja_ui_backend import storage
+
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    c = _client(cfg)
+    assert c.post("/api/departments/cooking/reports/steps").status_code == 200
+    first = next((cfg.export_dir / "cooking").glob("steps-*.html")).name
+    assert "EDITEDNAME" not in _written(cfg, "cooking", "steps")
+
+    path = storage.proc_path(cfg.data_root, "cooking-001")
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    doc["name"] = "EDITEDNAME"
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    confirm_everything(cfg, "cooking")          # the Editor vouches for it again
+
+    assert c.post("/api/departments/cooking/reports/steps").status_code == 200
+    second = next((cfg.export_dir / "cooking").glob("steps-*.html")).name
+    assert second != first
+    assert "EDITEDNAME" in _written(cfg, "cooking", "steps")
+
+
+# --------------------------------------------------------------------------- #
+# the PDF rendered beside the HTML (D18, D21)
+# --------------------------------------------------------------------------- #
+
+def _with_chromium(cfg, tmp_path):
+    """A configured `CHROMIUM_PATH`. The binary is never really run — every test
+    below replaces `render_pdf`, which is the only thing that would use it."""
+    browser = tmp_path / "chromium-headless-shell"
+    browser.write_text("#!/bin/sh\n", encoding="utf-8")
+    return cfg.__class__(**{**cfg.__dict__, "chromium_path": browser})
+
+
+def _plant_a_previous_pdf(cfg, code="cooking", kind="flowchart"):
+    """A PDF from an earlier, successful export of the same department+kind.
+
+    Planted by really exporting once — with the browser switched off, so nothing
+    drives a subprocess — and writing the bytes beside the document that export
+    left. Really exporting is now the only way to know the path: the filename is
+    D27's key over the department's content and the policy
+    (`exports.report_key`), so computing it here would mean restating every
+    fingerprint in the department in a test, and a test that restated them would
+    go green the day the two spellings drifted.
+
+    Re-exporting content nothing has changed lands on that same key, which is
+    what makes a stale PDF possible at all — and is exactly the production
+    sequence it comes from.
+
+    **The HTML is then removed.** With both files present under the current key,
+    the build added by this task answers straight out of the cache (D27) and
+    never reaches the renderer at all — which is correct in production and would
+    make every test below assert nothing. Dropping the HTML forces the next call
+    to miss the cache and actually attempt a render, the same way a first build
+    would; `write_export`'s own prune (which always clears the current token's
+    `.pdf` before writing) is what the "stale PDF gone" assertions below were
+    already resting on, before and after this task.
+    """
+    confirm_everything(cfg, code)
+    quiet = cfg.__class__(**{**cfg.__dict__, "chromium_path": None})
+    r = _client(quiet).post(f"/api/departments/{code}/reports/{kind}")
+    assert r.status_code == 200, r.text
+    written = next((cfg.export_dir / code).glob(f"{kind}-*.html"))
+    path = written.with_suffix(".pdf")
+    path.write_bytes(b"%PDF-1.4 the document as it looked two edits ago")
+    written.unlink()
+    return path
+
+
+def test_export_succeeds_with_no_chromium_configured(data_root, tmp_path, caplog):
+    """No browser in the image is a supported deployment, not an error (D21).
+
+    The HTML is the product; the PDF is an enhancement. No `pdf_url` comes back
+    when none was printed (D18).
+    """
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    assert cfg.chromium_path is None
+    with caplog.at_level("WARNING"):
+        r = _client(cfg).post("/api/departments/cooking/reports/flowchart")
+    assert r.status_code == 200
+    assert set(r.json()) == {"generated_at"}
+    assert list((cfg.export_dir / "cooking").glob("flowchart-*.html"))
+    assert not list((cfg.export_dir / "cooking").glob("*.pdf"))
+    assert any("cooking" in m and "flowchart" in m and "CHROMIUM_PATH" in m
+               for m in _guard_logs(caplog))
+
+
+def test_export_succeeds_when_the_render_fails(data_root, tmp_path, caplog, monkeypatch):
+    """A browser that dies, times out, or prints nothing must not cost the export."""
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    confirm_everything(cfg, "cooking")
+
+    def boom(*a, **kw):
+        raise pdf_mod.PdfRenderError("the page never set window.__INJA_PRINT_READY__")
+
+    monkeypatch.setattr(pdf_mod, "render_pdf", boom)
+    with caplog.at_level("WARNING"):
+        r = _client(cfg).post("/api/departments/cooking/reports/flowchart")
+    assert r.status_code == 200
+    assert set(r.json()) == {"generated_at"}
+    assert list((cfg.export_dir / "cooking").glob("flowchart-*.html"))
+    assert not list((cfg.export_dir / "cooking").glob("*.pdf"))
+    assert any("cooking" in m and "flowchart" in m and "READY" in m
+               for m in _guard_logs(caplog))
+
+
+def test_an_unexpected_error_from_the_renderer_still_publishes_the_export(
+        data_root, tmp_path, caplog, monkeypatch):
+    """D21 may not rest on a type discipline nothing enforces.
+
+    `render_pdf` drives a subprocess, a socket and a JSON protocol; every layer of
+    that can raise something nobody wrote down — a `RuntimeError` from the CDP
+    plumbing, a `ValueError` from a malformed frame, a `binascii.Error` from a
+    truncated base64 body. Catching only the two types the module *means* to raise
+    turns any such surprise into a 500 on an export whose HTML was already written
+    and is already being served. The guard is about the export surviving, not about
+    which exception the browser layer happens to pick, so it catches all of them —
+    and names the type in the log, so a surprise is still diagnosable.
+    """
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    stale = _plant_a_previous_pdf(cfg)
+
+    def boom(*a, **kw):
+        raise RuntimeError("the CDP socket closed mid-frame")
+
+    monkeypatch.setattr(pdf_mod, "render_pdf", boom)
+    with caplog.at_level("WARNING"):
+        r = _client(cfg).post("/api/departments/cooking/reports/flowchart")
+    assert r.status_code == 200
+    assert set(r.json()) == {"generated_at"}
+    assert list((cfg.export_dir / "cooking").glob("flowchart-*.html"))
+    # the same stale-PDF rule as every other failed render: no PDF at all beats a
+    # PDF that disagrees with the document beside it
+    assert not stale.exists()
+    assert not list((cfg.export_dir / "cooking").glob("*.pdf"))
+    assert any("cooking" in m and "flowchart" in m and "RuntimeError" in m
+               for m in _guard_logs(caplog))
+
+
+def test_a_failed_render_removes_the_previous_pdf(data_root, tmp_path, monkeypatch):
+    """The sharpest edge in the whole change.
+
+    The token is stable, so the PDF's path never changes between exports. A failed
+    render therefore leaves the *previous* PDF sitting beside a *freshly written*
+    HTML, and a reader who taps «چاپ / PDF» downloads a document that no longer
+    matches the one on their screen — silently, and worse than having no PDF.
+    """
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    stale = _plant_a_previous_pdf(cfg)
+    before = stale.read_bytes()
+
+    monkeypatch.setattr(pdf_mod, "render_pdf",
+                        lambda *a, **kw: (_ for _ in ()).throw(
+                            pdf_mod.PdfRenderError("the browser printed nothing")))
+    r = _client(cfg).post("/api/departments/cooking/reports/flowchart")
+
+    assert r.status_code == 200
+    # not "a new one was not written" — the *old* one must be gone
+    assert not stale.exists(), (
+        f"a stale PDF survived a failed render: {stale.read_bytes()[:40]!r} "
+        f"(planted {before[:40]!r}) now sits beside a freshly written HTML")
+
+
+def test_an_unconfigured_chromium_removes_the_previous_pdf(data_root, tmp_path):
+    """Same hazard by a different route: the browser was removed from the image.
+
+    Every later export writes fresh HTML next to a PDF nothing will ever refresh.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    stale = _plant_a_previous_pdf(cfg)
+    r = _client(cfg).post("/api/departments/cooking/reports/flowchart")
+    assert r.status_code == 200
+    assert not stale.exists()
+
+
+def test_a_pdf_that_cannot_be_unlinked_is_logged_as_an_error(data_root, tmp_path,
+                                                             caplog, monkeypatch):
+    """The one case the endpoint cannot fix, so it must not pass in silence.
+
+    If the unlink itself fails — a read-only mount, a permissions change — the
+    mismatched PDF stays publicly served and only a human can clear it. That is an
+    ERROR, not the render's "never mind" warning, and the export still succeeds.
+    """
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    stale = _plant_a_previous_pdf(cfg)
+    real_unlink = Path.unlink
+
+    def refuse(self, *a, **kw):
+        if self.name == stale.name:
+            raise PermissionError(13, "Permission denied")
+        return real_unlink(self, *a, **kw)
+
+    monkeypatch.setattr(pdf_mod, "render_pdf",
+                        lambda *a, **kw: (_ for _ in ()).throw(
+                            pdf_mod.PdfRenderError("the browser died")))
+    monkeypatch.setattr(Path, "unlink", refuse)
+    with caplog.at_level("WARNING"):
+        r = _client(cfg).post("/api/departments/cooking/reports/flowchart")
+
+    assert r.status_code == 200
+    assert stale.exists()
+    errors = [rec.getMessage() for rec in caplog.records
+              if rec.name == "inja_ui_backend.routers.reports" and rec.levelname == "ERROR"]
+    assert any(stale.name in m and "disagrees" in m for m in errors)
+
+
+def test_a_successful_render_puts_the_pdf_beside_the_html(data_root, tmp_path, monkeypatch):
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    confirm_everything(cfg, "cooking")
+    seen = {}
+
+    def fake_render(chromium, html_path, out_path, **kw):
+        seen["chromium"] = chromium
+        seen["html"] = Path(html_path)
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(out_path).write_bytes(b"%PDF-1.4 rendered")
+
+    monkeypatch.setattr(pdf_mod, "render_pdf", fake_render)
+    r = _client(cfg).post("/api/departments/cooking/reports/flowchart")
+
+    assert r.status_code == 200
+    html = next((cfg.export_dir / "cooking").glob("flowchart-*.html"))
+    pdf = html.with_suffix(".pdf")
+    assert pdf.is_file() and pdf.read_bytes() == b"%PDF-1.4 rendered"
+    # printed from the document that was just written, not from some other file
+    assert seen["html"] == html
+    assert seen["chromium"] == cfg.chromium_path
+    # **Owner ruling: the response NAMES the PDF now** — *"the export button
+    # should just create pdf. not html. we doen't need html at all."* The panel's
+    # export dialog hands over `pdf_url` and nothing else, so the field has to
+    # travel; D18's "the response says nothing about it" was written when the
+    # document was the deliverable and the PDF an enhancement the exported page's
+    # own button reached by swapping an extension.
+    #
+    # There is no `url` any more (D28): the download route (Task 5) is the only
+    # public link, and it is built by `_file_url`, not returned here.
+    assert set(r.json()) == {"pdf_url", "generated_at"}
+    assert r.json()["pdf_url"] == "/api/departments/cooking/reports/flowchart/file.pdf"
+
+
+def test_no_pdf_url_comes_back_when_no_pdf_was_printed(data_root, tmp_path, monkeypatch):
+    """The other half of the ruling, and the one a dead link would come out of.
+
+    The render is best effort by design (D21): an unconfigured `CHROMIUM_PATH`, a
+    browser that crashed, a print that timed out, and a `render_pdf` that returned
+    without writing anything all leave a published document with no PDF beside it.
+    The document is still written and still served — that has not changed — but
+    the response must not name a `.pdf` that is not there, because the panel builds
+    its one link out of that field and would otherwise offer a 404.
+
+    Rendered-but-empty is the case a path-guessing implementation gets wrong: the
+    call returned, no exception, and there is still nothing on disk.
+    """
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    confirm_everything(cfg, "cooking")
+
+    def render_nothing(chromium, html_path, out_path, **kw):
+        return None
+
+    monkeypatch.setattr(pdf_mod, "render_pdf", render_nothing)
+    r = _client(cfg).post("/api/departments/cooking/reports/flowchart")
+
+    assert r.status_code == 200
+    assert set(r.json()) == {"generated_at"}
+    # …and the document itself is published regardless (D21).
+    assert list((cfg.export_dir / "cooking").glob("flowchart-*.html"))
+
+
+def test_no_pdf_is_served_beside_the_new_html_while_the_render_is_still_running(
+        data_root, tmp_path, monkeypatch):
+    """The crash window, pinned — this is the ordering the whole fix is about.
+
+    `render_pdf` is entered with the fresh HTML already published and the new PDF
+    not yet written; the real thing spends ~5 s in there driving a browser. Both
+    files are served from an unauthenticated mount the whole time, so whatever this
+    fake observes is exactly what a reader would get — and, if the container
+    restarts or the OOM killer fires here, what they would keep getting until
+    someone re-exported the department by hand.
+
+    So: at that instant the folder must hold the *new* document and no `.pdf` at
+    all. Asserted from inside the render rather than after the response, because
+    after the response the mismatch has already been cleaned up and the window this
+    guards is invisible.
+    """
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    stale = _plant_a_previous_pdf(cfg)
+    stale_bytes = stale.read_bytes()
+    mid_render = {}
+
+    def fake_render(chromium, html_path, out_path, **kw):
+        folder = Path(out_path).parent
+        mid_render["pdfs"] = sorted(p.name for p in folder.glob("*.pdf"))
+        mid_render["html"] = Path(html_path).read_text(encoding="utf-8")
+        Path(out_path).write_bytes(b"%PDF-1.4 printed from this very document")
+
+    monkeypatch.setattr(pdf_mod, "render_pdf", fake_render)
+    r = _client(cfg).post("/api/departments/cooking/reports/flowchart")
+
+    assert r.status_code == 200
+    assert mid_render["pdfs"] == [], (
+        f"a PDF was still publicly served beside the new HTML mid-render: "
+        f"{mid_render['pdfs']} (planted {stale_bytes[:40]!r})")
+    # …and the HTML it is printing from really is the new one, so the window being
+    # asserted is the render's and not some moment before the document was written
+    assert exports_mod.DATA_SLOT not in mid_render["html"]
+    assert stale.read_bytes() == b"%PDF-1.4 printed from this very document"
+
+
+def test_regenerating_prunes_the_previous_pdf(data_root, tmp_path, monkeypatch):
+    """An orphan from a rotated signing key is as public as the HTML beside it."""
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    confirm_everything(cfg, "cooking")
+    folder = cfg.export_dir / "cooking"
+    folder.mkdir(parents=True, exist_ok=True)
+    orphan_html = folder / "flowchart-deadbeefdeadbeef.html"
+    orphan_pdf = folder / "flowchart-deadbeefdeadbeef.pdf"
+    orphan_html.write_text("revoked", encoding="utf-8")
+    orphan_pdf.write_bytes(b"%PDF-revoked")
+
+    monkeypatch.setattr(pdf_mod, "render_pdf",
+                        lambda c, h, o, **kw: Path(o).write_bytes(b"%PDF-fresh"))
+    r = _client(cfg).post("/api/departments/cooking/reports/flowchart")
+
+    assert r.status_code == 200
+    assert not orphan_html.exists()
+    assert not orphan_pdf.exists()
+    assert len(list(folder.glob("flowchart-*.pdf"))) == 1
+
+
+def test_the_render_does_not_run_on_the_event_loop(data_root, tmp_path, monkeypatch):
+    """`render_pdf` blocks for seconds to tens of seconds.
+
+    Run on the event loop it would freeze every other request in the process for
+    the whole render — including the other bots' traffic. `asyncio.get_running_loop`
+    is the exact discriminator: it succeeds only on a thread that *is* running the
+    loop, and raises `RuntimeError` in a worker thread.
+    """
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    confirm_everything(cfg, "cooking")
+    where = {}
+
+    def fake_render(chromium, html_path, out_path, **kw):
+        try:
+            asyncio.get_running_loop()
+            where["on_the_loop"] = True
+        except RuntimeError:
+            where["on_the_loop"] = False
+        Path(out_path).write_bytes(b"%PDF-1.4 rendered")
+
+    monkeypatch.setattr(pdf_mod, "render_pdf", fake_render)
+    r = _client(cfg).post("/api/departments/cooking/reports/flowchart")
+
+    assert r.status_code == 200
+    assert where["on_the_loop"] is False
+
+
+
+def _set_policy_version(cfg):
+    """Flip one visibility switch straight in the store, on its own connection —
+    the way `confirm_everything` writes confirmations: what these tests are
+    about is the cache key, not the visibility endpoint."""
+    from inja_ui_backend import db
+    from inja_ui_backend.store import policy
+    conn = db.connect(cfg.app_db)
+    try:
+        db.migrate(conn)
+        policy.set_field(conn, "node_actor", not policy.current(conn)["node_actor"])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+#: A `render_pdf` stand-in that behaves like a working browser: it writes real
+#: bytes at the path it is given. Needed here — and not in the brief's own
+#: snippet — because these three tests are the only place in this file that
+#: needs the *cache* condition (both HTML and PDF on disk) to be reachable at
+#: all: with no CHROMIUM_PATH configured, `export_pdf_path(...).is_file()` is
+#: never true and every build takes the full, never-cached path for a reason
+#: that has nothing to do with D27.
+def _render_something(chromium, html_path, out_path, **kw):
+    Path(out_path).write_bytes(b"%PDF-1.4 built")
+
+
+def test_the_build_answers_the_gated_download_url(data_root, tmp_path, monkeypatch):
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    confirm_everything(cfg, "cooking")
+    monkeypatch.setattr(pdf_mod, "render_pdf", _render_something)
+    r = _client(cfg).post("/api/departments/cooking/reports/flowchart")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["pdf_url"] == "/api/departments/cooking/reports/flowchart/file.pdf"
+    assert "url" not in body, "there is no public document link any more (D28)"
+    assert body["generated_at"]
+
+
+def test_a_second_build_of_unchanged_content_renders_nothing(data_root, tmp_path, monkeypatch):
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    confirm_everything(cfg, "cooking")
+    c = _client(cfg)
+    monkeypatch.setattr(pdf_mod, "render_pdf", _render_something)
+    assert c.post("/api/departments/cooking/reports/flowchart").status_code == 200
+    renders = []
+    monkeypatch.setattr(pdf_mod, "render_pdf", lambda *a, **k: renders.append(a))
+    r = c.post("/api/departments/cooking/reports/flowchart")
+    assert r.status_code == 200, r.text
+    assert renders == [], "D27: one render per version, reused until the key changes"
+    assert r.json()["pdf_url"].endswith("/file.pdf")
+
+
+def test_a_policy_change_makes_it_build_again(data_root, tmp_path, monkeypatch):
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    confirm_everything(cfg, "cooking")
+    c = _client(cfg)
+    monkeypatch.setattr(pdf_mod, "render_pdf", _render_something)
+    assert c.post("/api/departments/cooking/reports/flowchart").status_code == 200
+    _set_policy_version(cfg)          # helper below: flips one visibility switch
+    renders = []
+    monkeypatch.setattr(pdf_mod, "render_pdf", lambda *a, **k: renders.append(a))
+    assert c.post("/api/departments/cooking/reports/flowchart").status_code == 200
+    assert renders, "a policy change must change the key and force a render (D27)"
