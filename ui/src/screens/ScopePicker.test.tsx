@@ -243,6 +243,22 @@ describe('ScopePicker', () => {
     expect(screen.queryByText(/این دامنه‌ها را این فرم نمی‌تواند نشان دهد/)).toBeNull()
   })
 
+  it('never draws a tile held and calls the same scope undrawable at once', async () => {
+    // The regression the pending-window fix above nearly introduced: a raw
+    // `startsWith('dept:x/report:')` test would count `dept:dining/report:bogus`
+    // as held forever, including once the registry HAS arrived and names it
+    // undrawable — the tile ticked and tinted while the notice below, in the
+    // same render, lists that very scope as one this form cannot draw. `held`
+    // has to answer the same question `undrawable` does: once the registry is
+    // in, only a report id the registry actually names counts.
+    draw(['dept:dining/report:bogus'])
+    const dining = await screen.findByRole('checkbox', { name: 'سالن' })
+    expect(dining).not.toBeChecked()
+    expect(dining.closest('label')).toHaveClass('bg-card', 'border-warm')
+    expect(await screen.findByText(/این دامنه‌ها را این فرم نمی‌تواند نشان دهد/))
+      .toHaveTextContent('سالن/report:bogus')
+  })
+
   it('says nothing about undrawable scopes while the registry is still on its way', async () => {
     // In flight, EVERY department scope is one this form draws no control for,
     // so a notice gated on `data === undefined` flashes across a perfectly

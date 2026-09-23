@@ -200,14 +200,23 @@ export function ScopePicker({ scopes, onChange }: {
           // end; a report-scoped department drawn TICKED would be worse — it
           // would report more reach than the account holds.
           //
-          // **`held` is read off the stored scopes, not off `narrowed`.** While
-          // `/api/reports` is still in flight, `reports` is `[]` and `narrowed`
-          // with it, which would make a purely report-scoped account's tile
-          // read UNHELD — "no access" said about an account that has some. The
-          // raw scope string is known the moment `scopes` is, independent of
-          // whether the registry has answered yet; the registry only affects
-          // which of the held reports can be NAMED in the caption below.
-          const heldByReport = scopes.some((s) => s.startsWith(`dept:${d.code}/report:`))
+          // **`held` answers the same question `undrawable` does, not a raw
+          // prefix test.** A bare `startsWith` would count `dept:x/report:bogus`
+          // as held even once the registry has arrived and named it undrawable
+          // below — the tile and the notice disagreeing about the same scope.
+          // So: a well-formed report scope of this department, via `parseScope`,
+          // counts while the registry is still in flight (there is nothing yet
+          // to disbelieve it with, and saying "unheld" here would be the same
+          // false negative the pending guard above exists to prevent); once the
+          // registry has answered, it counts only when `reportLabel` actually
+          // resolves it — `narrowed`'s own test, restated so the two agree by
+          // construction. A malformed scope reaches neither: it is undrawable,
+          // and it is not access to this department.
+          const heldByReport = scopes.some((s) => {
+            const p = parseScope(s)
+            if (p.shape !== 'report' || p.code !== d.code) return false
+            return reportsQuery.isPending || reportLabel(p.report, reportNames) !== undefined
+          })
           const held = whole || heldByReport
           return (
             <div key={d.code} className="relative">
