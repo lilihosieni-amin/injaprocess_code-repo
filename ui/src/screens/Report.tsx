@@ -76,7 +76,16 @@ export function Report() {
       <div className="flex items-center gap-s5 px-screen-x py-s6 max760:px-s7">
         <Button variant="ghost" onClick={() => nav(`/departments/${code}`)}>بازگشت</Button>
         <span className="text-role-subtitle-on-field text-fs-sm">
-          دپارتمان {payload?.dept?.name ?? ''} · {entry?.name ?? ''}
+          {/* The clause is rendered only when there IS a department: an empty
+              report has none, and the name and its separator would otherwise
+              dangle in front of the registry entry.
+
+              No «دپارتمان» in front of it, either. `overview.json` stores the
+              COMPLETE label in `name` — the dining department is saved as
+              «دپارتمان سالن», not the bare «سالن» that `registry.json` keeps and
+              that `ProcessList` prefixes — so a prefix here reads doubled.
+              `Document.tsx` records the same rule for its own headings. */}
+          {payload?.dept && <>{payload.dept.name} · </>}{entry?.name ?? ''}
         </span>
       </div>
       {body}

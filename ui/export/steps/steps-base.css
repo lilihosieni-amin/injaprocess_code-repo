@@ -46,8 +46,10 @@
  */
 html{scroll-behavior:smooth}
 body{margin:0}
-.steps-root,.steps-root *{box-sizing:border-box}
+/* Wrapper rule before reset, so the two stylesheets read the same way — see
+ * the note in `flowchart/doc-base.css`. */
 .steps-root{min-height:100vh;font-family:'Vazirmatn Variable','Vazirmatn',system-ui,sans-serif;color:var(--ink);line-height:1.9}
+.steps-root,.steps-root *{box-sizing:border-box}
 .steps-screen{background:var(--app);font-size:17px}
 .steps-root ::selection{background:var(--coral);color:#fff}
 .steps-root button{font-family:inherit}

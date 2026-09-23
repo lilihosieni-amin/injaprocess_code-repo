@@ -31,7 +31,7 @@ const proc = (id: string, name: string) => ({
   created_at: '', updated_at: '',
   idef0: { inputs: [], controls: [], outputs: [], mechanisms: [] },
   kpis: [], nodes: [
-    { id: 'n1', type: 'activity', label: 'شستن سبزی', description: 'شرح', actor: 'آشپز',
+    { id: 'n1', type: 'activity', label: 'شستن سبزی', description: 'سبزی را سه بار بشویید', actor: 'آشپز',
       icom: { inputs: [], controls: [], outputs: [], mechanisms: [] },
       subprocess: null, position: { x: 0, y: 0 }, layout: 'auto',
       source: { created_by: 't', touched_by: [] } },
@@ -79,7 +79,10 @@ function renderAt(path: string, d = descriptor(['view'])) {
   // already made by the time «مشاهده» opens this route, and the department list
   // the shell's own chrome draws on every screen there is.
   qc.setQueryData(['reports'], {
-    reports: [{ id: 'steps', name: 'راهنمای گام‌به‌گام کار', short: 'گام‌به‌گام', description: '' }],
+    reports: [
+      { id: 'steps', name: 'راهنمای گام‌به‌گام کار', short: 'گام‌به‌گام', description: '' },
+      { id: 'flowchart', name: 'مستند فلوچارت', short: 'فلوچارت', description: '' },
+    ],
   })
   qc.setQueryData(['departments'], [{ code: 'cooking', name: 'دپارتمان پخت', count: 1 }])
   const router = createMemoryRouter(appRoutes, { initialEntries: [path] })
@@ -121,13 +124,42 @@ describe('the report screen', () => {
     expect(router.state.location.pathname).toBe('/departments/cooking')
   })
 
+  /**
+   * **The flowchart report, and it has to be that one.** The steps guide issues
+   * no queries at all — `StepsApp` and `PrintDoc` import from `src/api/types`
+   * as types only and call no hook — so a fetch log taken over the steps
+   * document passes just as happily with the `QueryClientProvider` deleted from
+   * the screen, which is to say it fences nothing.
+   *
+   * The one consumer of the app's cache is `DetailDrawer`, which
+   * `useProcesses(process.department)` puts on `/api/departments/{code}/processes`
+   * — the list that is NOT confirmation-filtered — and it is reached only
+   * through `FlowViewer`, inside the flowchart document, once a reader opens a
+   * process and taps a node. So the test walks there: table of contents →
+   * viewer → node → drawer. Under the seeded client that query is answered from
+   * the payload; under the app's client it is a request.
+   *
+   * `PrintDiagrams` mounts every process a second time in an offscreen
+   * measuring host, so each node label is in the DOM twice — `OFFSCREEN` drops
+   * the measured copy, exactly as `Document.test.tsx` does.
+   */
+  const OFFSCREEN = { ignore: '.pf-measure, .pf-measure *' }
+
   it('the report reads the report, never the app’s own process list', async () => {
-    // The seeded client is what makes this true; a shared client would serve the
-    // drawer the API's unfiltered list inside a confirmed-only document.
     const fetchMock = server(PAYLOAD)
-    renderAt('/departments/cooking/reports/steps', descriptor(['view'], ['dept:cooking']))
-    await screen.findByRole('heading', { name: 'راهنمای گام‌به‌گام کار' })
-    expect(fetchMock.mock.calls.map((c) => c[0]))
-      .toEqual(['/api/auth/me', '/api/departments/cooking/reports/steps'])
+    renderAt('/departments/cooking/reports/flowchart', descriptor(['view'], ['dept:cooking']))
+
+    fireEvent.click(await screen.findByText('آماده‌سازی مواد اولیه', { selector: 'span' }))
+    // the node label is in the process sheet as well as on the canvas; the
+    // viewer is the last thing `Document` renders, so its copy is the last one
+    const onCanvas = await screen.findAllByText('شستن سبزی', OFFSCREEN)
+    fireEvent.click(onCanvas[onCanvas.length - 1])
+    // the drawer is open — it brings a second «بستن» beside the viewer's own —
+    // so `useProcesses` has run, and whichever client answered it is recorded
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'بستن' })).toHaveLength(2))
+
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]))
+    expect(urls).toEqual(['/api/auth/me', '/api/departments/cooking/reports/flowchart'])
+    expect(urls.filter((u) => u.endsWith('/processes'))).toEqual([])
   })
 })

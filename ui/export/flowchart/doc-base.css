@@ -56,8 +56,11 @@
  * viewport tall. */
 html{scroll-behavior:smooth}
 body{margin:0}
-.doc-root *{box-sizing:border-box}
+/* The wrapper's own rule comes before its reset on purpose: `parity.test.tsx`
+ * reads "the rule that carries the document's typography" as the FIRST rule
+ * whose selector list names `.doc-root`, and the reset names it too. */
 .doc-root{min-height:100vh;background:var(--desk);font-family:'Vazirmatn Variable','Vazirmatn',system-ui,sans-serif;color:var(--ink);line-height:1.75}
+.doc-root,.doc-root *{box-sizing:border-box}
 .doc-root ::selection{background:var(--coral);color:#fff}
 .doc-root a{color:var(--violet);text-decoration:none}
 .doc-root a:hover{color:var(--coral)}

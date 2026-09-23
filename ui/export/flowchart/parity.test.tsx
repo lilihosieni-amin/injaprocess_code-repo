@@ -125,3 +125,54 @@ describe('the exported document never changes the metrics the canvas inherits', 
     expect(mod).not.toMatch(/:global/)
   })
 })
+
+/**
+ * **Both documents are also read inside the application**, at
+ * `/departments/{code}/reports/{kind}`, where each is one screen among many and
+ * its stylesheet arrives in a lazy chunk that then stays for the session. A rule
+ * on a selector no wrapper contains does not stop at the document: it repaints
+ * every other screen, permanently, from the moment a reader opens a report.
+ *
+ * The scan above is the older and narrower half of this — it asks only about
+ * *inherited typography*, because its question is what the flow canvas inherits,
+ * and it reads only `doc-base.css`. Four things would sail through it and still
+ * escape: `body{background}` (not inherited, but it propagates to the canvas and
+ * paints the whole viewport), `*{box-sizing}` (not typography), and the bare
+ * `::selection` and `a` rules both documents were ported with. So this asks the
+ * other question — *may this rule leave the document at all* — of BOTH
+ * stylesheets.
+ *
+ * `:root` is deliberately not on the list. Its custom properties do reach the
+ * application and nine of them collide by name with the design system's, but
+ * moving them onto a wrapper means moving them onto one that also contains
+ * `FlowViewer` — which mounts OUTSIDE `.doc-root` by design, and is pinned so by
+ * the test above — and that is a change to the export bundle's DOM with a
+ * page-by-page PDF re-verification behind it. Recorded, parked, not smuggled in
+ * under a guard.
+ */
+describe('neither document stylesheet can escape the document', () => {
+  /** A selector with nothing in front of it — one the application's own screens
+   *  match just as readily as the document does. `:root` excluded, above. */
+  const GLOBAL = /^(?:html|body|\*|::selection|a(?:[:[].*)?)$/
+  /** Declared on such a selector, these leave the document: `background` paints
+   *  the app's page, `box-sizing` resets the app's box model. */
+  const ESCAPES = ['background', 'background-color', 'box-sizing']
+
+  for (const sheet of ['flowchart/doc-base.css', 'steps/steps-base.css']) {
+    it(`${sheet} declares none of them on a global selector`, () => {
+      const css = readFileSync(join(EXPORT_DIR, sheet), 'utf8')
+      const offenders = rules(css).flatMap((r) =>
+        r.selectors.filter((s) => GLOBAL.test(s)).flatMap((s) =>
+          // `::selection` and `a` are offences by their selector alone: whatever
+          // they declare, they declare it on every screen in the application.
+          /^(?:::selection|a(?:[:[].*)?)$/.test(s)
+            ? [`${s} { … }`]
+            : declaredProps(r.body)
+              .filter((prop) => ESCAPES.includes(prop))
+              .map((prop) => `${s} { ${prop} }`),
+        ),
+      )
+      expect(offenders).toEqual([])
+    })
+  }
+})
