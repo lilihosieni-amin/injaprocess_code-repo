@@ -257,6 +257,9 @@ def build_report(code: str, kind: str, request: Request,
     # are unaffected: a deployment fault is nothing to hide, and telling an
     # operator which variable is unset costs no disclosure at all.
     _known(cfg, code, kind)
+    # Both settings are deployment faults: no retry and no user action fixes an
+    # unset environment variable, so each answers 503 *and* leaves a log line.
+    # Without the log an operator watching a misconfigured service sees nothing.
     if not cfg.export_dir:
         logger.error("%s/%s: EXPORT_DIR is not configured", code, kind)
         raise HTTPException(status_code=503,
@@ -387,6 +390,13 @@ def build_report(code: str, kind: str, request: Request,
     # follows it straight away finds the PDF already there. Never raises (D21).
     rendered = _render_pdf_beside(cfg, code, kind, token, written)
 
+    # **`pdf_url` is present only when a PDF is genuinely on disk** — owner
+    # ruling, *"the export button should just create pdf"*. It is the field the
+    # panel's export dialog hands over. Absent rather than null, and never a
+    # guessed `.pdf` beside a render that did not run: a dialog offering a link
+    # to a file that is not there is worse than a dialog that says the export
+    # failed, which is what the panel now draws when this field does not come
+    # back.
     body: dict = {"generated_at": generated_at}
     if rendered is not None:
         body["pdf_url"] = _file_url(code, kind)
