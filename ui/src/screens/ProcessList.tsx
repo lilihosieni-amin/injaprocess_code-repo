@@ -16,7 +16,7 @@ import { isTopDismissible, popDismissible, pushDismissible } from '../ui/dismiss
 import { CreateProcessModal } from '../write/CreateProcessModal'
 import { DeleteProcessConfirm } from '../write/DeleteProcessConfirm'
 import { ReorderModal } from '../write/ReorderModal'
-import { ExportMenu, useExportActions } from '../write/ExportMenu'
+import { useReportActions } from '../write/ReportsDialog'
 import { refusalStatus } from '../api/client'
 import { ScreenSkeleton } from '../ui/states'
 import { RefusalScreen } from './Refusal'
@@ -279,16 +279,16 @@ export function ProcessList() {
   const mayConfirm = can('confirm', `dept:${code}`)
   const { data: marks = [] } = useConfirmations(code, { enabled: mayConfirm })
   /**
-   * The exports, for the ⋯ that replaces the bar at ≤760 — owner ruling: *"in
-   * process list page, in mobile version we don't have download buttomn in :
-   * menu.add it."*
+   * The reports dialog, for the ⋯ that replaces the bar at ≤760 — owner ruling:
+   * *"in process list page, in mobile version we don't have download buttomn in
+   * : menu.add it."*
    *
-   * `ExportMenu` draws the bar's own trigger and holds a second copy of this
-   * hook; the two are deliberate rather than duplicated, because exactly one of
-   * them is on screen at any width and a dialog raised from inside
-   * `[data-r-plistactions]` — `display:none` below the breakpoint — would not
-   * paint at all. See `useExportActions`. */
-  const exports = useExportActions(code)
+   * One row now opens it from every surface — the bar's own ⋯, the title row's
+   * ⋯ at ≤760, and the reader's ⋮ — so this hook has one instance and `dialog`
+   * is rendered once, at the screen root: a `position:fixed` dialog inside a
+   * `display:none` box (`[data-r-plistactions]` below the breakpoint) is not
+   * painted at all, which is why it cannot live inside either trigger. */
+  const reports = useReportActions(code, dept?.name ?? '')
   // `mark`, not `m`: `m` used to be this department's tile metadata, which
   // `IconTile` now reads for itself.
   const markOf = new Map(marks.map((mark) => [mark.target, mark]))
@@ -334,13 +334,13 @@ export function ProcessList() {
    */
   if (isPending) return <ScreenSkeleton column={reader ? 'reader' : 'list'} cards={5} />
 
-  // The bar's fourth control, and the reader's only one. `useExportActions` has
-  // already dropped every kind this caller may not take, so `reader_no_download`
-  // gets an empty list here for the same reason they see no trigger on the bar —
-  // and the reader's ⋮ below is not drawn at all rather than drawn and empty.
-  const exportActs: Act[] = exports.kinds.map(
-    (k) => ({ key: `export-${k.kind}`, label: k.label, run: () => exports.run(k.kind) }),
-  )
+  // One row for every report surface: the dialog behind it is what tells a
+  // caller which reports there are and what they may do with each. The row is
+  // absent when that dialog would be empty — the same rule the per-kind rows
+  // followed.
+  const reportActs: Act[] = reports.hasAny
+    ? [{ key: 'reports', label: 'نمایش‌های دپارتمان', run: reports.open }]
+    : []
 
   // R5 — the overflow is the action bar, not a superset of it, so both are
   // built from one list. An act a caller may not perform is in neither.
@@ -348,7 +348,7 @@ export function ProcessList() {
     ...(mayEdit ? [{ key: 'order', label: 'ترتیب فرآیندها', run: () => setReordering(true) }] : []),
     { key: 'overview', label: 'اطلاعات دپارتمان', run: () => nav(`/departments/${code}/overview`) },
     ...(mayEdit ? [{ key: 'new', label: 'فرآیند جدید', run: () => setCreating(true) }] : []),
-    ...exportActs,
+    ...reportActs,
   ]
 
   return (
@@ -391,15 +391,17 @@ export function ProcessList() {
 
                 The ⋮ comes AFTER the button in source and therefore to its LEFT:
                 this document is RTL, so the row starts at the right edge. It holds
-                the export rows ONLY. «اطلاعات دپارتمان» is the button it sits
-                beside and R48's ruling stands — one control says a thing once. */}
+                the reports row ONLY — «نمایش‌ها», not «دریافت خروجی» any more, since
+                it now offers مشاهده beside دریافت فایل. «اطلاعات دپارتمان» is the
+                button it sits beside and R48's ruling stands — one control says a
+                thing once. */}
             <div className="flex items-center justify-center gap-s5 mt-s10">
               <Button variant="ghost" onClick={() => nav(`/departments/${code}/overview`)}
                 className="px-s9 text-fs-menu">اطلاعات دپارتمان</Button>
-              {exportActs.length > 0 && (
+              {reportActs.length > 0 && (
                 <OverflowMenu
-                  actions={exportActs}
-                  label="دریافت خروجی"
+                  actions={reportActs}
+                  label="نمایش‌ها"
                   className="relative flex-none"
                   // The reader's own square, `--size-menu-more-reader` 38×38
                   // radius 11 (reader 162) — the R3 sibling of the panel's 36px
@@ -463,7 +465,29 @@ export function ProcessList() {
                 <Button variant="coral" onClick={() => setCreating(true)}
                   className="px-s8 py-s6 text-fs-sm">فرآیند جدید</Button>
               )}
-              <ExportMenu department={code} />
+              {/* The bar's own ⋯, in the ExportMenu's old place — same box, same
+                  glyph, now opening the same `actions` the title row's ⋯ does at
+                  ≤760, rather than the export-only dropdown that used to live
+                  here. `ExportMenu` drew this itself; there is nothing left of
+                  it once its trigger moves into `OverflowMenu`. */}
+              <OverflowMenu
+                actions={actions}
+                // Its own name, not the title row's «کارهای بیشتر»: the two are
+                // separate triggers (each renders unconditionally; only CSS
+                // decides which paints at a given width), and `getByRole`
+                // cannot tell two same-named buttons apart by a breakpoint it
+                // does not evaluate.
+                label="کارهای دپارتمان"
+                className="relative flex-none"
+                glyph={
+                  'relative before:absolute before:content-[""] before:-inset-[4px] '
+                  + 'inline-flex items-center justify-center flex-none w-menu-more h-menu-more '
+                  + 'rounded-control border-hairline border-line bg-tile-v2 text-violet '
+                  + 'text-fs-h5 font-bold cursor-pointer'
+                }
+              >
+                ⋯
+              </OverflowMenu>
             </div>
           </div>
         )}
@@ -684,10 +708,11 @@ export function ProcessList() {
       {creating && <CreateProcessModal department={code} departmentName={dept?.name ?? ''} onClose={() => setCreating(false)} />}
       {reordering && <ReorderModal department={code} departmentName={dept?.name ?? ''} processes={procs} onClose={() => setReordering(false)} />}
       {delTarget && <DeleteProcessConfirm pid={delTarget.pid} name={delTarget.name} onClose={() => setDelTarget(null)} />}
-      {/* At the SCREEN root, not inside the ⋯: the menu unmounts on the press
-          that starts the export, and `[data-r-plistactions]` — where the bar's
-          own copy lives — is `display:none` at the width this one is used at. */}
-      {exports.modal}
+      {/* At the SCREEN root, not inside any of its three triggers: whichever
+          one opened it unmounts on the press that starts a build, and
+          `[data-r-plistactions]` — where the bar's own ⋯ lives — is
+          `display:none` at the width the other two are used at. */}
+      {reports.dialog}
       <DeptFab code={code} />
     </div>
   )
