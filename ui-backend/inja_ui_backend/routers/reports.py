@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .. import exports, pdf, storage
 from ..access import NOT_FOUND, requires
-from ..auth import require_session
+from ..auth import record, require_session
 from ..fingerprint import fingerprint
 from ..store import confirmations, policy
 
@@ -234,6 +234,51 @@ def _current_key(request: Request, code: str, kind: str) -> str | None:
     return exports.report_key(code, kind, process_fingerprints=published,
                               overview_fingerprint=fingerprint(overview),
                               policy_version=policy.version(conn))
+
+
+@router.get("/{code}/reports/{kind}")
+def read_report(code: str, kind: str, request: Request,
+                user=Depends(requires("view", _report_target))):
+    """The report as the application renders it (D25).
+
+    **`view`, and the artifact is never in this response.** Reading and
+    downloading are two responses on purpose: the single file inlines the whole
+    department into one document (ARD §13.3), so serving it here would hand a
+    reader without `export_pdf` the complete artifact and a Ctrl-S, and make
+    FR-E7's *"the ability to download may be withheld from a person who may
+    still read"* decorative. §11 test 23 asserts that on the bytes, not the
+    status.
+
+    **Empty is a state, not a failure.** Nothing is confirmed at start (D23), so
+    on day one every report in the system is empty; §10 says plainly that an
+    empty report renders the empty state rather than 404. `build_payload` raises
+    when the overview carries no valid confirmation, and that becomes the same
+    empty body a department with no `overview.json` gets — the two must not be
+    distinguishable, because the difference is a derived signal about withheld
+    content (D56).
+
+    The payload is `build_payload`'s, which means it is the **same filter every
+    other response goes through** (D18) and the same caller-independent view the
+    downloadable artifact carries (D27): permission decides whether this is
+    served, never what it contains.
+    """
+    cfg = request.app.state.cfg
+    conn = request.app.state.db
+    _known(cfg, code, kind)
+    generated_at = _now()
+    active = [doc for doc in storage.ordered_processes(cfg.data_root, code)
+              if not doc.get("tombstoned")]
+    stored = confirmations.stored_for(conn, [code] + [d.get("id") for d in active])
+    try:
+        payload = exports.build_payload(cfg.data_root, code, generated_at,
+                                        policy=policy.current(conn), confirmed=stored)
+    except exports.ExportUnavailable as e:
+        logger.info("%s/%s: read as empty: %s", code, kind, e)
+        payload = {"dept": None, "processes": [], "generated_at": generated_at}
+    record(request, "report.viewed", actor=user["username"],
+           session_id=getattr(request.state, "session_id", None),
+           target=f"dept:{code}/report:{kind}")
+    return payload
 
 
 @router.post("/{code}/reports/{kind}")
