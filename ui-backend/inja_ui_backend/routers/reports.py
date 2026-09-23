@@ -14,6 +14,8 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse
+from starlette.staticfiles import NotModifiedResponse, StaticFiles
 
 from .. import exports, pdf, storage
 from ..access import NOT_FOUND, requires
@@ -446,3 +448,85 @@ def build_report(code: str, kind: str, request: Request,
     if rendered is not None:
         body["pdf_url"] = _file_url(code, kind)
     return body
+
+
+#: Borrowed, not reimplemented. `is_not_modified` is the exact comparison the
+#: old static mount made — `If-None-Match` against the response's own `etag`,
+#: then `If-Modified-Since` against its `last-modified` — and it reads no
+#: instance state, so an empty `StaticFiles` is just somewhere to hang it.
+#: Reproducing it here would mean re-deriving the etag format `FileResponse`
+#: picked, and the two agreeing forever is the whole point.
+_conditional = StaticFiles(check_dir=False)
+
+#: The two shapes a download comes in (D25), each with the function that names
+#: its file. A shape not in here is a 404 like any other unknown path.
+_ARTIFACT = {"pdf": exports.export_pdf_path, "html": exports.export_html_path}
+
+
+@router.api_route("/{code}/reports/{kind}/file.{ext}", methods=["GET", "HEAD"])
+def download_report(code: str, kind: str, ext: str, request: Request,
+                    user=Depends(requires("export_pdf", _report_target))):
+    """The built single file (D25) — the download, on both extensions.
+
+    **`export_pdf`, re-derived here on every request.** D56's *Downloads* row is
+    the whole reason this is a route and not a folder: *"the download endpoint
+    re-derives scope on every request; that the cached artifact exists (D27) is
+    not authorisation to serve it."* `requires` asks the two questions in D56's
+    order — scope first, so a department the caller may not learn of answers the
+    same bare 404 a never-built report does; capability second, so a
+    `reader_no_download` holder gets a 403 and an `access.denied` row on their
+    own department.
+
+    **The file name is computed, never received.** The old mount took a path
+    from the URL and had to defend itself against `..`, `%00` and symlinks.
+    Here the path is `{code}` and `{kind}` — both already validated by the gate
+    and by `_known` — plus a key derived from the department's own content, so
+    there is no traversal to defend against. The containment check stays anyway,
+    because this is still the one place a filesystem path is built for an
+    outsider's request and it costs one comparison.
+
+    **There is no permanent link** (D28). The key moves with the content, so
+    this URL serves *whatever is current* and 404s the moment it is asked for a
+    version that no longer is — which is the same sentence as "a report is always
+    current", written as a route.
+    """
+    cfg = request.app.state.cfg
+    _known(cfg, code, kind)
+    if ext not in _ARTIFACT or not cfg.export_dir:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    token = _current_key(request, code, kind)
+    if token is None:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    root = cfg.export_dir.resolve()
+    # `resolve()` on both sides, and inside the guard: it raises ValueError on an
+    # embedded NUL and `stat()` raises OSError if the file is unlinked between
+    # the check and the read. The old mount answered 404 to all of it; an
+    # escaping exception here would be a 500 and a traceback.
+    #
+    # `stat_result` is taken here rather than left to `FileResponse` because
+    # otherwise the validators do not exist until the body is streaming, and the
+    # conditional check below needs them.
+    try:
+        target = _ARTIFACT[ext](cfg.export_dir, code, kind, token).resolve()
+        servable = target.is_relative_to(root) and target.is_file()
+        stat_result = target.stat() if servable else None
+    except (ValueError, OSError):
+        servable = False
+    if not servable:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+
+    record(request, "report.downloaded", actor=user["username"],
+           session_id=getattr(request.state, "session_id", None),
+           target=f"dept:{code}/report:{kind}", detail={"format": ext})
+
+    # `private`: the file is behind a session, so a shared cache must never keep
+    # a copy to hand to the next person. `no-cache`: the reader's own browser may
+    # keep one, but must revalidate — without it, a response carrying
+    # `Last-Modified` is one a cache may assign heuristic freshness to and reuse
+    # without asking (RFC 9111 §4.2.2), which is a staff member reading a
+    # corrected process's old bytes with no way to tell.
+    response = FileResponse(target, stat_result=stat_result,
+                            headers={"Cache-Control": "private, no-cache"})
+    if _conditional.is_not_modified(response.headers, request.headers):
+        return NotModifiedResponse(response.headers)
+    return response

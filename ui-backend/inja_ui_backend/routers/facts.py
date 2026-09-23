@@ -745,7 +745,7 @@ def _source_roots(root: Path) -> list[tuple[Path, str | None]]:
 def _source(root: Path, raw: str) -> tuple[Path, str | None] | None:
     """The file `raw` names and the department it belongs to, or `None`.
 
-    `resolve()` on **both sides**, `routers/export_files.serve_export`'s idiom
+    `resolve()` on **both sides**, `routers/reports.py::download_report`'s idiom
     and for its reasons: a `..` segment that survived URL decoding and a
     symlink pointing out of a root are refused by the same comparison, and an
     absolute path escapes the join rather than the containment — `root / "/etc/

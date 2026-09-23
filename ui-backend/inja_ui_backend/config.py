@@ -39,12 +39,6 @@ class Settings:
     #: meaning no export at all. A deployment without the browser in its image must
     #: keep working, so this is never required.
     chromium_path: Optional[Path]
-    #: The one shared credential that opens a published export, and nothing else.
-    #: Deliberately kept out of the user store so `auth.authenticate` cannot accept
-    #: it — `authenticate` reads rows from `app_db`, and this pair is never one.
-    #: Both unset means no one can open an export — never that everyone can.
-    export_username: Optional[str]
-    export_password_hash: Optional[str]
     git_author_name: str
     git_author_email: str
 
@@ -110,7 +104,7 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         comments_db=comments_db,
         session_signing_key=env["SESSION_SIGNING_KEY"],
         # `or` and not a default argument: `config/ui-backend.env.example` leaves
-        # EXPORT_USERNAME, EXPORT_DIR and UI_STATIC_DIR blank on purpose, so "clear
+        # EXPORT_DIR and UI_STATIC_DIR blank on purpose, so "clear
         # the ones you do not need" is the file's own idiom — and a blank line here
         # reached `int("")`, which is a bare ValueError at startup with no mention of
         # which variable caused it. Blank means unset, as it does everywhere else in
@@ -121,8 +115,6 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         export_dir=Path(export_dir) if export_dir else None,
         export_template_dir=Path(export_templates) if export_templates else None,
         chromium_path=Path(chromium) if chromium else None,
-        export_username=env.get("EXPORT_USERNAME") or None,
-        export_password_hash=env.get("EXPORT_PASSWORD_HASH") or None,
         git_author_name=env.get("GIT_AUTHOR_NAME", "ui-edit"),
         git_author_email=env.get("GIT_AUTHOR_EMAIL", "ui-edit@inja.local"),
     )

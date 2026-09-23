@@ -561,57 +561,50 @@ def test_a_trusted_proxy_that_added_nothing_leaves_the_peer_recorded(
 
 
 # --------------------------------------------------------------------------
-# The export gate. `require_export_access` was rewritten by this task, and the
-# three modules that used to cover it are red until the suite is migrated —
-# leaving a live authorisation gate that could be deleted outright with every
-# test still green.
+# The download. The second credential that used to guard it is retired (D24),
+# so the session that opens the rest of the service is the only one there is —
+# and these ask what that session does at the one route a reader follows from
+# outside the application.
 # --------------------------------------------------------------------------
 
+#: A department and a kind that both exist, so a refusal here is the session's
+#: and not the registry's. Nothing is built, so the furthest a live session
+#: reaches is the handler's own 404 — which is exactly the distinction these
+#: tests need: 401 is the gate, 404 is past it.
+DOWNLOAD = "/api/departments/cooking/reports/steps/file.pdf"
+
+
 def _with_exports(data_root, tmp_path):
-    published = tmp_path / "exports"
-    published.mkdir()
-    (published / "cooking.html").write_text("<p>سند آشپزخانه</p>", encoding="utf-8")
-    return _seeded(data_root, tmp_path, export_dir=published)
+    return _seeded(data_root, tmp_path, export_dir=tmp_path / "exports")
 
 
-def test_the_export_gate_opens_for_a_signed_in_person(data_root, tmp_path):
-    """D29: an admin session reaches the exports without a second credential."""
+def test_the_download_opens_for_a_signed_in_person(data_root, tmp_path):
+    """D29's successor: one session opens everything this person may have, and
+    there is no second credential to type."""
     client, _ = _with_exports(data_root, tmp_path)
+    assert client.get(DOWNLOAD).status_code == 401
     _sign_in(client)
-    r = client.get("/exports/cooking.html")
-    assert r.status_code == 200
-    assert "سند آشپزخانه" in r.text
+    assert client.get(DOWNLOAD).status_code == 404
 
 
-def test_the_export_gate_refuses_a_request_with_no_cookie(data_root, tmp_path):
-    """No export credential is configured here, so there is nothing to type and
-    the gate answers 401 rather than offering a form (D30)."""
-    client, _ = _with_exports(data_root, tmp_path)
-    r = client.get("/exports/cooking.html")
-    assert r.status_code == 401
-    assert "سند آشپزخانه" not in r.text
-
-
-def test_the_export_gate_refuses_a_cookie_that_names_no_session(data_root, tmp_path):
+def test_the_download_refuses_a_cookie_that_names_no_session(data_root, tmp_path):
     """Holding *a* cookie is not holding a session: the value is an opaque row id
     and the store is what decides, not the presence of the header."""
     client, _ = _with_exports(data_root, tmp_path)
     client.cookies.set("inja_session", "not-a-real-session-id")
-    r = client.get("/exports/cooking.html")
-    assert r.status_code == 401
-    assert "سند آشپزخانه" not in r.text
+    assert client.get(DOWNLOAD).status_code == 401
 
 
-def test_the_export_gate_closes_again_when_the_session_ends(data_root, tmp_path):
-    """The gate asks the session store on every request, which is what makes a
-    revoked or disabled account lose its way into the exports (D7)."""
+def test_the_download_closes_again_when_the_session_ends(data_root, tmp_path):
+    """The session store is asked on every request, which is what makes a revoked
+    or disabled account lose its way into the reports too (D7)."""
     client, cfg = _with_exports(data_root, tmp_path)
     _sign_in(client)
-    assert client.get("/exports/cooking.html").status_code == 200
+    assert client.get(DOWNLOAD).status_code == 404
     conn = db.connect(cfg.app_db)
     users.set_disabled(conn, 1, True, now=1000)
     conn.close()
-    assert client.get("/exports/cooking.html").status_code == 401
+    assert client.get(DOWNLOAD).status_code == 401
 
 
 def test_the_other_routers_still_open_for_a_signed_in_person(data_root, tmp_path):

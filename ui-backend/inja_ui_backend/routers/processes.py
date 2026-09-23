@@ -368,8 +368,8 @@ def relayout(pid: str, body: dict, request: Request,
         # `%r` on both, and truncated: the CLI's stderr embeds whatever fragment
         # of the caller's own document the schema objected to, so an unquoted
         # newline in a node label writes a log line of the caller's choosing.
-        # Same reason `export_files._log_failed_login` quotes the username it
-        # records. WARNING, not ERROR: a document the schema refuses is a client
+        # Same reason `access.log_out_of_scope` quotes the target it records.
+        # WARNING, not ERROR: a document the schema refuses is a client
         # mistake, and the operator wants it findable without it paging anyone.
         logger.warning("relayout failed for %r (exit %d): %r",
                        pid[:64], e.code, e.message[:2000])

@@ -69,20 +69,18 @@ def test_chromium_path_read_from_env(tmp_path):
     assert load_settings(env).chromium_path == Path("/usr/bin/chromium-headless-shell")
 
 
-def test_export_credential_defaults_to_none(tmp_path):
-    """Unset means nobody can open an export -- never that everybody can."""
-    s = load_settings(_valid_env(tmp_path))
-    assert s.export_username is None
-    assert s.export_password_hash is None
-
-
-def test_export_credential_read_from_env(tmp_path):
+def test_the_export_credential_is_not_a_setting_any_more(tmp_path):
+    """The second credential is retired (ARD §13.5), and a setting is how it
+    would come back. Reading the environment is asserted too, not only the
+    absence of the fields: a deployment whose env file still carries the pair
+    must be ignored rather than half-honoured."""
     env = _valid_env(tmp_path)
     env["EXPORT_USERNAME"] = "guest"
     env["EXPORT_PASSWORD_HASH"] = "$argon2id$export-dummy"
     s = load_settings(env)
-    assert s.export_username == "guest"
-    assert s.export_password_hash == "$argon2id$export-dummy"
+    assert not hasattr(s, "export_username")
+    assert not hasattr(s, "export_password_hash")
+    assert "guest" not in str(s)
 
 
 def test_export_dirs_read_from_env(tmp_path):

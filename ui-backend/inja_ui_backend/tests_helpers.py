@@ -81,13 +81,20 @@ def seeded_session(cfg) -> str:
         conn.close()
 
 
-def comment_people(data_root: Path, tmp_path: Path) -> dict:
+def comment_people(data_root: Path, tmp_path: Path, *,
+                   export_dir: Path | None = None,
+                   export_template_dir: Path | None = None) -> dict:
     """Signed-in clients over ONE app.db and ONE comments.db, so they all see
     the same comments: editor (*), admin (*), cadmin (admin, dept:cashier),
     head (reader, cooking, can_supervise), viewer (reader, cooking, supervisor
     head), other (reader, cooking). Display names are the keys. Confirms
     cooking-001 and the cooking overview, because a non-editor is served only
     confirmed content (D22). Each client carries `.app_db` for `audit_events`.
+
+    The two export settings are keyword-only and default to unset, which is
+    what every caller but the download's tests wants: `cfg_for` builds from an
+    environment that names neither, so a build through these clients would
+    answer 503 before it reached anything worth testing.
     """
     import json
 
@@ -100,6 +107,8 @@ def comment_people(data_root: Path, tmp_path: Path) -> dict:
     from .store import confirmations, users
 
     cfg = cfg_for(data_root, tmp_path / "people-app.db", tmp_path / "people-comments.db")
+    cfg = cfg.__class__(**{**cfg.__dict__, "export_dir": export_dir,
+                           "export_template_dir": export_template_dir})
     seed_editor(cfg)
     pw = hash_password(_PW)
     people = [("editor", "editor", ("*",), None, False),

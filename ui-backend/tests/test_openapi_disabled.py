@@ -10,8 +10,8 @@ and costs that.
 
 Asserted as a real 404 rather than "the Swagger HTML is absent", because with the
 SPA mounted the catch-all answers an unrouted path with the app shell and a 200 —
-a body that contains no Swagger markers either. `test_exports_api.py` draws the
-same distinction for `/exports`; both cases are covered below.
+a body that contains no Swagger markers either. `test_reports_api.py` draws the
+same distinction for the download route; both cases are covered below.
 """
 import warnings
 
@@ -90,10 +90,12 @@ def test_the_spa_shell_is_never_served_from_a_stale_cache(data_root, tmp_path):
 def test_asking_for_the_docs_raises_no_warning(data_root, tmp_path):
     """Generating the schema warns, and now nothing generates it.
 
-    `serve_export` is registered with `api_route(methods=["GET", "HEAD"])`, which
-    is one route carrying two methods; `get_openapi` emits an operation per method
-    but derives the operation ID from the route, so the second one collides with
-    the first.
+    `routers/reports.py::download_report` is registered with
+    `api_route(methods=["GET", "HEAD"])`, which is one route carrying two
+    methods; `get_openapi` emits an operation per method but derives the
+    operation ID from the route, so the second one collides with the first. The
+    measurement below was taken against `serve_export`, the route it replaced,
+    which carried the same two methods for the same reason.
 
     Measured against this file's parent commit, one fresh app per request:
 
@@ -103,13 +105,15 @@ def test_asking_for_the_docs_raises_no_warning(data_root, tmp_path):
                                           serve_export_exports__file_path__head']
         exports=False /openapi.json 200 []
 
-    So it is exactly one `UserWarning`, it names `…__head` (not `…__get`), it
-    fires on the request that *builds* the schema rather than on `/docs` — which
-    only returns the HTML that then fetches it — and it needs `EXPORT_DIR` set,
-    because the export router is registered on that switch.
+    So it is exactly one `UserWarning`, it names `…__head` (not `…__get`) and it
+    fires on the request that *builds* the schema rather than on `/docs`, which
+    only returns the HTML that then fetches it. It needed `EXPORT_DIR` set, back
+    when the router carrying it was registered on that switch; the download route
+    is registered either way now, so both configurations carry the duplicate and
+    neither may generate a schema.
 
     Both configurations are asserted, so this cannot pass merely because the
-    router carrying the duplicate was never mounted.
+    route carrying the duplicate was never registered.
     """
     for exports in (True, False):
         cfg = _cfg(data_root, tmp_path, exports=exports)

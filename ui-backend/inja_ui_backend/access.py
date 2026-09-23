@@ -68,8 +68,8 @@ NOT_FOUND = "یافت نشد"
 #: A constant for the opposite reason to `NOT_FOUND`'s. That one is uniform so
 #: the caller can learn *nothing* from it; this one is shared so a person who
 #: hits the same wall twice — once through `requires` on an API route, once
-#: through `routers/export_files` on a download — is told the same thing both
-#: times. There is only one fact to state, and it is the same fact: the caller
+#: through `routers/reports.py::download_report` on a download — is told the same
+#: thing both times. There is only one fact to state, and it is the same fact: the caller
 #: may see this, and may not do this to it.
 #:
 #: Deliberately no capability name. `access.denied` carries that (D42), and the
@@ -220,7 +220,7 @@ def log_out_of_scope(request: Request, user: sqlite3.Row, target: str) -> None:
     Both values are attacker-chosen — the target comes out of the URL — so both
     are `%r`-quoted and truncated. Unquoted, a newline in a target writes a log
     line of the caller's choosing, which is the same reason
-    `export_files._log_failed_login` quotes the username it records.
+    `routers/processes.py` quotes the CLI stderr it logs on a failed relayout.
     """
     logger.info("out of scope: %r asked for %r from %s",
                 user["username"], target[:120], client_ip(request))

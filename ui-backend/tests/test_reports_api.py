@@ -384,7 +384,10 @@ def test_unwritable_export_dir_is_logged_and_leaks_no_path(data_root, tmp_path, 
                for m in _guard_logs(caplog))
 
 
-def test_the_export_route_does_not_shadow_api_404s(data_root, tmp_path):
+DOWNLOAD = "/api/departments/cooking/reports/flowchart/file.html"
+
+
+def test_the_download_route_does_not_shadow_api_404s(data_root, tmp_path):
     dist = tmp_path / "dist"
     dist.mkdir()
     (dist / "index.html").write_text("<!doctype html><title>inja</title>", encoding="utf-8")
@@ -396,25 +399,25 @@ def test_the_export_route_does_not_shadow_api_404s(data_root, tmp_path):
     # …but an unknown API path stays a JSON 404…
     assert c.get("/api/does-not-exist").status_code == 404
     assert "inja" not in c.get("/api/does-not-exist").text
-    # …and an export path is answered by the gate, never by the shell. The
-    # session is checked before the file is looked for, so this is 401 rather
-    # than 404: whether a given token exists is not something to tell a stranger.
-    nope = c.get("/exports/cooking/nope.html")
+    # …and the download is answered by the gate, never by the shell. The session
+    # is checked before the file is looked for, so this is 401 rather than 404:
+    # whether a given report is built is not something to tell a stranger.
+    nope = c.get(DOWNLOAD)
     assert nope.status_code == 401
     assert "inja" not in nope.text
     # …and past the gate it is still the route answering, not the catch-all: a
-    # reader with a session who follows a replaced link is owed a plain 404, and
-    # this is the only place that pins it *while the SPA is mounted*.
+    # reader who follows a link to a report that is not built is owed a plain
+    # 404, and this is the only place that pins it *while the SPA is mounted*.
     c.cookies.set(COOKIE_NAME, seeded_session(cfg))
-    gone = c.get("/exports/cooking/nope.html")
+    gone = c.get(DOWNLOAD)
     assert gone.status_code == 404
     assert "inja" not in gone.text
 
 
-def test_a_real_export_is_served_while_the_spa_is_mounted(data_root, tmp_path):
+def test_a_real_artifact_is_served_while_the_spa_is_mounted(data_root, tmp_path):
     """The ordering test above proves it with a *missing* file; this one with a real one.
 
-    A mount registered after the SPA catch-all would answer this with the shell
+    A route registered after the SPA catch-all would answer this with the shell
     and a 200, which a status-only assertion could not tell from success.
     """
     dist = tmp_path / "dist"
@@ -425,12 +428,10 @@ def test_a_real_export_is_served_while_the_spa_is_mounted(data_root, tmp_path):
     confirm_everything(cfg, "cooking")
     c = _client(cfg)
     assert c.post("/api/departments/cooking/reports/flowchart").status_code == 200
-    written = next((cfg.export_dir / "cooking").glob("flowchart-*.html"))
-    url = "/exports/" + written.relative_to(cfg.export_dir).as_posix()
 
-    r = c.get(url)
+    r = c.get(DOWNLOAD)
     assert r.status_code == 200
-    assert "inja-export-data" in r.text          # the export itself…
+    assert "inja-export-data" in r.text          # the artifact itself…
     assert "<title>inja</title>" not in r.text   # …not the SPA shell
 
 
@@ -469,27 +470,29 @@ def test_a_misconfigured_export_dir_costs_only_the_export_feature(data_root, tmp
     r = c.post("/api/departments/cooking/reports/flowchart")
     assert r.status_code == 503
     assert "EXPORT_DIR" in r.json()["detail"]
-    # …and an old link is a 404, not the admin shell
-    assert c.get("/exports/cooking/flowchart-abc.html").status_code == 404
+    # …and the download answers the same 404 it gives a report nobody built,
+    # never the admin shell
+    r = c.get(DOWNLOAD)
+    assert r.status_code == 404 and r.json()["detail"] == NOT_FOUND
     assert any("EXPORT_DIR" in m and str(blocker) in m for m in _app_logs(caplog))
 
 
-def test_export_links_are_404_when_exports_are_off(data_root, tmp_path):
-    """A bookmarked export link must not turn into the admin login page.
+def test_a_download_link_is_404_when_exports_are_off(data_root, tmp_path):
+    """A bookmarked download must not turn into the app shell with a 200.
 
-    With no EXPORT_DIR the `/exports` mount is skipped, so the path falls through
-    to the SPA catch-all — which would answer the HTML shell with a 200 and leave
-    a staff member staring at a login form instead of a plain "gone".
+    The route is registered whether or not EXPORT_DIR is set, so this is the
+    handler's own 404 — `NOT_SPA_ROUTES` keeps the catch-all off every `/api`
+    path, and a status-only assertion could not tell the shell from a refusal.
     """
     cfg = _with_spa(_cfg(data_root, tmp_path, exports=False), tmp_path)
-    c = TestClient(create_app(cfg))
+    c = _client(cfg)
     # SPA deep links still work…
     assert "inja" in c.get("/departments").text
-    # …but nothing under /exports pretends to
-    for path in ("/exports/cooking/flowchart-abc.html", "/exports/", "/exports/cooking/"):
-        r = c.get(path)
-        assert r.status_code == 404, path
-        assert "inja" not in r.text, path
+    # …and the download says plainly that there is nothing there
+    r = c.get(DOWNLOAD)
+    assert r.status_code == 404
+    assert r.json()["detail"] == NOT_FOUND
+    assert "inja" not in r.text
 
 
 def _written(cfg, code: str, kind: str) -> str:

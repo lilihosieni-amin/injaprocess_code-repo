@@ -32,8 +32,8 @@ MIN_PASSWORD_LENGTH = 6
 #:
 #: A limiter of its own, so it *replaces* the default rather than nesting inside
 #: it: the default limiter is the one Starlette runs every sync route handler on,
-#: which here includes serving the export downloads. A queued sign-in waits; a
-#: reader mid-document does not.
+#: which here includes `routers/reports.py::download_report`. A queued sign-in
+#: waits; a reader mid-document does not.
 #:
 #: **One limiter for every argon2 endpoint that stands behind a session**, and
 #: that is a decision rather than an accident. What is being bounded is host
@@ -45,15 +45,17 @@ MIN_PASSWORD_LENGTH = 6
 #: creating a user and setting somebody else's password (`routers/users.py`). A
 #: fifth added anywhere joins this one.
 #:
-#: **There is exactly one exception, and it makes the host's real ceiling four
-#: concurrent argon2 operations, ~256 MiB, not two.** `routers/export_files.py`
-#: holds its own `anyio.CapacityLimiter(2)` for the export-login verify, and says
-#: at its own definition why: that gate is unauthenticated, unthrottled, and
-#: printed on the link handed to the widest audience in the system, so a burst of
-#: guesses at it must not be able to queue every member of staff out of signing
-#: in. Two budgets is the price of that isolation, and it is the whole price —
-#: the arithmetic above is what keeps it visible, so a third limiter appearing
-#: anywhere is a change to this comment before it is a change to the code.
+#: **There is no longer an exception, and the host's real ceiling is two
+#: concurrent argon2 operations again, ~128 MiB.** `routers/export_files.py` held
+#: a second `anyio.CapacityLimiter(2)` of its own for the export-login verify,
+#: because that gate was unauthenticated, unthrottled, and printed on the link
+#: handed to the widest audience in the system — a burst of guesses at it had to
+#: be unable to queue every member of staff out of signing in. That credential is
+#: retired (ARD §13.5) and the download it guarded is now
+#: `routers/reports.py::download_report`, which verifies no password at all, so
+#: the second budget went with it. The arithmetic above is what keeps the number
+#: honest: a second limiter appearing anywhere is a change to this comment before
+#: it is a change to the code.
 #:
 #: It lives here rather than in `routers/auth.py`, where it started, because it
 #: is a property of `hash_password`/`verify_hash` — of the work — and not of one
