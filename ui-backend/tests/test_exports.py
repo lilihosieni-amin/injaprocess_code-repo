@@ -531,7 +531,7 @@ def test_the_key_separates_a_split_fingerprint_list_from_its_merge():
 
 def test_cross_task_contract_constants():
     # Tasks 4 and 5 bind to both of these; a typo surfaces downstream only as a blank export
-    assert exports.EXPORT_KINDS == ("flowchart", "steps")
+    assert exports.REPORT_IDS == ("flowchart", "steps")
     assert exports.DATA_SLOT == "__INJA_EXPORT_DATA__"
 
 

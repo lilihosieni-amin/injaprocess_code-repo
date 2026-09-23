@@ -50,7 +50,7 @@ def _report_target(request: Request) -> str:
     exactly what `contains` gives for free and a list of known kinds would not.
 
     Lexical, like every other target: `kind` is not checked against
-    `EXPORT_KINDS` here. Doing so would put a lookup in front of the gate and
+    `REPORT_IDS` here. Doing so would put a lookup in front of the gate and
     hand an out-of-scope caller a different answer for a real kind than for an
     invented one. An unknown kind is still a well-formed scope, so it passes the
     gate for whoever holds the department and is refused by the handler below;
@@ -177,7 +177,7 @@ def create_export(code: str, kind: str, request: Request,
     # not one of them — it is a 409 and keeps its guidance; see there. The 503s
     # are unaffected: a deployment fault is nothing to hide, and telling an
     # operator which variable is unset costs no disclosure at all.
-    if kind not in exports.EXPORT_KINDS:
+    if kind not in exports.REPORT_IDS:
         logger.info("%s/%s: unknown export kind: %s", code, kind, kind)
         raise HTTPException(status_code=404, detail=NOT_FOUND)
 

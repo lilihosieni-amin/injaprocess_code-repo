@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import hmac
 import json
@@ -12,7 +13,55 @@ from .fingerprint import fingerprint
 
 logger = logging.getLogger(__name__)
 
-EXPORT_KINDS: tuple[str, ...] = ("flowchart", "steps")
+
+@dataclasses.dataclass(frozen=True)
+class Report:
+    """One report kind, as the whole system knows it (D26).
+
+    Four strings and no renderer: the renderer is the frontend's, chosen by
+    `id`, and the backend has no business knowing which React component draws
+    this. `id` is what a scope references (`dept:{code}/report:{id}`, D10) and
+    what names the built file, so it is `[a-z]+` — the grammar `scopes.SCOPE_RE`
+    accepts — and never changes once published, because a grant already stored
+    against it would silently start covering nothing.
+
+    `short` exists beside `name` because the two say the same thing in different
+    places: `name` titles the card in the reports dialog, `short` is what a scope
+    chip reads («سالن (فقط راهنمای گام‌به‌گام)»). One string for both would make
+    either the card curt or the chip a paragraph.
+    """
+    id: str
+    name: str
+    short: str
+    description: str
+
+
+#: **The one list of report kinds in the system** (D26). It replaces the two
+#: hand-synchronised lists — this module's own `EXPORT_KINDS` and `KINDS` in
+#: `ui/src/write/ExportMenu.tsx` — that had to be edited together and, being in
+#: two languages in two repositories' worth of review, were the obvious place for
+#: a kind to exist on one side and not the other.
+#:
+#: Adding a report is this entry plus its renderer: the scope grammar accepts the
+#: new id the moment it is here (`contains` is a shape test, not a list), so the
+#: permission UI grows a checkbox with no further change.
+REGISTRY: tuple[Report, ...] = (
+    Report(id="flowchart",
+           name="سند فلوچارت دپارتمان",
+           short="مستندات کامل",
+           description="هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان."),
+    Report(id="steps",
+           name="راهنمای گام‌به‌گام",
+           short="راهنمای گام‌به‌گام",
+           description="همان فرآیندها، بازنویسی‌شده به گام‌های شماره‌دار."),
+)
+
+#: Derived, never restated — the ids and the wording cannot come apart.
+REPORT_IDS: tuple[str, ...] = tuple(r.id for r in REGISTRY)
+
+
+def by_id(report_id: str) -> Report | None:
+    return next((r for r in REGISTRY if r.id == report_id), None)
 
 #: The literal the built template carries where its data belongs.
 DATA_SLOT = "__INJA_EXPORT_DATA__"
