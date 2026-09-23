@@ -34,11 +34,20 @@
  * the page paint and the font size must not reach the printed half: it prints
  * on white at `12.5pt` (`print.module.css`), and a class beats the `body` rule
  * that says so.
+ *
+ * `min-height:100vh` is what the move costs and pays back. `--app` used to be
+ * `body`'s, and a background on `body` propagates to the canvas and paints the
+ * whole viewport however short the content is; on a wrapper it paints only the
+ * wrapper. A guide with fewer tasks in it than a screenful would have ended in
+ * paper-white where it used to end in the document's own cream, so the wrapper
+ * is at least a viewport tall. It sits on `.steps-root` rather than beside the
+ * background on `.steps-screen` so the printed half is a full page too, which
+ * is what `body` gave it before.
  */
 html{scroll-behavior:smooth}
 body{margin:0}
 .steps-root,.steps-root *{box-sizing:border-box}
-.steps-root{font-family:'Vazirmatn Variable','Vazirmatn',system-ui,sans-serif;color:var(--ink);line-height:1.9}
+.steps-root{min-height:100vh;font-family:'Vazirmatn Variable','Vazirmatn',system-ui,sans-serif;color:var(--ink);line-height:1.9}
 .steps-screen{background:var(--app);font-size:17px}
 .steps-root ::selection{background:var(--coral);color:#fff}
 .steps-root button{font-family:inherit}
