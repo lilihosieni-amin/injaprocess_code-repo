@@ -304,7 +304,7 @@ def create_export(code: str, kind: str, request: Request,
                        "ago and is not now, so the export is refused: %s", code, kind, e)
         raise HTTPException(status_code=409, detail=NOT_PUBLISHABLE) from e
     token = exports.report_key(
-        cfg.session_signing_key, code, kind,
+        code, kind,
         process_fingerprints=published,
         overview_fingerprint=fingerprint(overview),
         policy_version=policy.version(conn))

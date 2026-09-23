@@ -455,78 +455,41 @@ def test_the_overview_travels_in_full(data_root):
 
 # --- the cache key (§11 test 22) ---
 
-KEY = dict(process_fingerprints=["a" * 64, "b" * 64],
-           overview_fingerprint="c" * 64, policy_version="d" * 16)
+def test_the_key_is_a_pure_function_of_the_content():
+    a = exports.report_key("dining", "steps", process_fingerprints=["a" * 64],
+                           overview_fingerprint="b" * 64, policy_version="v1")
+    b = exports.report_key("dining", "steps", process_fingerprints=["a" * 64],
+                           overview_fingerprint="b" * 64, policy_version="v1")
+    assert a == b and len(a) == 16
 
 
-def test_the_key_is_16_hex_chars_and_stable():
-    a = exports.report_key("key", "dining", "flowchart", **KEY)
-    assert a == exports.report_key("key", "dining", "flowchart", **KEY)
-    assert len(a) == 16 and all(c in "0123456789abcdef" for c in a)
+def test_each_of_the_three_inputs_moves_the_key():
+    base = dict(process_fingerprints=["a" * 64], overview_fingerprint="b" * 64,
+                policy_version="v1")
+    key = exports.report_key("dining", "steps", **base)
+    assert exports.report_key("dining", "steps", **{**base, "policy_version": "v2"}) != key
+    assert exports.report_key("dining", "steps", **{**base, "overview_fingerprint": "c" * 64}) != key
+    assert exports.report_key("dining", "steps", **{**base, "process_fingerprints": ["c" * 64]}) != key
+    assert exports.report_key("dining", "steps", **{**base, "process_fingerprints": ["a" * 64, "c" * 64]}) != key
+    # order is part of the key: a reorder changes what the reader receives
+    two = ["a" * 64, "c" * 64]
+    assert exports.report_key("dining", "steps", **{**base, "process_fingerprints": two}) \
+        != exports.report_key("dining", "steps", **{**base, "process_fingerprints": two[::-1]})
 
 
-def test_the_key_changes_when_the_visibility_policy_changes():
-    """The clause that is a content leak if it fails, not a stale page: the
-    payload is built by the filter, so a cached artifact must not survive the
-    switch that changed what it contains."""
-    base = exports.report_key("key", "dining", "flowchart", **KEY)
-    assert base != exports.report_key("key", "dining", "flowchart",
-                                      **{**KEY, "policy_version": "e" * 16})
+def test_the_kind_and_the_department_are_in_the_key():
+    base = dict(process_fingerprints=[], overview_fingerprint="b" * 64,
+                policy_version="v1")
+    assert exports.report_key("dining", "steps", **base) \
+        != exports.report_key("dining", "flowchart", **base)
+    assert exports.report_key("dining", "steps", **base) \
+        != exports.report_key("cashier", "steps", **base)
 
 
-def test_the_key_changes_when_a_process_is_confirmed_or_edited():
-    base = exports.report_key("key", "dining", "flowchart", **KEY)
-    assert base != exports.report_key(
-        "key", "dining", "flowchart",
-        **{**KEY, "process_fingerprints": ["a" * 64, "b" * 64, "f" * 64]})
-    assert base != exports.report_key(
-        "key", "dining", "flowchart",
-        **{**KEY, "process_fingerprints": ["a" * 64, "f" * 64]})
-
-
-def test_the_key_changes_when_the_department_is_reordered():
-    """order.json is the document's table of contents: a reorder changes what the
-    reader receives while changing no process."""
-    base = exports.report_key("key", "dining", "flowchart", **KEY)
-    assert base != exports.report_key(
-        "key", "dining", "flowchart",
-        **{**KEY, "process_fingerprints": ["b" * 64, "a" * 64]})
-
-
-def test_the_key_changes_when_the_overview_changes():
-    base = exports.report_key("key", "dining", "flowchart", **KEY)
-    assert base != exports.report_key("key", "dining", "flowchart",
-                                      **{**KEY, "overview_fingerprint": "e" * 64})
-
-
-def test_the_key_still_differs_by_department_kind_and_signing_key():
-    """The properties `export_token` had, kept: the folder is publicly mounted
-    and the filename is still a guard until D24 removes that surface."""
-    base = exports.report_key("key", "dining", "flowchart", **KEY)
-    assert base != exports.report_key("key", "dining", "steps", **KEY)
-    assert base != exports.report_key("key", "cooking", "flowchart", **KEY)
-    assert base != exports.report_key("other", "dining", "flowchart", **KEY)
-
-
-def test_the_key_separates_a_split_fingerprint_list_from_its_merge():
-    """The NUL between parts, pinned with inputs that would actually collide.
-
-    Unreachable through every other test above — every part here is
-    fixed-length hex, so no real fingerprint list can ever equal another
-    part's bytes — but the property the delimiter buys is real: without it,
-    `mac.update` for `["a"*64, "b"*64]` and for `["a"*64 + "b"*64]` consume the
-    identical byte stream (`a`*64 immediately followed by `b`*64 either way),
-    and the two keys would collide.
-    """
-    split = exports.report_key("key", "dining", "flowchart",
-                               process_fingerprints=["a" * 64, "b" * 64],
-                               overview_fingerprint="c" * 64,
-                               policy_version="d" * 16)
-    merged = exports.report_key("key", "dining", "flowchart",
-                                process_fingerprints=["a" * 64 + "b" * 64],
-                                overview_fingerprint="c" * 64,
-                                policy_version="d" * 16)
-    assert split != merged
+def test_a_list_cannot_be_confused_with_its_concatenation():
+    base = dict(overview_fingerprint="b" * 64, policy_version="v1")
+    assert exports.report_key("dining", "steps", process_fingerprints=["a" * 64, "c" * 64], **base) \
+        != exports.report_key("dining", "steps", process_fingerprints=["a" * 64 + "c" * 64], **base)
 
 
 def test_cross_task_contract_constants():

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
-import hmac
 import json
 import logging
 import time
@@ -151,10 +150,9 @@ def build_payload(data_root: Path, code: str, generated_at: str, *,
     }
 
 
-def report_key(signing_key: str, code: str, kind: str, *,
-               process_fingerprints: list[str], overview_fingerprint: str,
-               policy_version: str) -> str:
-    """The artifact's identity (D27) — 16 hex chars, keyed by the signing key.
+def report_key(code: str, kind: str, *, process_fingerprints: list[str],
+               overview_fingerprint: str, policy_version: str) -> str:
+    """The artifact's identity (D27) — 16 hex chars of a digest over its content.
 
     A digest over three things, and the third is not optional:
 
@@ -169,24 +167,26 @@ def report_key(signing_key: str, code: str, kind: str, *,
     already-rendered report serving it: a cache that survives a policy change is
     a content leak, not a stale page.
 
-    **HMAC on `SESSION_SIGNING_KEY` rather than a bare SHA-256**, which keeps
-    what the old derived token bought: `/exports/{path}` is served from a
-    publicly mounted folder whose filename is still a guard until D24 removes
-    that surface, and a name anyone can compute from guessable content would not
-    be one. Rotating the key rotates every link, and `write_export`'s prune
-    clears the orphan that leaves behind.
+    **A plain SHA-256, no longer an HMAC on `SESSION_SIGNING_KEY`.** The MAC was
+    there because `/exports/{path}` was a publicly mounted folder and an
+    unguessable filename was the last guard in front of a department's whole
+    document. D24 retires that surface: the only route to this file now derives
+    the caller's scope and capability from their session row on every request,
+    so the name guards nothing and secrecy buys nothing — while the signing key
+    in the digest meant that rotating it (a routine act, and one an operator does
+    in a hurry) invalidated every cached artifact in the deployment at once.
 
     Each part is NUL-separated — a NUL byte precedes every part — so that two
     different lists cannot serialise to the same bytes: without it,
     `["a"*64, "b"*64]` and `["a"*64 + "b"*64]` would concatenate identically.
     Hex digests contain no NUL, so the delimiter is unambiguous.
     """
-    mac = hmac.new(signing_key.encode("utf-8"), digestmod=hashlib.sha256)
-    for part in (f"export:{code}:{kind}", overview_fingerprint, policy_version,
+    h = hashlib.sha256()
+    for part in (f"report:{code}:{kind}", overview_fingerprint, policy_version,
                  *process_fingerprints):
-        mac.update(b"\x00")
-        mac.update(part.encode("utf-8"))
-    return mac.hexdigest()[:16]
+        h.update(b"\x00")
+        h.update(part.encode("utf-8"))
+    return h.hexdigest()[:16]
 
 
 def render(template: str, payload: dict) -> str:
