@@ -27,11 +27,17 @@ import { DeptFab } from '../comments/DeptDrawer'
  *
  * A path through `Icon`'s `d` (§5.1.2) rather than three `<circle>`s: `Icon`
  * draws one `<path>` and the design's own r=1.8 dots are what a 3.2-wide round
- * cap on a zero-length segment paints. The horizontal spelling of this — the
- * bar's and the title row's `⋯` — is drawn as the literal glyph instead
- * (§5.2's non-SVG allowance), not through this same path recipe.
+ * cap on a zero-length segment paints. The title row's `⋯` at ≤760 is drawn as
+ * the literal glyph instead (§5.2's non-SVG allowance), not through this same
+ * path recipe — but the bar's own `⋯` is, via `DOTS` below.
  */
 const KEBAB = 'M12 5h.01M12 12h.01M12 19h.01'
+
+/** The bar's own `⋯` — carried over verbatim from the deleted `ExportMenu.tsx`,
+ *  which drew it as a path rather than the literal character §5.2 otherwise
+ *  sanctions (the title row's `⋯` uses that character). Kept as-is on the "the
+ *  shipped UI does not get rearranged" rule: this is what was on screen. */
+const DOTS = 'M5 12h.01M12 12h.01M19 12h.01'
 
 /**
  * §6.2's chip metrics, shared by the three chips the meta row draws.
@@ -478,20 +484,30 @@ export function ProcessList() {
                   download. The title row's ⋯ at ≤760 is a different menu —
                   «کارهای بیشتر», holding every act including this one — because
                   the bar itself is gone at that width and has nothing left to
-                  stand beside. */}
+                  stand beside.
+
+                  **The box is `ExportMenu`'s own, not the title row's** —
+                  `Inja Panel.dc.html:320`: `40×40`, `radius:12`, white, a
+                  1.5px violet-tint border — deliberately different from the
+                  title row's `Inja Panel.dc.html:308` (`36×36`, `radius:10`,
+                  filled violet-tint). The two triggers look different on purpose; only
+                  the glyph string says so, since `OverflowMenu` draws whatever
+                  box its caller passes. `w-iconbtn h-iconbtn` is that 40, and
+                  the `before:-inset-[2px]` brings the 44px hit target up
+                  around it (40 + 2×2 = 44), the same rule the other two
+                  triggers on this screen follow at their own sizes. */}
               {reportActs.length > 0 && (
                 <OverflowMenu
                   actions={reportActs}
                   label="نمایش‌ها"
                   className="relative flex-none"
                   glyph={
-                    'relative before:absolute before:content-[""] before:-inset-[4px] '
-                    + 'inline-flex items-center justify-center flex-none w-menu-more h-menu-more '
-                    + 'rounded-control border-hairline border-line bg-tile-v2 text-violet '
-                    + 'text-fs-h5 font-bold cursor-pointer'
+                    'relative before:absolute before:content-[""] before:-inset-[2px] '
+                    + 'inline-flex items-center justify-center flex-none w-iconbtn h-iconbtn '
+                    + 'rounded-button border-hairline border-line bg-card text-violet cursor-pointer'
                   }
                 >
-                  ⋯
+                  <Icon d={DOTS} px={18} stroke={3.2} />
                 </OverflowMenu>
               )}
             </div>
