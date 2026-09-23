@@ -25,6 +25,11 @@ from inja_ui_backend.tests_helpers import audit_events, cfg_for, comment_people
 PDF = "/api/departments/cooking/reports/steps/file.pdf"
 FLOWCHART = "/api/departments/cooking/reports/flowchart/file.pdf"
 
+#: What the stubbed render writes. Named because three tests assert against it —
+#: the magic bytes, the length a HEAD reports and the slice a range returns — and
+#: a fixture that drifts from them silently weakens all three.
+STUB = b"%PDF-1.4\n" + b"x" * 512
+
 
 def _people(data_root, tmp_path):
     """`comment_people`, with the export settings a build needs.
@@ -52,7 +57,7 @@ def _built(data_root, tmp_path, monkeypatch):
     """
     people = _people(data_root, tmp_path)
     monkeypatch.setattr(pdf_mod, "render_pdf",
-                        lambda _chromium, _html, out: out.write_bytes(b"%PDF-1.4\n" + b"x" * 512))
+                        lambda _chromium, _html, out: out.write_bytes(STUB))
     # The stub is not enough on its own: `_render_pdf_beside` does not reach
     # `render_pdf` at all with CHROMIUM_PATH unset, and would leave the build
     # with an HTML document and no PDF beside it. The value is never opened, so
@@ -118,10 +123,15 @@ def test_the_served_file_carries_both_validators(data_root, tmp_path, monkeypatc
     assert r.headers["etag"] and r.headers["last-modified"]
 
 
-def test_head_answers_without_a_body(data_root, tmp_path, monkeypatch):
+def test_head_answers_with_headers_and_without_a_body(data_root, tmp_path, monkeypatch):
+    """A client probing a large download's size before fetching it. The headers
+    are the whole answer, so a bare 200 with nothing attached is a failure the
+    empty body alone would not catch."""
     people = _built(data_root, tmp_path, monkeypatch)
     r = people["viewer"].head(PDF)
     assert r.status_code == 200 and r.content == b""
+    assert r.headers["content-length"] == str(len(STUB))
+    assert r.headers["etag"]
 
 
 def test_a_conditional_request_is_answered_304(data_root, tmp_path, monkeypatch):
@@ -142,9 +152,14 @@ def test_an_if_modified_since_request_is_answered_304(data_root, tmp_path, monke
 
 
 def test_a_range_request_is_answered_206(data_root, tmp_path, monkeypatch):
+    """The requested slice, byte for byte — a length alone passes just as happily
+    on the wrong ten bytes, and iOS Safari's viewer assembles the document out of
+    these."""
     people = _built(data_root, tmp_path, monkeypatch)
     r = people["viewer"].get(PDF, headers={"Range": "bytes=0-9"})
-    assert r.status_code == 206 and len(r.content) == 10
+    assert r.status_code == 206
+    assert r.content == STUB[:10]
+    assert r.headers["content-range"] == f"bytes 0-9/{len(STUB)}"
 
 
 def test_the_html_artifact_is_served_on_the_same_terms(data_root, tmp_path, monkeypatch):

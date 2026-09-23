@@ -223,8 +223,7 @@ def log_out_of_scope(request: Request, user: sqlite3.Row, target: str) -> None:
     forged record from a real one, and neither can whatever collects it. This is
     the rule for every log line in this service that carries a value the caller
     chose, and it is stated here because this module is where the first of them
-    is written; `routers/processes.py` cites it for the CLI stderr it logs on a
-    failed relayout.
+    is written.
     """
     logger.info("out of scope: %r asked for %r from %s",
                 user["username"], target[:120], client_ip(request))
