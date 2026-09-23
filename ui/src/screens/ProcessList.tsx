@@ -27,8 +27,9 @@ import { DeptFab } from '../comments/DeptDrawer'
  *
  * A path through `Icon`'s `d` (§5.1.2) rather than three `<circle>`s: `Icon`
  * draws one `<path>` and the design's own r=1.8 dots are what a 3.2-wide round
- * cap on a zero-length segment paints. `ExportMenu` already draws the
- * horizontal spelling of this from the same recipe.
+ * cap on a zero-length segment paints. The horizontal spelling of this — the
+ * bar's and the title row's `⋯` — is drawn as the literal glyph instead
+ * (§5.2's non-SVG allowance), not through this same path recipe.
  */
 const KEBAB = 'M12 5h.01M12 12h.01M12 19h.01'
 
@@ -465,29 +466,34 @@ export function ProcessList() {
                 <Button variant="coral" onClick={() => setCreating(true)}
                   className="px-s8 py-s6 text-fs-sm">فرآیند جدید</Button>
               )}
-              {/* The bar's own ⋯, in the ExportMenu's old place — same box, same
-                  glyph, now opening the same `actions` the title row's ⋯ does at
-                  ≤760, rather than the export-only dropdown that used to live
-                  here. `ExportMenu` drew this itself; there is nothing left of
-                  it once its trigger moves into `OverflowMenu`. */}
-              <OverflowMenu
-                actions={actions}
-                // Its own name, not the title row's «کارهای بیشتر»: the two are
-                // separate triggers (each renders unconditionally; only CSS
-                // decides which paints at a given width), and `getByRole`
-                // cannot tell two same-named buttons apart by a breakpoint it
-                // does not evaluate.
-                label="کارهای دپارتمان"
-                className="relative flex-none"
-                glyph={
-                  'relative before:absolute before:content-[""] before:-inset-[4px] '
-                  + 'inline-flex items-center justify-center flex-none w-menu-more h-menu-more '
-                  + 'rounded-control border-hairline border-line bg-tile-v2 text-violet '
-                  + 'text-fs-h5 font-bold cursor-pointer'
-                }
-              >
-                ⋯
-              </OverflowMenu>
+              {/* The bar's own ⋯, in `ExportMenu`'s old place and its old
+                  shape: that trigger held the export rows ONLY (its other
+                  three siblings on the bar are the plain buttons just above),
+                  and this one holds `reportActs` only, for the same reason —
+                  the bar's other acts are already their own buttons here, so
+                  restating them in this menu too would be R48's "one control
+                  says a thing once" broken the other way. `ExportMenu` was
+                  named «خروجی‌ها»; this is «نمایش‌ها», because the one row it
+                  now offers opens the reports dialog rather than firing a
+                  download. The title row's ⋯ at ≤760 is a different menu —
+                  «کارهای بیشتر», holding every act including this one — because
+                  the bar itself is gone at that width and has nothing left to
+                  stand beside. */}
+              {reportActs.length > 0 && (
+                <OverflowMenu
+                  actions={reportActs}
+                  label="نمایش‌ها"
+                  className="relative flex-none"
+                  glyph={
+                    'relative before:absolute before:content-[""] before:-inset-[4px] '
+                    + 'inline-flex items-center justify-center flex-none w-menu-more h-menu-more '
+                    + 'rounded-control border-hairline border-line bg-tile-v2 text-violet '
+                    + 'text-fs-h5 font-bold cursor-pointer'
+                  }
+                >
+                  ⋯
+                </OverflowMenu>
+              )}
             </div>
           </div>
         )}

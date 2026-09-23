@@ -6,28 +6,31 @@ export interface MenuItem { id: string; label: string; onSelect: () => void; ton
 /**
  * An anchored menu popover with a TEXT trigger and one-line items.
  *
- * **Three components in this app are a menu popover and none of them is this
+ * **Two components in this app are a menu popover and neither of them is this
  * one**, and Task 25 recorded the divergence rather than closing it, because
- * closing it is a change to a shared primitive and to the three screens that
- * would adopt it. What each of them needs that `{ label, items }` cannot say:
+ * closing it is a change to a shared primitive and to the screens that would
+ * adopt it. What each of them needs that `{ label, items }` cannot say:
  *
- *   · `src/write/ExportMenu.tsx` — an ICON trigger (a three-dot path inside a
- *     40px drawn box) and two-line tiled items (a coloured icon tile, a bold
- *     label, a muted hint). `label` is rendered as the trigger's own text and
- *     `MenuItem` holds one string, so both would come out as words.
- *   · `src/screens/ProcessList.tsx`'s `OverflowMenu` — the same icon trigger, at
- *     the design's 36px rather than this component's hard-coded 44px box. Its
- *     docstring says so at `ProcessList.tsx:75`.
+ *   · `src/screens/ProcessList.tsx`'s `OverflowMenu` — an ICON trigger (`⋯` or
+ *     `⋮`, in a drawn box at the design's 34/36/38px rather than this
+ *     component's hard-coded 44px) and, on the row menu, an icon trigger with
+ *     no text at all. Its docstring says so at `ProcessList.tsx:75`.
  *   · `src/shell/PanelShell.tsx`'s admin menu — items that must be `<Link>`s
  *     with a copyable `href` (three tests assert it), each with a second hint
  *     line. Its docstring says so at `PanelShell.tsx:167`.
  *
- * The lift is to give `Menu` an icon trigger, link items and a hint line, and
- * delete all three — not to restyle it from the outside, and not to widen it
- * from inside a task that has to reverify nine screens in a browser afterwards.
- * Until then this component has no production consumer: `src/ui/controls.test.tsx`
- * is the only thing that renders it, and `min-w-menu` reaches the stylesheet
- * through it alone.
+ * (A third reason once stood here: `src/write/ExportMenu.tsx` drew an icon
+ * trigger over two-line tiled items — a coloured icon tile, a bold label, a
+ * muted hint. Task 8 deleted that file; the export rows it drew are now cards
+ * in `src/write/ReportsDialog.tsx`'s dialog, not a menu popover at all, so the
+ * divergence it stood for is gone rather than migrated.)
+ *
+ * The lift is to give `Menu` an icon trigger and a hint line, and delete both
+ * — not to restyle it from the outside, and not to widen it from inside a task
+ * that has to reverify nine screens in a browser afterwards. Until then this
+ * component has no production consumer: `src/ui/controls.test.tsx` is the only
+ * thing that renders it, and `min-w-menu` reaches the stylesheet through it
+ * alone.
  */
 export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
   const [open, setOpen] = useState(false)
