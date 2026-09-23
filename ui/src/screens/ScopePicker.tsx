@@ -63,7 +63,8 @@ export function ScopePicker({ scopes, onChange }: {
   onChange: (next: string[]) => void
 }) {
   const departments = useDepartments()
-  const reports = useReports().data?.reports ?? []
+  const reportsQuery = useReports()
+  const reports = reportsQuery.data?.reports ?? []
   const reportNames = useReportNames()
   const [openViews, setOpenViews] = useState<string | null>(null)
   const every = scopes.includes('*')
@@ -147,7 +148,14 @@ export function ScopePicker({ scopes, onChange }: {
   // data and the opposite meaning — every scope really is undrawable, and
   // saying nothing tells an administrator the account holds no departments when
   // it holds two.
-  const undrawable = departments.isPending ? [] : scopes.filter((s) => {
+  //
+  // **Both registries, not just departments.** The two reads do not resolve
+  // together — `/api/departments` can land while `/api/reports` is still in
+  // flight — and a report-scoped grant is undrawable by the same test
+  // (`reportLabel` answering `undefined`) whether the registry failed or simply
+  // has not arrived yet. Gating on departments alone let a perfectly ordinary
+  // report-scoped account flash the notice for exactly that window.
+  const undrawable = departments.isPending || reportsQuery.isPending ? [] : scopes.filter((s) => {
     const p = parseScope(s)
     if (p.shape === 'every') return false
     if (p.shape === 'refused') return true
@@ -191,7 +199,16 @@ export function ScopePicker({ scopes, onChange }: {
           // exactly like an ungranted one is the defect this control exists to
           // end; a report-scoped department drawn TICKED would be worse — it
           // would report more reach than the account holds.
-          const held = whole || narrowed.length > 0
+          //
+          // **`held` is read off the stored scopes, not off `narrowed`.** While
+          // `/api/reports` is still in flight, `reports` is `[]` and `narrowed`
+          // with it, which would make a purely report-scoped account's tile
+          // read UNHELD — "no access" said about an account that has some. The
+          // raw scope string is known the moment `scopes` is, independent of
+          // whether the registry has answered yet; the registry only affects
+          // which of the held reports can be NAMED in the caption below.
+          const heldByReport = scopes.some((s) => s.startsWith(`dept:${d.code}/report:`))
+          const held = whole || heldByReport
           return (
             <div key={d.code} className="relative">
               {/* §6.8 tile: `padding:11px 12px; radius 12; border:1.5px

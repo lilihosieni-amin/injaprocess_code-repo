@@ -209,6 +209,40 @@ describe('ScopePicker', () => {
     expect(onChange).toHaveBeenCalledWith([])
   })
 
+  it('says nothing and reads a report-scoped tile as held while /api/reports is still on its way, once /api/departments has already landed', async () => {
+    // The two registries do not resolve together: `/api/departments` can land
+    // well before `/api/reports` does. In that window `reportNames` is still
+    // `{}`, and gating the notice on `departments.isPending` alone made a
+    // purely report-scoped account — a perfectly ordinary one — flash
+    // `UNDRAWABLE_SCOPES`, and its tile briefly read as unheld ("no access")
+    // rather than tinted and ticked.
+    let resolveReports: (r: Response) => void
+    const reportsPromise = new Promise<Response>((resolve) => { resolveReports = resolve })
+    vi.stubGlobal('fetch', vi.fn(async (path: string) => {
+      if (path === '/api/reports') return reportsPromise
+      return new Response(JSON.stringify(DEPTS), { headers: { 'Content-Type': 'application/json' } })
+    }))
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ScopePicker scopes={['dept:dining/report:steps']} onChange={vi.fn()} />
+      </QueryClientProvider>)
+
+    // Departments have landed (the tile itself is drawn); reports have not.
+    const dining = await screen.findByRole('checkbox', { name: 'سالن' })
+    expect(dining).toBeChecked()
+    expect(dining.closest('label')).toHaveClass('bg-tile-v4', 'border-line-dashed')
+    expect(screen.queryByText(/این دامنه‌ها را این فرم نمی‌تواند نشان دهد/)).toBeNull()
+
+    // …and once the registry lands, the state is unchanged (still held, still
+    // no notice) — this window was never a real state, just a slow read.
+    resolveReports!(new Response(JSON.stringify({
+      reports: [{ id: 'steps', name: 'راهنمای گام‌به‌گام', short: 'راهنمای گام‌به‌گام', description: '' }],
+    }), { headers: { 'Content-Type': 'application/json' } }))
+    await screen.findByText(/فقط راهنمای گام‌به‌گام/)
+    expect(dining).toBeChecked()
+    expect(screen.queryByText(/این دامنه‌ها را این فرم نمی‌تواند نشان دهد/)).toBeNull()
+  })
+
   it('says nothing about undrawable scopes while the registry is still on its way', async () => {
     // In flight, EVERY department scope is one this form draws no control for,
     // so a notice gated on `data === undefined` flashes across a perfectly
