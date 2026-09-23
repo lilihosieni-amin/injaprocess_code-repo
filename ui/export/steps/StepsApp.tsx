@@ -34,7 +34,19 @@ const icoChevL = icon(CHEV_L, 20, 2.6)
 const icoBack = icon('<path d="M9 14l-4-4 4-4"/><path d="M5 10h9a4 4 0 0 1 0 8h-1"/>', 16)
 const icoUser = icon('<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>', 19)
 
-export function StepsApp({ payload }: { payload: ExportPayload }) {
+export function StepsApp({ payload, pdf = servedPdfHref }: {
+  payload: ExportPayload
+  /** Where the printable PDF is, asked once.
+   *
+   *  Defaulted to `servedPdfHref`, which is the standalone file's own rule
+   *  (a sibling `.pdf` beside the `.html`, and `null` when there is no server).
+   *  The application passes its own resolver, because in-app the guide is at
+   *  `/departments/{code}/reports/{kind}` and its PDF is behind a gated route
+   *  that only an `export_pdf` holder may have — a question the file itself
+   *  cannot ask. `null` keeps today's `window.print()` fallback for everyone
+   *  else, which is the path that has always been there. */
+  pdf?: () => Promise<string | null>
+}) {
   const [trail, setTrail] = useState<Crumb[]>([])
   const [jump, setJump] = useState<Jump | null>(null)
   // Both maps are a pure function of the payload, and the payload of a
@@ -80,7 +92,7 @@ export function StepsApp({ payload }: { payload: ExportPayload }) {
 
   if (!trail.length) {
     return (
-      <Shell onHome={() => go([], 'back')}>
+      <Shell pdf={pdf} onHome={() => go([], 'back')}>
         <div className={s['home-head']}>
           <h1>راهنمای گام‌به‌گام کار</h1>
           <p>{payload.dept.name} — روی نام هر کار بزنید تا مرحله‌به‌مرحله ببینید.</p>
@@ -106,10 +118,10 @@ export function StepsApp({ payload }: { payload: ExportPayload }) {
 
   const cur = trail[trail.length - 1]
   const proc = byId.get(cur.pid)
-  if (!proc) return <Shell onHome={() => go([], 'back')}><div /></Shell>
+  if (!proc) return <Shell pdf={pdf} onHome={() => go([], 'back')}><div /></Shell>
 
   return (
-    <Shell onHome={() => go([], 'back')}>
+    <Shell pdf={pdf} onHome={() => go([], 'back')}>
       <button className={s.backbtn} onClick={() => go(trail.slice(0, -1), 'back')}>
         {icoChev}{trail.length > 1 ? 'بازگشت' : 'بازگشت به فهرست کارها'}
       </button>
@@ -144,7 +156,11 @@ export function StepsApp({ payload }: { payload: ExportPayload }) {
   )
 }
 
-function Shell({ children, onHome }: { children: React.ReactNode; onHome: () => void }) {
+function Shell({ children, onHome, pdf: ask }: {
+  children: React.ReactNode
+  onHome: () => void
+  pdf: () => Promise<string | null>
+}) {
   /** The server's PDF when this guide is being served *and* the server printed
    *  one; `null` when it was opened from a file or the render did not happen —
    *  the same one rule the flowchart document uses (`pdfLink`).
@@ -156,11 +172,14 @@ function Shell({ children, onHome }: { children: React.ReactNode; onHome: () => 
   const [pdf, setPdf] = useState<string | null>(null)
   useEffect(() => {
     let live = true
-    servedPdfHref().then((href) => { if (live) setPdf(href) })
+    ask().then((href) => { if (live) setPdf(href) })
     return () => { live = false }
-  }, [])
+  }, [ask])
   return (
-    <>
+    /* `steps-root` carries the document's typography, `steps-screen` its page
+       paint and type size — see `steps-base.css`. Written here rather than in
+       `main.tsx` because the application renders this component on its own. */
+    <div className="steps-root steps-screen">
       <div className={s.topbar}>
         <div className={s.tt}>راهنمای گام‌به‌گام کار</div>
         <div className={s.sp} />
@@ -174,7 +193,7 @@ function Shell({ children, onHome }: { children: React.ReactNode; onHome: () => 
           : <button className={s.tbtn} onClick={() => window.print()}>چاپ</button>}
       </div>
       <div className={s.wrap}>{children}</div>
-    </>
+    </div>
   )
 }
 

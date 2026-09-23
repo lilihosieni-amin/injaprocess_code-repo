@@ -23,17 +23,31 @@
   --muted:#8a7db0; --faint:#a99fc4; --body:#4A3F6B;
   --ok:#1F8A5B; --ok-s:#E4F6EC; --warn:#B4690E; --warn-s:#FBEEDC;
 }
-*{box-sizing:border-box}
+/* Scoped, exactly as `flowchart/doc-base.css` is and for the same reason: the
+ * same stylesheet is loaded inside the application, where the guide is one
+ * screen among many, and a `body` rule would restyle every other one.
+ *
+ * `.steps-root` is the guide's own wrapper, written by `StepsApp`'s `Shell` and
+ * by `PrintDoc`, so it is on BOTH halves of this bundle — the interactive guide
+ * and the printed document, which had been inheriting all of this from `body`.
+ * `.steps-screen` is the interactive half alone, and the two are split because
+ * the page paint and the font size must not reach the printed half: it prints
+ * on white at `12.5pt` (`print.module.css`), and a class beats the `body` rule
+ * that says so.
+ */
 html{scroll-behavior:smooth}
-body{margin:0;font-family:'Vazirmatn Variable','Vazirmatn',system-ui,sans-serif;background:var(--app);color:var(--ink);line-height:1.9;font-size:17px}
-::selection{background:var(--coral);color:#fff}
-button{font-family:inherit}
+body{margin:0}
+.steps-root,.steps-root *{box-sizing:border-box}
+.steps-root{font-family:'Vazirmatn Variable','Vazirmatn',system-ui,sans-serif;color:var(--ink);line-height:1.9}
+.steps-screen{background:var(--app);font-size:17px}
+.steps-root ::selection{background:var(--coral);color:#fff}
+.steps-root button{font-family:inherit}
 
 /* The phone breakpoint (`dining-steps.html:147-153`) lives in
- * `steps.module.css` with the rest of the layout; only its `body` rule is
- * global, and it belongs next to the `body` rule it overrides. */
+ * `steps.module.css` with the rest of the layout; only its type-size rule is
+ * global, and it belongs next to the rule it overrides. */
 @media(max-width:560px){
-  body{font-size:16px}
+  .steps-screen{font-size:16px}
 }
 
 /* The mockup hid its interactive SPA when printing with `.topbar,#app`

@@ -149,6 +149,7 @@ describe('routing', () => {
     expect(walk(appRoutes)).toEqual([
       '/login',
       '/', '/departments', '/departments/:code', '/departments/:code/overview',
+      '/departments/:code/reports/:kind',
       '/processes/:pid', '/processes/:pid/flow', '/processes/:pid/steps',
       '/facts', '/facts/:fid',
       '/visibility', '/users', '/users/:id', '/profile',

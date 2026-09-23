@@ -59,7 +59,19 @@ const JSYM = [
  *  `registry.json` keeps. Every heading below therefore renders `dept.name`
  *  with nothing in front of it; prefixing «دپارتمان» again would read
  *  «دپارتمان دپارتمان سالن». */
-export function Document({ payload }: { payload: ExportPayload }) {
+export function Document({ payload, pdf = servedPdfHref }: {
+  payload: ExportPayload
+  /** Where the printable PDF is, asked once.
+   *
+   *  Defaulted to `servedPdfHref`, which is the standalone file's own rule
+   *  (a sibling `.pdf` beside the `.html`, and `null` when there is no server).
+   *  The application passes its own resolver, because in-app the document is at
+   *  `/departments/{code}/reports/{kind}` and its PDF is behind a gated route
+   *  that only an `export_pdf` holder may have — a question the file itself
+   *  cannot ask. `null` keeps today's `window.print()` fallback for everyone
+   *  else, which is the path that has always been there. */
+  pdf?: () => Promise<string | null>
+}) {
   const [view, setView] = useState<View>('home')
   /** The mockup's view mechanism, ported whole: every section stays mounted and
    *  only the open one carries `active`, because `document.module.css` hides the
@@ -81,12 +93,12 @@ export function Document({ payload }: { payload: ExportPayload }) {
    *  Decided once. A document's location does not change under it, and
    *  re-probing on every keystroke of state would invite the two branches to
    *  disagree mid-session — and put a request behind each of them. */
-  const [pdf, setPdf] = useState<string | null>(null)
+  const [pdfHref, setPdf] = useState<string | null>(null)
   useEffect(() => {
     let live = true
-    servedPdfHref().then((href) => { if (live) setPdf(href) })
+    pdf().then((href) => { if (live) setPdf(href) })
     return () => { live = false }
-  }, [])
+  }, [pdf])
 
   // Persian glyph metrics decide how node labels wrap, so a build that ran
   // before Vazirmatn landed can be wrong. Rebuild on the font, on load, and
@@ -151,8 +163,8 @@ export function Document({ payload }: { payload: ExportPayload }) {
               on a phone, and no link to a file that is not there. In a new tab,
               so a reader who taps it does not lose the document: coming back
               would rebuild every band from scratch. */}
-          {pdf
-            ? <a className={`${d.tbtn} ${d.solid}`} href={pdf} target="_blank" rel="noopener">چاپ / PDF</a>
+          {pdfHref
+            ? <a className={`${d.tbtn} ${d.solid}`} href={pdfHref} target="_blank" rel="noopener">چاپ / PDF</a>
             : <button className={`${d.tbtn} ${d.solid}`} onClick={() => window.print()}>چاپ / PDF</button>}
         </div>
 
