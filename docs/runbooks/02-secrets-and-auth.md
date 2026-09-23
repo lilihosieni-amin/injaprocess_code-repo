@@ -54,8 +54,6 @@ ANTHROPIC_API_KEY=       # LEAVE BLANK — we use subscription auth (see step 3)
 
 ```
 SESSION_SIGNING_KEY=     # generate — see below
-EXPORT_USERNAME=         # LEAVE UNSET — see "The export credential" below
-EXPORT_PASSWORD_HASH=    # LEAVE UNSET — see "The export credential" below
 ```
 
 `DATA_ROOT`, `EXPORT_DIR`, `APP_DB` and `TRUSTED_PROXY_HOPS` are set by compose,
@@ -72,37 +70,15 @@ No user credential goes in this file. `UI_USERNAME`, `UI_PASSWORD_HASH` and
 `UI_USERS_FILE` are gone from the code — a password in the environment would be a
 second way in that no session, no disabled flag and no activity record can see.
 
-`EXPORT_USERNAME` / `EXPORT_PASSWORD_HASH` are the single credential that opens a
-published department export (`/exports/…html` and the `.pdf` beside it). It is
-deliberately separate from the UI users above: an export login opens exports and
-nothing else, and it is shared by everyone you hand an export link to.
-
-**Leave both blank. That is the standing decision for this deployment, not just
-the default.** With no credential configured the export URLs answer `401` to
-everyone except a signed-in UI user (who already sees everything), and no login
-form is offered. There is no fallback to open access — an unset credential closes
-the gate, it never opens it.
-
-The reason to keep it that way is specific. Every other route asks D12's two
-questions — *is this caller's scope allowed to reach it*, then *may they take this
-action* — and `routers/export_files.py::_authorise` asks both of them for the
-download too. It cannot ask either of a caller holding this credential, because
-that credential **carries no identity**: there is no scope to re-derive and no
-role to read `export_pdf` from. So one shared password, handed to whoever needs an
-export link, is served every department's exports and is asked for no capability —
-including from a `reader_no_download` holder, the role that exists precisely so
-download can be withheld. Spec D24 (sub-project P2) retires the credential
-outright and is what closes this; until it lands, unset is the configuration with
-no hole in it.
-
-Nothing is lost by it. Everyone who needs an export reads it through their own
-account, where scope and `export_pdf` are enforced properly.
-
-Step 2 below still documents how to generate the hash. It is kept for whoever
-reverses this decision on purpose — it is not a step in a normal deploy, and you
-should not need it. The rest of the UI starts
-and serves normally either way, so these two are optional in exactly the way
-`EXPORT_DIR` is.
+There used to be a second, shared username/password pair here that opened a
+published department export on its own — deliberately separate from the UI
+users above, and shared by everyone you handed an export link to. Spec D24
+(sub-project P2) retired it outright: reports are now three routes under `/api`
+behind the ordinary session (`GET /api/reports`, `GET|POST
+/api/departments/{code}/reports/{kind}`, `GET|HEAD …/file.{pdf,html}`), each
+re-deriving the caller's scope and `view`/`export_pdf` per request the same way
+every other route does (D12). One credential does everything the two used to,
+and there is nothing left to configure here for it.
 
 ### `telegram-bot-api.env`
 
@@ -114,130 +90,21 @@ TELEGRAM_API_ID=
 TELEGRAM_API_HASH=
 ```
 
-## 2. Generate the session key and the export password hash
-
-Generate `SESSION_SIGNING_KEY`:
+## 2. Generate the session key
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(48))"    # SESSION_SIGNING_KEY
 ```
 
-> **There is no argon2 hash to generate for a UI user, and no file to paste it
-> into.** UI accounts are created by `inja-seed`, which takes the password as an
-> argument and does the hashing itself — see step 5 and
-> [`06-changing-users.md`](06-changing-users.md). The recipe below is for the
-> **export** credential only, which is a single shared password and not an
-> account.
+> **There is no argon2 hash to generate by hand, and no file to paste one into.**
+> UI accounts are created by `inja-seed`, which takes the password as an argument
+> and does the hashing itself — see step 5 and
+> [`06-changing-users.md`](06-changing-users.md).
 
-The export credential still needs a hash by hand. This uses the built
-`inja-ui-backend` image, which already has the `argon2` library (build it first
-if needed — see [`03-deploy.md`](03-deploy.md)):
-
-```bash
-docker run --rm inja-ui-backend python -c \
- "from argon2 import PasswordHasher; print(PasswordHasher().hash('THE-EXPORT-PASSWORD'))"
-```
-
-> **Make the export password long — this is the only thing that stops guessing.**
-> Nothing else does. There is no lockout, no attempt counter and no rate limit in
-> front of `POST /api/exports/login`; the endpoint is unauthenticated by
-> definition, and the URL it belongs to is handed to every member of staff who
-> gets an export link, so it is the most widely advertised address in the system.
-> What the server does have is a cost ceiling — argon2 (~60 ms per attempt) with
-> at most two checks running at once — which makes guessing slow, not impossible.
-> One shared password protects a whole department's documentation for everyone,
-> so use a long passphrase (four or more unrelated words, or 20+ random
-> characters), never a word plus a number.
-
-Paste the hash from step 2 as `EXPORT_PASSWORD_HASH` in `ui-backend.env`, and the
-chosen username as `EXPORT_USERNAME`. `EXPORT_PASSWORD_HASH` holds an argon2 hash,
-never a plaintext password. Both values live only in
-`/opt/inja/secrets/ui-backend.env` on the server, outside the code-repo and the
-data-repo; nothing about this credential is ever committed to either repo.
-
-Paste the hash **exactly as printed**, `$` signs and all, and do not quote or escape
-it. Compose normally interpolates `env_file` values, which would read every `$` in
-`$argon2id$v=19$m=...` as a variable reference and hand the container a truncated
-hash — a password that can never verify, failing closed in a way indistinguishable
-from "the credential isn't set". `docker-compose.yml` therefore reads this file with
-`format: raw`, which switches interpolation off. If you ever move the credential to
-another service's env file, carry that `format: raw` with it.
-
-To confirm the container really got it, after `up -d`:
-
-```bash
-docker compose exec ui-backend python -c \
-  "import os; h=os.environ.get('EXPORT_PASSWORD_HASH',''); print('ok' if h.startswith('\$argon2id\$') else 'MANGLED')"
-```
-
-### Seeing someone guess
-
-Failed attempts are logged at `WARNING`, one line each:
-
-```
-2026-07-28 16:42:24,808 WARNING inja_ui_backend.routers.export_files: export login failed: username='staff' from 127.0.0.1
-```
-
-`docker compose logs ui-backend | grep "export login failed"` is how you see
-someone trying. The date, level and logger name come from the service itself;
-`docker compose logs` adds the service-name prefix, and `-t` would add Docker's
-own timestamp on top of the one already in the line.
-
-Three things that grep does **not** show you:
-
-- **A successful login.** Only failures are logged, so there is no line marking
-  the moment guessing stops being guessing.
-- **Anything at all on an unconfigured deployment.** With `EXPORT_USERNAME` /
-  `EXPORT_PASSWORD_HASH` unset, `POST /api/exports/login` answers `401` before it
-  reaches the logging, so no amount of hammering produces a line. Silence here
-  means "no credential configured" at least as often as it means "nobody is
-  trying" — check the startup line below to tell the two apart.
-- **History.** Container logs are capped at 30 MB per service (`x-logging` in
-  `deploy/docker-compose.yml`, see [`01-server-setup.md`](01-server-setup.md)),
-  which is deliberate — uncapped, a sustained flood against this public endpoint
-  would fill the host's disk. It does mean the grep is a live signal, not an
-  archive: under a fast attempt rate the older lines rotate away.
-
-At startup the service says which state the gate is in, so you can confirm the
-credential was actually picked up rather than inferring it from a 401:
-
-```bash
-docker compose logs ui-backend | grep "export gate"
-# export gate: a shared export credential is configured, so /exports opens for it and for a signed-in UI user
-# — or —
-# export gate: no export credential configured, so /exports answers 401 to everyone but a signed-in UI user
-```
-
-Setting only one of the two variables logs a `WARNING` naming the missing half.
-Neither the username's value nor the hash ever appears in any of these lines.
-
-### Signing out of an export, and what that means on a shared phone
-
-There is **no sign-out button** on the export documents or on their login page,
-and this is deliberate — the readers are kitchen staff, and a button whose only
-effect is to make them type the password again is a support call, not a feature.
-`POST /api/exports/logout` exists and clears the session, but it is
-operator/API-only: nothing in the UI links to it, so it is reached with a tool
-(`curl -X POST https://<host>/api/exports/logout`) from the browser that holds
-the session, not by the reader.
-
-The practical consequence: on a **shared device** — the kitchen's own phone or
-tablet — whoever signs in leaves the export session in that browser for the full
-`SESSION_TTL` (24 hours by default), and anyone who picks the device up opens
-those documents without typing anything. That is usually fine, since the
-documents are for that kitchen anyway. Where it is not:
-
-- shorten `SESSION_TTL` in `ui-backend.env` (it applies to the UI session too), or
-- rotate the export password, which invalidates nothing on its own — an export
-  session is signed with `SESSION_SIGNING_KEY`, not with the password.
-  **Rotating `SESSION_SIGNING_KEY` is what ends every live export session** — and
-  it changes every export URL with it, so each department has to be exported
-  again.
-
-Note the asymmetry, because it is easy to get backwards: rotating
-`SESSION_SIGNING_KEY` does **not** sign anyone out of the UI. A UI session is a
-row in `app.db` reached by an opaque cookie, so ending one means the database —
-see [`06-changing-users.md`](06-changing-users.md).
+Reports are read the same way as everything else in the UI: a plain UI session,
+gated per request by the reader's scope and `view`/`export_pdf` (D12). There is
+no separate report login, no separate password to generate, and no separate
+sign-out — signing out of the UI is signing out of reports.
 
 ## 3. data-repo deploy key (for `git-push` write access)
 

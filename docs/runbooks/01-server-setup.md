@@ -18,8 +18,9 @@ throughout these runbooks.
 Nothing to configure for log rotation: Docker's default `json-file` driver is
 unbounded, so `deploy/docker-compose.yml` caps every service at `max-size: 10m`
 × `max-file: 3` (30 MB per container) via the `x-logging` anchor at the top of
-the file. That cap matters because `POST /api/exports/login` is public and
-unauthenticated and writes a log line per failed attempt — see
+the file. That cap matters because `POST /api/auth/login` — the only
+unauthenticated endpoint in the service — writes a log line per failed attempt,
+public and reachable by anyone; see
 [`02-secrets-and-auth.md`](02-secrets-and-auth.md). If you add a service to the
 stack, give it `logging: *default-logging` too.
 

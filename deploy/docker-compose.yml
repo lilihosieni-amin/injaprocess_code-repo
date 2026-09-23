@@ -3,7 +3,7 @@
 name: inja-food-process
 
 # Docker's default json-file driver is unbounded, and this host has 3.7 GB of
-# disk to lose. `POST /api/exports/login` is unauthenticated and public and logs
+# disk to lose. `POST /api/auth/login` is unauthenticated and public and logs
 # every failed attempt at WARNING; sustained guessing at the rate limiter's own
 # ceiling (2 concurrent argon2 checks x ~60 ms = ~33 attempts/s) is ~2.8 M lines
 # ≈ 430 MB a day, indefinitely, from outside. 02-secrets-and-auth.md tells the
@@ -121,29 +121,25 @@ services:
     logging: *default-logging
     # Defence in depth, not a tuned figure. Worst case in one process is the
     # steady Python service (~150 MB) + one PDF render, which is serialised
-    # process-wide and peaks at 300-400 MB (D22), + the export-login argon2
-    # ceiling of 2 x 64 MiB (routers/export_files.py) — roughly 700 MB. 1 GiB
-    # leaves headroom above that and still leaves ~2.7 GB of this 3.7 GB host for
-    # the two bots and everything else. The point is the ceiling: /exports/login
-    # is unauthenticated and public, and without a limit a runaway there takes the
+    # process-wide and peaks at 300-400 MB (D22), + the argon2 verify ceiling of
+    # 2 x 64 MiB (auth.py's VERIFY_LIMITER, the one capacity limiter shared by
+    # every route that hashes a password) — roughly 700 MB. 1 GiB leaves headroom
+    # above that and still leaves ~2.7 GB of this 3.7 GB host for the two bots
+    # and everything else. The point is the ceiling: /api/auth/login is
+    # unauthenticated and public, and without a limit a runaway there takes the
     # bots down with it rather than only itself.
     mem_limit: 1g
-    # SESSION_SIGNING_KEY and the export credential
-    # EXPORT_USERNAME + EXPORT_PASSWORD_HASH (argon2, see docs/runbooks/02-secrets-and-auth.md).
-    # No user credential lives here any more: people are rows in app.db on the
-    # ui-state volume, created by `inja-seed` (docs/runbooks/06-changing-users.md).
-    # The export pair is optional AND IS DELIBERATELY LEFT UNSET on this host:
-    # absent, /exports answers 401 to everyone but a signed-in UI user, and the
-    # rest of the UI is unaffected — an unset credential closes the gate, it never
-    # opens it and never blocks startup. Setting it would reopen the one hole in
-    # D12's gate, because that credential carries no identity and so is asked for
-    # neither scope nor capability. See config/ui-backend.env.example.
+    # SESSION_SIGNING_KEY (see docs/runbooks/02-secrets-and-auth.md). No user
+    # credential lives here any more: people are rows in app.db on the ui-state
+    # volume, created by `inja-seed` (docs/runbooks/06-changing-users.md).
     # `format: raw` is load-bearing, not tidiness. Compose interpolates env_file
-    # values by default, and an argon2 hash is `$argon2id$v=19$m=...$salt$hash` —
-    # every `$` reads as a variable reference, so the hash arrives in the container
-    # truncated to whatever precedes the first `$` and the password can never
-    # verify. It fails closed (401 for everyone but a signed-in UI user) and looks
-    # exactly like "the credential isn't set", which is the worst kind of quiet.
+    # values by default, and a secret containing `$` — an argon2 hash is the
+    # classic shape, `$argon2id$v=19$m=...$salt$hash` — would have every `$` read
+    # as a variable reference and arrive in the container truncated to whatever
+    # precedes the first one. Nothing in this file has that shape today, but the
+    # failure mode is silent (whatever survives just doesn't verify, which looks
+    # exactly like "the value isn't set"), so this stays on rather than waiting
+    # for the next secret that needs it.
     env_file:
       - path: /opt/inja/secrets/ui-backend.env
         format: raw
@@ -224,6 +220,13 @@ volumes:
   claude-credentials:
   control-bot-state:
   caddy-data:
+  # Built report artifacts (PDF/HTML), keyed by content — a pure cache that
+  # GET|POST /api/departments/{code}/reports/{kind} fills and reads, rebuilt on
+  # demand from the same inputs a missing key would produce. Emptied once at the
+  # deploy that ships reports (docs/runbooks/03-deploy.md § P2 cutover): its
+  # pre-cutover contents are documents built before confirmation and the
+  # visibility filter existed, keyed the same shape as the new keys, so a stale
+  # entry would be served instead of ever being rebuilt.
   ui-exports:
   # app.db: users, roles, scopes, sessions and the activity record. Unlike
   # ui-exports this is NOT a cache — emptying it deletes every account, and

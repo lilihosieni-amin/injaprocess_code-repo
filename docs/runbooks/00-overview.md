@@ -101,13 +101,17 @@ Compose also manages six named volumes not shown above:
 `telegram-bot-api-data` (files the local Bot API server downloads),
 `claude-credentials` (holds the Claude subscription login), `control-bot-state`
 (the control bot's SQLite state at `/state/bot.db`), `caddy-data` (Caddy's
-internal CA + TLS state), `ui-exports` (generated export documents — kept out of
-the data-repo so 2 MB artifacts never land in its working tree), and `ui-state`
-(`app.db`: accounts, sessions and the activity record).
+internal CA + TLS state), `ui-exports` (built report artifacts, PDF and HTML,
+keyed by content — kept out of the data-repo so 2 MB artifacts never land in its
+working tree), and `ui-state` (`app.db`: accounts, sessions and the activity
+record).
 
 `ui-state` is the one volume that is **not** reconstructible. `ui-exports` is a
-cache and the data-repo has GitHub behind it; `app.db` has neither, so it needs
-its own backup — see [`05-operations.md`](05-operations.md).
+pure cache — every entry rebuilds on demand from the department JSON that
+produced it — and the data-repo has GitHub behind it; `app.db` has neither, so
+it needs its own backup — see [`05-operations.md`](05-operations.md). It is also
+emptied once, at the deploy that ships reports: see the P2 cutover step in
+[`03-deploy.md`](03-deploy.md#updating-after-a-code-change).
 
 ## Next steps
 

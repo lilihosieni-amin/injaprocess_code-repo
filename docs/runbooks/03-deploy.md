@@ -110,6 +110,21 @@ git -C /opt/inja/code-repo pull && docker compose build && docker compose up -d
 changed. The Claude subscription login survives updates because it lives in the
 `claude-credentials` volume, not in the image.
 
+**P2 cutover — once, at the deploy that ships reports.** Empty the `ui-exports`
+cache before bringing the new images up:
+
+```bash
+# P2 cutover — once, at the deploy that ships reports
+docker compose -f deploy/docker-compose.yml run --rm --entrypoint sh ui-backend \
+  -c 'rm -rf /exports/*'
+```
+
+Emptying costs one regeneration per department and kind — the next read or
+download just rebuilds the artifact. Leaving it in place would serve documents
+built before confirmation and the visibility filter existed, from files of the
+same shape as the new content-keyed cache, so a stale one would never be told
+apart from a fresh one and would simply keep being served.
+
 Accounts survive for the same reason: `app.db` is on the `ui-state` volume, not
 in the container. Re-running `inja-seed` after an update is harmless — it exits
 `1` and writes nothing.

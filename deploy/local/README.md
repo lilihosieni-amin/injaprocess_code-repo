@@ -69,7 +69,7 @@ All gitignored. Create them once (below).
 |---|---|---|
 | `upload-bot.env` | `TELEGRAM_BOT_TOKEN` (test), `ALLOWED_USER_IDS`, `DATA_ROOT` | `*.env` |
 | `control-bot.env` | `TELEGRAM_BOT_TOKEN` (test), `ALLOWED_USERS`, budgets, feature flags, `DATABASE_URL`, … | `*.env` |
-| `ui-backend.env` | `SESSION_SIGNING_KEY`, `SESSION_TTL`, and optionally `EXPORT_USERNAME` + `EXPORT_PASSWORD_HASH` | `*.env` |
+| `ui-backend.env` | `SESSION_SIGNING_KEY`, `SESSION_TTL` | `*.env` |
 
 There is no `ui-users.json` any more. The UI login is an account in `app.db` on
 the `local-ui-state` volume, created with `inja-seed` (step 3). If an old
@@ -104,37 +104,13 @@ that is not there.
 `control-bot.env` must **not** set `ANTHROPIC_API_KEY` — auth comes from the
 subscription credentials in step 4.
 
-### 2. UI backend env (session key, and optionally the export credential)
+### 2. UI backend env (session key)
 
 ```bash
 python3 -c "import secrets; print('SESSION_SIGNING_KEY=' + secrets.token_urlsafe(48))" \
   > deploy/local/ui-backend.env
 echo "SESSION_TTL=86400" >> deploy/local/ui-backend.env
 ```
-
-Optionally add the export credential — the one shared login that opens a
-published export (`/exports/…`), separate from the UI users in step 3. Print a
-hash for the password you want (build the image first — see
-[Build & run](#build--run)); this prints one bare hash, nothing else:
-
-```bash
-docker run --rm inja-ui-backend-local python -c \
- "from argon2 import PasswordHasher; print(PasswordHasher().hash('THE-EXPORT-PASSWORD'))"
-```
-
-Then append the pair, pasting that hash — the whole `$argon2id$…` line and
-nothing around it:
-
-```bash
-cat >> deploy/local/ui-backend.env <<'EOF'
-EXPORT_USERNAME=<pick any local username>
-EXPORT_PASSWORD_HASH=<paste the hash printed above>
-EOF
-```
-
-Skip both if you are not testing the export login: unset, `/exports` answers
-`401` to everyone except a signed-in UI user, no login form is offered, and
-nothing else about the stack changes.
 
 ### 3. Seed a local account (login)
 
@@ -299,10 +275,10 @@ Hub with `docker save` / `docker load`.
 - **UI:** http://localhost:8001 — log in with the mobile number and password you
   seeded in [step 3](#3-seed-a-local-account-login).
 
-> **Why plain HTTP still logs you in.** Both session cookies — `inja_session` for
-> the admin panel and `inja_export_session` for `/exports` — are set with the
-> `Secure` attribute, which normally means "only ever sent over HTTPS". Login works
-> here anyway because `localhost` is special: the W3C *Secure Contexts* algorithm
+> **Why plain HTTP still logs you in.** The session cookie, `inja_session`, is
+> set with the `Secure` attribute, which normally means "only ever sent over
+> HTTPS". Login works here anyway because `localhost` is special: the W3C
+> *Secure Contexts* algorithm
 > "Is origin potentially trustworthy?" returns **Potentially Trustworthy** for a
 > host that is `localhost`, falls within `localhost`, or matches `127.0.0.0/8` or
 > `::1/128`, and Chrome and Firefox use that definition when deciding whether a
@@ -442,8 +418,8 @@ succeeded — you have a Node base but no Python one, which is Case B.
 - If the container won't start, check `ui-backend` logs for missing env
   (`SESSION_SIGNING_KEY`) or `DATA_ROOT is not a directory`.
 - **Login returns 200 and the next request is still 401?** You are almost
-  certainly not on `localhost` — see [Access](#access): the session cookies are
-  `Secure`, and outside a potentially trustworthy origin the browser throws them
+  certainly not on `localhost` — see [Access](#access): the session cookie is
+  `Secure`, and outside a potentially trustworthy origin the browser throws it
   away without saying so.
 
 ---

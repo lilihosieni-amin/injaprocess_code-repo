@@ -1,12 +1,11 @@
 # 06 — Changing users
 
-There are three independent user lists — `upload-bot` (Telegram), `control-bot`
-(Telegram), and the UI — plus the one shared credential that opens a published
-export.
+There are three independent user lists: `upload-bot` (Telegram), `control-bot`
+(Telegram), and the UI. Reports have no user list of their own — a report reader
+is a UI user, gated the same way as everything else in the app (D12).
 
-The bot lists and the export credential are files under `/opt/inja/secrets/`,
-edited and followed by a targeted `docker compose up -d <service>` from
-`/opt/inja/code-repo/deploy`.
+The bot lists are files under `/opt/inja/secrets/`, edited and followed by a
+targeted `docker compose up -d <service>` from `/opt/inja/code-repo/deploy`.
 
 **UI users are not a file.** They are rows in `app.db` and are changed with a
 command. If you are here because nobody can sign in, go straight to
@@ -253,10 +252,8 @@ What does work today, per person:
 
 ### Cutting someone off right now
 
-There is no screen for this yet either, and rotating `SESSION_SIGNING_KEY` is
-**not** the lever — it signs the *export* session and the export URLs, not the UI
-session. A UI session cookie carries an opaque id and nothing else, so the only
-thing that ends one early is the database.
+There is no screen for this yet. A UI session cookie carries an opaque id and
+nothing else, so the only thing that ends one early is the database.
 
 Setting `disabled_at` on the account does it, and does it completely: every
 request re-reads the account, so the person's live sessions stop working on their
@@ -279,43 +276,3 @@ it was already disabled. To let them back in, set `disabled_at = NULL` the same
 way. Disabling does **not** release the number for someone else (see above), and
 a disabled account is one of the three things a failed sign-in can mean — the
 person is told only "wrong username or password", while the reason is recorded.
-
-## The export credential (rotating it)
-
-One shared username/password opens every published export, so changing it is the
-only revocation there is: everyone holding a link shares the credential, and
-there is no way to revoke one person. That is by design — the alternative was a
-user list for people outside the company.
-
-Generate a new hash with the argon2 command in
-[`02-secrets-and-auth.md`](02-secrets-and-auth.md), then replace **both** lines in
-`/opt/inja/secrets/ui-backend.env`:
-
-```
-EXPORT_USERNAME=<the shared export username>
-EXPORT_PASSWORD_HASH=<the new argon2 hash>
-```
-
-then recreate the service:
-
-```bash
-cd /opt/inja/code-repo/deploy
-docker compose up -d ui-backend
-```
-
-What it costs you:
-
-- **Everyone you gave the old password must be told the new one.** There is no
-  per-person revocation.
-- **A browser that already signed in keeps its access until its session expires**
-  (`SESSION_TTL`, default 24 h). The export cookie is signed with
-  `SESSION_SIGNING_KEY` and carries no reference to the password, so a new hash
-  does not invalidate cookies already issued. Rotating `SESSION_SIGNING_KEY`
-  *does* cut them off at once — but it **changes every export URL** as well (each
-  link is derived from that key), so every link handed out stops resolving and
-  each department has to be exported again. Reach for it only when that is what
-  you want. It does **not** touch UI sign-ins: a UI session is a row in `app.db`
-  keyed by an opaque cookie, not something signed with that key.
-- **A file someone already downloaded keeps opening, forever and offline.** An
-  export is a standalone document; the password closes "someone forwards the
-  link", never "someone forwards the file".
