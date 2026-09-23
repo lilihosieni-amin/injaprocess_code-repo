@@ -1349,10 +1349,28 @@ async function stubs(page: Page): Promise<Stubs> {
   return s
 }
 
+/**
+ * The backend registry (D26), the two rows it really serves today. Session-wide
+ * furniture like the session descriptor itself: `useReports()` fires on the
+ * ScopePicker, the user list and the user detail screen (and, from Task 8/9 on,
+ * the process list and the report screen), so `signedIn` answers it beside
+ * `/api/auth/me` rather than leaving every spec that reaches one of those
+ * screens to stub it by hand — the hand-synchronised list D26 exists to abolish.
+ */
+const REPORTS = {
+  reports: [
+    { id: 'flowchart', name: 'سند فلوچارت دپارتمان', short: 'مستندات کامل',
+      description: 'هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان.' },
+    { id: 'steps', name: 'راهنمای گام‌به‌گام', short: 'راهنمای گام‌به‌گام',
+      description: 'همان فرآیندها، بازنویسی‌شده به گام‌های شماره‌دار.' },
+  ],
+}
+
 /** Answers GET /api/auth/me so the app renders past RequireAuth. */
 export async function signedIn(page: Page, over: Partial<Session> = {}) {
   const s = await stubs(page)
   s.table.set('/api/auth/me', JSON.stringify({ ...EDITOR, ...over }))
+  s.table.set('/api/reports', JSON.stringify(REPORTS))
 }
 
 /**

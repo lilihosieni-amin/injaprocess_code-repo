@@ -134,20 +134,22 @@ export interface Me { username: string }
 
 export type DepartmentOrder = { order: string[] }
 
-export type ExportKind = 'flowchart' | 'steps'
-/**
- * What `POST /api/departments/{code}/exports/{kind}` answers.
- *
- * `url` is the document; `pdf_url` is the printed PDF **and it is absent when
- * one was not printed** — an unconfigured `CHROMIUM_PATH`, a browser that
- * crashed, a render that timed out. Optional in the type for exactly that
- * reason: the panel hands over the PDF (owner ruling, *"the export button should
- * just create pdf. not html"*) and has to be able to tell "there is one" from
- * "there is not" rather than build a `.pdf` href by swapping an extension and
- * hoping. Two fields, because the document is still what `/exports` serves to a
- * reader and what the export's own «چاپ / PDF» button is a sibling of.
- */
-export interface ExportResult { url: string; pdf_url?: string; generated_at: string }
+/** One row of the backend registry (D26), as `GET /api/reports` serves it.
+ *  `short` is what a scope chip says; `name` and `description` are what the
+ *  reports dialog draws. */
+export type ReportEntry = { id: string; name: string; short: string; description: string }
+
+/** What `GET /api/departments/{code}/reports/{kind}` answers — the same shape
+ *  the downloaded file carries in its data slot (`ui/export/shared/payload.ts`),
+ *  with one difference that is the whole of D23: `dept` is `null` when the
+ *  department has nothing confirmed, and the screen draws the empty state. */
+export type ReportPayload = { dept: Overview | null; processes: ReadableProcess[]; generated_at: string }
+
+/** What `POST /api/departments/{code}/reports/{kind}` answers. `pdf_url` is
+ *  **absent** when no PDF was produced — an unconfigured `CHROMIUM_PATH`, a
+ *  browser that crashed, a render that timed out — so the dialog can tell "there
+ *  is one" from "there is not" rather than building a href and hoping. */
+export interface ExportResult { pdf_url?: string; generated_at: string }
 
 /** The switchable fields, in the order `store/policy.py` lists them.
  *

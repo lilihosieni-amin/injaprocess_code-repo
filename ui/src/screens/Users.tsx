@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import { administrationRefusal } from '../auth/can'
-import { useDepartments } from '../api/hooks'
+import { useDepartments, useReportNames } from '../api/hooks'
 import { useUsers } from '../api/users'
 import { refusalStatus } from '../api/client'
 import { roleLabel, roleTone } from '../lib/roles'
@@ -131,6 +131,7 @@ function UsersBody({ users, isPending }: { users: AdminUser[]; isPending: boolea
   const navigate = useNavigate()
   const { data: departments } = useDepartments()
   const names = Object.fromEntries((departments ?? []).map((d) => [d.code, d.name]))
+  const reports = useReportNames()
   const list = users.filter((u) => matches(u, q, filters))
 
   return (
@@ -156,7 +157,7 @@ function UsersBody({ users, isPending }: { users: AdminUser[]; isPending: boolea
             ? 'هنوز کاربری ثبت نشده است'
             : 'کاربری با این نام پیدا نشد'}
           headFill
-          columns={COLUMNS(names)}
+          columns={COLUMNS(names, reports)}
         />
       )}
     </>
@@ -173,7 +174,8 @@ function UsersBody({ users, isPending }: { users: AdminUser[]; isPending: boolea
  * department cell is the only one that needs anything the row does not carry —
  * `AdminUser` holds scopes, and «سالن» is a name the registry supplies.
  */
-const COLUMNS = (names: Record<string, string>): TemplatedColumn<AdminUser>[] => [
+const COLUMNS = (names: Record<string, string>,
+                 reports: Record<string, string>): TemplatedColumn<AdminUser>[] => [
   {
     key: 'state', head: '',
     cell: (u) => (
@@ -224,7 +226,7 @@ const COLUMNS = (names: Record<string, string>): TemplatedColumn<AdminUser>[] =>
     key: 'dept', head: 'دپارتمان', mobile: false,
     cell: (u) => (
       <span className="block truncate text-fs-sm2 text-muted">
-        {scopesLabel(u.scopes, names)}
+        {scopesLabel(u.scopes, names, reports)}
       </span>
     ),
   },

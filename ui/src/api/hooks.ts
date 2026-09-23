@@ -1,6 +1,7 @@
+import { useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchJson } from './client'
-import type { Branch, Confirmation, Department, DepartmentOrder, ExportKind, ExportResult, FactBundle, FactsListResponse, Me, Overview, PendingItem, PolicyField, Process, VisibilityPolicy } from './types'
+import type { Branch, Confirmation, Department, DepartmentOrder, ExportResult, FactBundle, FactsListResponse, Me, Overview, PendingItem, PolicyField, Process, ReportEntry, ReportPayload, VisibilityPolicy } from './types'
 
 export const useDepartments = (opts?: { enabled?: boolean }) =>
   useQuery({
@@ -323,11 +324,37 @@ export function useSetVisibilityField() {
   })
 }
 
-export function useCreateExport(code: string) {
-  // No invalidation: an export reads the department, it changes nothing.
+/** The report kinds this deployment serves (D26). One request for the whole
+ *  session: the registry is a fixed artefact of the build, not per-caller data,
+ *  and three surfaces read it (the reports dialog, the scope picker, the user
+ *  lists). */
+export const useReports = () =>
+  useQuery({
+    queryKey: ['reports'],
+    queryFn: () => fetchJson<{ reports: ReportEntry[] }>('/api/reports'),
+    staleTime: Infinity,
+  })
+
+/** `id -> short`, the shape the scope labels take. */
+export function useReportNames(): Record<string, string> {
+  const q = useReports()
+  return useMemo(
+    () => Object.fromEntries((q.data?.reports ?? []).map((r) => [r.id, r.short])),
+    [q.data],
+  )
+}
+
+export const useReport = (code: string, kind: string) =>
+  useQuery({
+    queryKey: ['report', code, kind],
+    queryFn: () => fetchJson<ReportPayload>(`/api/departments/${code}/reports/${kind}`),
+  })
+
+export function useBuildReport(code: string) {
+  // No invalidation: building a report reads the department, it changes nothing.
   return useMutation({
-    mutationFn: (kind: ExportKind) =>
-      fetchJson<ExportResult>(`/api/departments/${code}/exports/${kind}`, { method: 'POST' }),
+    mutationFn: (kind: string) =>
+      fetchJson<ExportResult>(`/api/departments/${code}/reports/${kind}`, { method: 'POST' }),
   })
 }
 

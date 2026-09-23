@@ -14,10 +14,21 @@ const DEPTS = [
   { code: 'cashier', name: 'صندوق', count: 0, subs: 0 },
 ]
 
+/** The backend registry (D26), the two rows it really serves today. */
+const REPORTS = {
+  reports: [
+    { id: 'flowchart', name: 'سند فلوچارت دپارتمان', short: 'مستندات کامل',
+      description: 'هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان.' },
+    { id: 'steps', name: 'راهنمای گام‌به‌گام', short: 'راهنمای گام‌به‌گام',
+      description: 'همان فرآیندها، بازنویسی‌شده به گام‌های شماره‌دار.' },
+  ],
+}
+
 function draw(scopes: string[]) {
   const onChange = vi.fn()
-  vi.stubGlobal('fetch', vi.fn(async () =>
-    new Response(JSON.stringify(DEPTS), { headers: { 'Content-Type': 'application/json' } })))
+  vi.stubGlobal('fetch', vi.fn(async (path: string) =>
+    new Response(JSON.stringify(path === '/api/reports' ? REPORTS : DEPTS),
+      { headers: { 'Content-Type': 'application/json' } })))
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <ScopePicker scopes={scopes} onChange={onChange} />

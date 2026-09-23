@@ -118,6 +118,18 @@ const DEPARTMENTS: Department[] = [
   { code: 'bar', name: 'بار', count: 1, subs: 0, conflicts: 0 },
 ]
 
+/** The backend registry (D26), the two rows it really serves today — read by
+ *  the same `scopeLabel`/`scopesLabel` that draws the دپارتمان column and the
+ *  record screen's chips. */
+const REPORTS = {
+  reports: [
+    { id: 'flowchart', name: 'سند فلوچارت دپارتمان', short: 'مستندات کامل',
+      description: 'هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان.' },
+    { id: 'steps', name: 'راهنمای گام‌به‌گام', short: 'راهنمای گام‌به‌گام',
+      description: 'همان فرآیندها، بازنویسی‌شده به گام‌های شماره‌دار.' },
+  ],
+}
+
 interface Seen {
   gets: string[]
   writes: { path: string; body: unknown }[]
@@ -186,6 +198,7 @@ function stubServer(rows: AdminUser[], opts: {
     // registry is missing, which would let «names the department» pass on the
     // very fallback it exists to disbelieve.
     if (path === '/api/departments') return json(opts.departments ?? DEPARTMENTS)
+    if (path === '/api/reports') return json(REPORTS)
     if (path === '/api/users') return json([...state.values()])
     const row = state.get(path.slice('/api/users/'.length))
     return row ? json(row) : json({ detail: 'یافت نشد' }, 404)
@@ -246,6 +259,7 @@ function renderDetail(
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   qc.setQueryData(['users', String(user.id)], user)
   qc.setQueryData(['departments'], opts.departments ?? DEPARTMENTS)
+  qc.setQueryData(['reports'], REPORTS)
   const view = render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[`/users/${user.id}`]}>
@@ -794,12 +808,13 @@ describe('who the user list is drawn for', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'تلاش دوباره' }))
     await waitFor(() =>
       expect(seen.gets.filter((p) => p === '/api/users').length).toBeGreaterThan(1))
-    // …and it re-reads the LISTING, not something else. `/api/departments` is
-    // in this log too and legitimately so: the filter card names a department,
+    // …and it re-reads the LISTING, not something else. `/api/departments` and
+    // `/api/reports` are in this log too and legitimately so: the filter card
+    // names a department, the دپارتمان column names a report-scoped narrowing,
     // and every caller who got past the gate holds `manage_users` at `*` and
     // therefore reaches every department there is. Nothing else may appear.
     expect([...new Set(seen.gets)].sort())
-      .toEqual(['/api/departments', '/api/users'])
+      .toEqual(['/api/departments', '/api/reports', '/api/users'])
   })
 })
 

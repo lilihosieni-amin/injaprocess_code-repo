@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { useDepartments } from '../api/hooks'
+import { useDepartments, useReportNames, useReports } from '../api/hooks'
 import { deptMeta } from '../lib/departments'
 import {
-  EVERY_DEPARTMENT, REPORT_KINDS, REPORT_KIND_LABELS, parseScope, reportLabel, scopeLabel,
+  EVERY_DEPARTMENT, parseScope, reportLabel, scopeLabel,
 } from '../lib/scopes'
 import { Checkbox, TickBox } from '../ui/Checkbox'
 import { Icon } from '../ui/Icon'
@@ -63,6 +63,8 @@ export function ScopePicker({ scopes, onChange }: {
   onChange: (next: string[]) => void
 }) {
   const departments = useDepartments()
+  const reports = useReports().data?.reports ?? []
+  const reportNames = useReportNames()
   const [openViews, setOpenViews] = useState<string | null>(null)
   const every = scopes.includes('*')
   const list = departments.data ?? []
@@ -150,7 +152,7 @@ export function ScopePicker({ scopes, onChange }: {
     if (p.shape === 'every') return false
     if (p.shape === 'refused') return true
     if (!(p.code in names)) return true
-    return p.shape === 'report' && reportLabel(p.report) === undefined
+    return p.shape === 'report' && reportLabel(p.report, reportNames) === undefined
   })
 
   return (
@@ -182,8 +184,8 @@ export function ScopePicker({ scopes, onChange }: {
         className={`grid grid-cols-2 gap-s4 max760:grid-cols-1 ${every ? 'opacity-40 pointer-events-none' : ''}`}>
         {list.map((d) => {
           const whole = scopes.includes(`dept:${d.code}`)
-          const narrowed = REPORT_KINDS.filter((k) =>
-            scopes.includes(`dept:${d.code}/report:${k}`))
+          const narrowed = reports.filter((r) =>
+            scopes.includes(`dept:${d.code}/report:${r.id}`))
           // Tinted when the account reaches this department AT ALL, ticked only
           // when it reaches the whole of it. A report-scoped department drawn
           // exactly like an ungranted one is the defect this control exists to
@@ -233,7 +235,7 @@ export function ScopePicker({ scopes, onChange }: {
                   // The narrowing, in words, so the grant is legible without
                   // opening the popover it lives in.
                   <span className="basis-full text-fs-xs text-violet">
-                    فقط {narrowed.map((k) => REPORT_KIND_LABELS[k]).join('، ')}
+                    فقط {narrowed.map((r) => r.short).join('، ')}
                   </span>
                 )}
               </label>
@@ -255,15 +257,15 @@ export function ScopePicker({ scopes, onChange }: {
                     checked={whole}
                     onChange={(v) => toggleDepartment(d.code, v)}
                     label={ALL_REPORTS} />
-                  {REPORT_KINDS.map((kind) => (
-                    <Checkbox key={kind}
+                  {reports.map((r) => (
+                    <Checkbox key={r.id}
                       // Panel 1386 — an option inside the popover that hangs off
                       // the cell above, which is the deepest rung the design
                       // draws and the only place in this app that reaches it.
                       rung="nested"
-                      checked={scopes.includes(`dept:${d.code}/report:${kind}`)}
-                      onChange={(v) => toggleReport(d.code, kind, v)}
-                      label={REPORT_KIND_LABELS[kind]} />
+                      checked={scopes.includes(`dept:${d.code}/report:${r.id}`)}
+                      onChange={(v) => toggleReport(d.code, r.id, v)}
+                      label={r.short} />
                   ))}
                 </div>
               )}
@@ -274,7 +276,7 @@ export function ScopePicker({ scopes, onChange }: {
 
       {undrawable.length > 0 && (
         <p className="text-fs-xs font-semibold text-warn m-0">
-          {UNDRAWABLE_SCOPES} {undrawable.map((s) => scopeLabel(s, names)).join('، ')}
+          {UNDRAWABLE_SCOPES} {undrawable.map((s) => scopeLabel(s, names, reportNames)).join('، ')}
         </p>
       )}
       {/* `*` is «همهٔ دپارتمان‌ها» wherever else the product names it — on the

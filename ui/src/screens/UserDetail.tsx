@@ -2,7 +2,7 @@ import { useId, useState, type ComponentProps } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import { administrationRefusal } from '../auth/can'
-import { useDepartments } from '../api/hooks'
+import { useDepartments, useReportNames } from '../api/hooks'
 import {
   mayManage, useSetUserDisabled, useSetUserPassword, useUser, type AdminUser,
 } from '../api/users'
@@ -331,6 +331,7 @@ export function UserDetail() {
 function RoleAndScopePanel({ user }: { user: AdminUser }) {
   const { data: departments } = useDepartments()
   const names = Object.fromEntries((departments ?? []).map((d) => [d.code, d.name]))
+  const reports = useReportNames()
 
   return (
     <Panel skin="plain" card eyebrow="نقش و دپارتمان" label="نقش و دپارتمان">
@@ -349,7 +350,7 @@ function RoleAndScopePanel({ user }: { user: AdminUser }) {
           {user.scopes.length === 0
             ? <span className="text-fs-sm2 text-muted">{NO_DEPARTMENT}</span>
             : user.scopes.map((scope) => (
-              <span key={scope} className={SCOPE_CHIP}>{scopeLabel(scope, names)}</span>
+              <span key={scope} className={SCOPE_CHIP}>{scopeLabel(scope, names, reports)}</span>
             ))}
         </div>
       </div>

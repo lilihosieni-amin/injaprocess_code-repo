@@ -43,6 +43,17 @@ const DEPARTMENTS = [
   { code: 'cashier', name: 'صندوق', count: 0, subs: 0 },
 ]
 
+/** The backend registry (D26), the two rows it really serves today — used by
+ *  `scopeLabel`/`ScopePicker` for every report kind this file names. */
+const REPORTS = {
+  reports: [
+    { id: 'flowchart', name: 'سند فلوچارت دپارتمان', short: 'مستندات کامل',
+      description: 'هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان.' },
+    { id: 'steps', name: 'راهنمای گام‌به‌گام', short: 'راهنمای گام‌به‌گام',
+      description: 'همان فرآیندها، بازنویسی‌شده به گام‌های شماره‌دار.' },
+  ],
+}
+
 /** The real deployment's nine, which is the registry the height claim is about:
  *  three departments could never have produced 2207px. */
 const NINE = [
@@ -280,6 +291,7 @@ function stubServer(user: AdminUser, opts: {
         ? json(opts.departments ?? DEPARTMENTS)
         : json({ detail: 'نه' }, departmentsStatus)
     }
+    if (path === '/api/reports') return json(REPORTS)
     if (path.startsWith('/api/users/supervisor-candidates')) {
       if (opts.stallCandidates) return new Promise<Response>(() => {})
       if (candidatesStatus !== 200) return json({ detail: 'نه' }, candidatesStatus)
@@ -372,16 +384,18 @@ describe('who may edit a record', () => {
     // The roles and the candidate list are what this is about: they are two
     // requests per visit to anybody's record if the dialog is mounted eagerly,
     // and a second opening would start on the account as it stood before the
-    // first. The record itself and the department registry are read because
-    // §6.8 DRAWS both — the record is the screen, and panel 1 needs the
-    // registry to print «سالن» where the row stores `dept:dining` — so they are
+    // first. The record itself, the department registry and the report registry
+    // are read because §6.8 DRAWS all three — the record is the screen, panel 1
+    // needs the department registry to print «سالن» where the row stores
+    // `dept:dining`, and needs the report registry to print the narrowing
+    // («فقط راهنمای گام‌به‌گام») where a scope names a report — so they are
     // named here rather than swept into a bare `toEqual([])` that would have to
     // be loosened the next time the screen legitimately reads something.
     const seen = stubServer(SAHAR)
     mountDetail(7)
     await screen.findByRole('button', { name: 'ویرایش' })
     await waitFor(() => expect([...seen.gets].sort())
-      .toEqual(['/api/departments', '/api/users/7']))
+      .toEqual(['/api/departments', '/api/reports', '/api/users/7']))
     expect(seen.gets.filter((p) => p.startsWith('/api/roles')
       || p.startsWith('/api/users/supervisor-candidates'))).toEqual([])
   })
