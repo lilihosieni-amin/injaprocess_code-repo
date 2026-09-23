@@ -463,6 +463,22 @@ _conditional = StaticFiles(check_dir=False)
 _ARTIFACT = {"pdf": exports.export_pdf_path, "html": exports.export_html_path}
 
 
+def _takes_the_file(request: Request) -> bool:
+    """Is this the one request of a read that carries the document away?
+
+    A GET, and either the whole file or the range that opens it. Counting the
+    first slice rather than the last is what makes the answer independent of how
+    a client chooses to fetch: every reader asks for byte 0 exactly once, whether
+    they then ask for one range or forty, and a viewer that gives up halfway
+    still downloaded the report. A suffix range (`bytes=-500`) and any later
+    range are continuations of a read already recorded.
+    """
+    if request.method != "GET":
+        return False
+    requested = request.headers.get("range")
+    return requested is None or requested.replace(" ", "").startswith("bytes=0-")
+
+
 @router.api_route("/{code}/reports/{kind}/file.{ext}", methods=["GET", "HEAD"])
 def download_report(code: str, kind: str, ext: str, request: Request,
                     user=Depends(requires("export_pdf", _report_target))):
@@ -515,10 +531,6 @@ def download_report(code: str, kind: str, ext: str, request: Request,
     if not servable:
         raise HTTPException(status_code=404, detail=NOT_FOUND)
 
-    record(request, "report.downloaded", actor=user["username"],
-           session_id=getattr(request.state, "session_id", None),
-           target=f"dept:{code}/report:{kind}", detail={"format": ext})
-
     # `private`: the file is behind a session, so a shared cache must never keep
     # a copy to hand to the next person. `no-cache`: the reader's own browser may
     # keep one, but must revalidate — without it, a response carrying
@@ -529,4 +541,18 @@ def download_report(code: str, kind: str, ext: str, request: Request,
                             headers={"Cache-Control": "private, no-cache"})
     if _conditional.is_not_modified(response.headers, request.headers):
         return NotModifiedResponse(response.headers)
+    # **After the 304, and only for a request that is taking the file.** The row
+    # means *somebody took this document* — it is what D44's permission history
+    # counts a download as, and the activity record is append-only and never
+    # pruned (D45), so a row written per *request* would not be a stronger
+    # version of the same fact but a different and wrong one. A HEAD asks how big
+    # the file is and receives no bytes; a 304 is a browser confirming the copy
+    # it already has; and iOS Safari's PDF viewer — the reader this route exists
+    # for — fetches a document in a run of byte ranges, so one person opening one
+    # report once would otherwise write a dozen rows saying they downloaded it a
+    # dozen times.
+    if _takes_the_file(request):
+        record(request, "report.downloaded", actor=user["username"],
+               session_id=getattr(request.state, "session_id", None),
+               target=f"dept:{code}/report:{kind}", detail={"format": ext})
     return response

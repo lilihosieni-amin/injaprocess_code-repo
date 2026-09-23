@@ -219,8 +219,12 @@ def log_out_of_scope(request: Request, user: sqlite3.Row, target: str) -> None:
 
     Both values are attacker-chosen — the target comes out of the URL — so both
     are `%r`-quoted and truncated. Unquoted, a newline in a target writes a log
-    line of the caller's choosing, which is the same reason
-    `routers/processes.py` quotes the CLI stderr it logs on a failed relayout.
+    line of the caller's choosing: an operator reading the log cannot tell a
+    forged record from a real one, and neither can whatever collects it. This is
+    the rule for every log line in this service that carries a value the caller
+    chose, and it is stated here because this module is where the first of them
+    is written; `routers/processes.py` cites it for the CLI stderr it logs on a
+    failed relayout.
     """
     logger.info("out of scope: %r asked for %r from %s",
                 user["username"], target[:120], client_ip(request))

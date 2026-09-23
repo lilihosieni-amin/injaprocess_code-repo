@@ -224,6 +224,36 @@ def test_downloading_is_recorded_with_its_format(data_root, tmp_path, monkeypatc
     assert '"format": "pdf"' in rows[-1]["detail"]
 
 
+def _downloads(client) -> int:
+    return len(audit_events(client, "report.downloaded"))
+
+
+def test_one_read_is_one_row_however_the_client_fetches_it(
+        data_root, tmp_path, monkeypatch):
+    """The row means *somebody took this document* (D44), and the record is
+    append-only (D45), so the count must not depend on how a viewer chooses to
+    fetch. A HEAD takes no bytes, a 304 is a browser confirming the copy it has,
+    and a later range continues a read whose first slice was already recorded —
+    which is the whole of what iOS Safari's PDF viewer does after byte 0.
+    """
+    people = _built(data_root, tmp_path, monkeypatch)
+    viewer = people["viewer"]
+    etag = viewer.get(PDF).headers["etag"]          # one plain GET: one row
+    assert _downloads(viewer) == 1
+
+    viewer.head(PDF)
+    assert _downloads(viewer) == 1, "a HEAD received no bytes"
+
+    assert viewer.get(PDF, headers={"If-None-Match": etag}).status_code == 304
+    assert _downloads(viewer) == 1, "a 304 sent the reader nothing"
+
+    assert viewer.get(PDF, headers={"Range": "bytes=10-19"}).status_code == 206
+    assert _downloads(viewer) == 1, "a later range continues a recorded read"
+
+    assert viewer.get(PDF, headers={"Range": "bytes=0-9"}).status_code == 206
+    assert _downloads(viewer) == 2, "the range that opens the file is the read"
+
+
 def test_an_unknown_extension_is_not_found(data_root, tmp_path, monkeypatch):
     people = _built(data_root, tmp_path, monkeypatch)
     assert people["viewer"].get(
