@@ -121,9 +121,9 @@ _seq = itertools.count()
 def _cfg(data_root, tmp_path):
     """Settings with the export feature **on**.
 
-    `POST /api/departments/{code}/exports/{kind}` answers 503 with no
+    `POST /api/departments/{code}/reports/{kind}` answers 503 with no
     `EXPORT_DIR`, and a 503 body is not the body that route serves. Configured
-    here so the sweep walks the real one — and so the published artifact itself
+    here so the sweep walks the real one — and so the built artifact itself
     can be read off disk and scanned, which is the only place in this file where
     a name could reach a Reader through a *file* rather than through a payload.
     `CHROMIUM_PATH` stays unset: the PDF is best-effort and never touches the
@@ -412,11 +412,17 @@ def _reader_surface(world: World) -> list[tuple[str, str, dict | None, int]]:
         ("GET", "/api/pending", None, 200),
         # Gated on `set_visibility` at `*`: out of scope, so 404.
         ("GET", "/api/visibility", None, 404),
+        # `view`: the read path (D25), which is the largest body a Reader is
+        # served — `build_payload`'s whole department — and therefore the most
+        # likely place for a `confirmed_by` to arrive in one. One kind, not
+        # two: `read_report` builds the same payload whatever the kind, so a
+        # second row would scan the same bytes twice.
+        ("GET", f"/api/departments/{MINE}/reports/steps", None, 200),
         # `export_pdf`, which a Reader does hold. Both kinds: the fixture
         # writes a template for each, and `flowchart` is a second, independent
         # render of the same payload rather than a shape covered by `steps`.
-        ("POST", f"/api/departments/{MINE}/exports/steps", None, 200),
-        ("POST", f"/api/departments/{MINE}/exports/flowchart", None, 200),
+        ("POST", f"/api/departments/{MINE}/reports/steps", None, 200),
+        ("POST", f"/api/departments/{MINE}/reports/flowchart", None, 200),
         # The writes they may attempt and be refused.
         ("PUT", f"/api/departments/{MINE}/overview", {}, 403),
         ("PUT", f"/api/processes/{MINE}-001", {}, 403),
@@ -560,11 +566,14 @@ def test_no_response_a_reader_can_reach_names_another_user(world):
 
 
 def test_the_published_export_names_nobody_either(world):
-    """The artifact on disk, not only the `{"url": …}` that announces it.
+    """The artifact on disk, not only the response that announces it.
 
-    `POST …/exports/{kind}` returns two fields, so a name embedded in the
-    published page itself is invisible to the sweep above. The file is read back
-    and scanned as text: it carries the department's confirmed documents, and
+    `POST …/reports/{kind}` returns a timestamp, so a name embedded in the built
+    page itself is invisible to the sweep above. The file is read back off disk
+    by its layout — the response names no file any more (D28: there is no
+    permanent link, the artifact is fetched through `…/file.pdf` and rebuilt
+    when its key moves) — and scanned as text: it carries the department's
+    confirmed documents, and
     "who confirmed them" is exactly the kind of provenance a builder adds to a
     footer without anyone thinking of it as a person's number.
 
@@ -589,11 +598,14 @@ def test_the_published_export_names_nobody_either(world):
     for who in (READER, STAR_READER):
         client = world.sign_in(who)
         for kind in ("steps", "flowchart"):
-            r = client.post(f"/api/departments/{MINE}/exports/{kind}")
+            r = client.post(f"/api/departments/{MINE}/reports/{kind}")
             assert r.status_code == 200, r.text
-            url = r.json()["url"]
-            written = world.cfg.export_dir / url[len("/exports/"):]
-            page = written.read_text(encoding="utf-8")
+            # `write_export` prunes this kind's older documents, so exactly one
+            # survives per kind — and the assertion says so, because a glob that
+            # silently took the first of two would be scanning a stale page.
+            built = sorted((world.cfg.export_dir / MINE).glob(f"{kind}-*.html"))
+            assert len(built) == 1, f"expected one built {kind} document: {built}"
+            page = built[0].read_text(encoding="utf-8")
             assert "__INJA_EXPORT_DATA__" not in page, (
                 f"the published {kind} artifact still carries the unsubstituted"
                 f" template slot")

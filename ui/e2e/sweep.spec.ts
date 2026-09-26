@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import type {
   Branch, Department, FactBundle, FactsListResponse, Overview, Process,
-  VisibilityPolicy,
+  ReportPayload, VisibilityPolicy,
 } from '../src/api/types'
 import type { AdminUser } from '../src/api/users'
 import { FIELD, FONT_SANS, RTL, serve, shot, signedIn, visit } from './_harness'
@@ -138,6 +138,18 @@ const RULE: FactBundle = {
   original: null,
 }
 
+/**
+ * What the report read answers (D25) — the payload the document is rendered
+ * from, not a link to a file. `dept` and one process, because the empty report
+ * renders `EmptyState` and the sweep would then be grading a one-line screen
+ * instead of the largest document the app draws.
+ */
+const REPORT: ReportPayload = {
+  dept: OVERVIEW,
+  processes: [PROCESS],
+  generated_at: '2026-05-01T08:00:00Z',
+}
+
 const POLICY: VisibilityPolicy = {
   version: 'v3_a1b2c3',
   fields: {
@@ -159,6 +171,12 @@ const STUBS: Record<string, unknown> = {
   '/api/departments/dining/processes': PROCESSES,
   '/api/departments/dining/overview': OVERVIEW,
   '/api/confirmations?department=dining': [],
+  // P4's comment tray, read by the department and process screens. Only the
+  // pathname is matched, so this answers `?department=` and `?process=` alike.
+  // Unstubbed it was aborted, which Chrome reports as `net::ERR_FAILED` and the
+  // console check below then failed on — a red carried in from the comments
+  // work, not from the reports one.
+  '/api/comments?department=dining': [],
   '/api/processes/dining-003': PROCESS,
   '/api/users': [SAHAR],
   '/api/users/2': SAHAR,
@@ -166,6 +184,11 @@ const STUBS: Record<string, unknown> = {
   '/api/facts': FACTS,
   '/api/facts/branches': BRANCHES,
   '/api/facts/F-00030': RULE,
+  '/api/departments/dining/reports/steps': REPORT,
+  // The `HEAD` the document sends to find out whether a printed PDF exists for
+  // the content it is showing. Answered, because this sweep's session holds
+  // `export_pdf` and would otherwise be asking for an endpoint nothing stubs.
+  '/api/departments/dining/reports/steps/file.pdf': {},
 }
 
 /**
@@ -192,6 +215,14 @@ const ROUTES = [
   ['/visibility', 'policy'],
   ['/facts', 'facts'],
   ['/facts/F-00030', 'factDetail'],
+  // The read path's own screen (D25). It has no `DESIGN` row — like `users`,
+  // below — because it is a frame around a document whose numbers belong to
+  // `export/`, not a screen the deliverables draw. What this sweep says about
+  // it is what it says about every other: the field, the family, RTL, no
+  // sideways scroll, Persian numerals outside the LTR islands, a clean console.
+  // On the largest thing the app renders, that is worth more here than
+  // anywhere.
+  ['/departments/dining/reports/steps', 'report'],
 ] as const
 
 for (const [route, name] of ROUTES) {
@@ -205,7 +236,7 @@ for (const [route, name] of ROUTES) {
         'manage_users', 'manage_peers', 'view_audit', 'set_visibility'],
     })
     await serve(page, STUBS)
-    await visit(page, route, name === 'users' ? undefined : name)
+    await visit(page, route, name === 'users' || name === 'report' ? undefined : name)
 
     const screen = page.locator(`[data-screen="${name}"]`)
     await expect(screen, 'the screen did not mount at all').toHaveCount(1)

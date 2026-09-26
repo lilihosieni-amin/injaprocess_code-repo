@@ -1,13 +1,13 @@
 """Every endpoint, read through the permission gate (spec D56, §11 tests 6 and 10).
 
-Thirty-four routes. Twenty-eight are gated on one capability at one target; six
+Thirty-seven routes. Thirty-one are gated on one capability at one target; six
 are not — three span departments and are filtered per row rather than gated,
 because a list that refuses outright would take a two-department head's whole
 screen away over one department they cannot reach, one reads the estate's
 workbook roll, which belongs to no department, and two list comments, filtered
 per row by D66.
 
-Eighteen of the twenty-eight name a department. The other ten name `*`: the two
+Twenty-one of the thirty-one name a department. The other ten name `*`: the two
 visibility routes, because there is one global policy (D16) and so no department
 to gate them on, and the eight of the user-administration surface, because all
 user administration is at `*` scope (D11) and a department-scoped Admin is meant
@@ -24,12 +24,14 @@ Only both together name the capability. The same holds for the target — an
 out-of-scope 404 alone is satisfied by a route gated on any department the
 caller cannot reach, so it is paired with an in-scope non-refusal.
 """
+import dataclasses
 import itertools
 import json
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from inja_ui_backend import db, seed
+from inja_ui_backend import db, pdf, seed
 from inja_ui_backend.access import NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
@@ -58,6 +60,11 @@ VICTIM = 3
 #: is about. `_a_source_to_download` plants it.
 SOURCE_FILE = "departments/cooking/attachments/probe.txt"
 SOURCE = f"/api/facts/source?path={SOURCE_FILE}"
+
+#: The report download (D25). Named because three places below have to agree on
+#: it: the gated row, the build that puts an artifact where it looks, and the
+#: `WITH` override that gives it a caller who can run that build.
+DOWNLOAD = "/api/departments/cooking/reports/steps/file.pdf"
 
 
 @pytest.fixture(autouse=True)
@@ -89,7 +96,21 @@ def _a_source_to_download(data_root):
     rules.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
 
 
-#: The twenty-eight gated routes: (method, path, body, the capability each needs).
+@pytest.fixture(autouse=True)
+def _a_render_that_writes_a_pdf(monkeypatch):
+    """Whatever builds below, a PDF really lands beside the document.
+
+    A chromium is neither present nor the subject: what this file compares is
+    gates, and the download row needs an artifact to exist for its non-refusal
+    direction to be about the gate rather than about an empty export directory.
+    `_client_as` sets `chromium_path` for the same reason — `_render_pdf_beside`
+    does not reach `render_pdf` at all while it is unset.
+    """
+    monkeypatch.setattr(pdf, "render_pdf",
+                        lambda _chromium, _html, out: out.write_bytes(b"%PDF-1.4\n"))
+
+
+#: The thirty-one gated routes: (method, path, body, the capability each needs).
 #: `body` is what a well-formed request carries — a malformed one would be
 #: refused by validation on some routes and by the gate on others, and this
 #: table exists to compare gates, not validators.
@@ -143,7 +164,24 @@ GATED = [
     ("PUT", "/api/departments/cooking/order", {"order": []}, "edit"),
     ("GET", "/api/departments/cooking/processes", None, "view"),
     ("GET", "/api/departments/cooking/next-id", None, "edit"),
-    ("POST", "/api/departments/cooking/exports/steps", None, "export_pdf"),
+    #: The three report routes (D25, D26). Reading and downloading are two
+    #: responses on purpose, so they are two rows gated on two different
+    #: capabilities: `view` reads the department as the application renders it,
+    #: `export_pdf` builds the single file and `export_pdf` hands it over. A
+    #: table that gave the read row `export_pdf` would shut every
+    #: `reader_no_download` holder out of reading, which is the failure D25 is
+    #: written to prevent; `test_reading_is_not_downloading.py` asserts the
+    #: other half of it, on the bytes.
+    #:
+    #: The target is `dept:{code}/report:{kind}` on all three, which this
+    #: table's `dept:cooking` caller contains — the narrower grant is pinned by
+    #: `test_the_report_target_names_the_report_and_not_only_the_department`.
+    ("GET", "/api/departments/cooking/reports/steps", None, "view"),
+    ("POST", "/api/departments/cooking/reports/steps", None, "export_pdf"),
+    #: `_a_built_report` is what makes this row's non-refusal direction real:
+    #: without an artifact on disk the handler answers 404 for a reason that
+    #: has nothing to do with the gate.
+    ("GET", DOWNLOAD, None, "export_pdf"),
     ("GET", "/api/processes/cooking-001", None, "view"),
     ("POST", "/api/processes", {"department": "cooking"}, "edit"),
     ("DELETE", "/api/processes/cooking-001", None, "edit"),
@@ -306,7 +344,7 @@ WITH = {"view": "reader_no_download", "export_pdf": "reader", "edit": "editor",
 def _in_scope_for(path: str) -> str:
     """The scope a caller must hold to be *inside* this route's target.
 
-    `dept:cooking` for the sixteen that name a department in their path, and `*`
+    `dept:cooking` for the twenty-one that name a department in their path, and `*`
     for the two that name the global policy: `contains("dept:cooking", "*")` is
     False, so a department-scoped caller is 404'd out of `/api/visibility` by
     scope before their capability is consulted at all. Every in-scope test below
@@ -421,7 +459,22 @@ def _client_as(data_root, tmp_path, role, *scopes, capabilities=None):
     gate.
     """
     n = next(_accounts)
-    cfg = cfg_for(data_root, tmp_path / f"app-{n}.db")
+    templates = tmp_path / "templates"
+    templates.mkdir(exist_ok=True)
+    for kind in ("steps", "flowchart"):
+        (templates / f"{kind}.html").write_text(
+            '<!doctype html><script id="inja-export-data">__INJA_EXPORT_DATA__</script>',
+            encoding="utf-8")
+    # The export feature **on**, because two of the report rows answer a
+    # deployment fault without it — the build a 503 and the download a 404 — and
+    # a 404 arriving where this file expects the gate to have let the request
+    # through reads as over-gating, which is a diagnosis about the wrong thing.
+    # `chromium_path` only has to be set: `_a_render_that_writes_a_pdf` is what
+    # actually writes the file, and the path is never opened.
+    cfg = dataclasses.replace(cfg_for(data_root, tmp_path / f"app-{n}.db"),
+                              export_dir=tmp_path / f"exports-{n}",
+                              export_template_dir=templates,
+                              chromium_path=Path("/nonexistent/chromium"))
     username = f"091200000{n:02d}"
     conn = db.connect(cfg.app_db)
     try:
@@ -454,6 +507,19 @@ def _client_as(data_root, tmp_path, role, *scopes, capabilities=None):
     r = client.post("/api/auth/login", json={"username": username, "password": PW})
     assert r.status_code == 200, r.text
     return client
+
+
+def _a_built_report(client) -> None:
+    """Build `cooking/steps`, so `DOWNLOAD` has something to serve.
+
+    The caller does it themselves: `WITH['export_pdf']` is the Reader, and
+    `export_pdf` is exactly what the build is gated on too, so no second account
+    is needed and the 200 asserted here is already half the row's claim.
+    """
+    r = client.post("/api/departments/cooking/reports/steps")
+    assert r.status_code == 200, (
+        f"the report could not be built, so the download row below would 404"
+        f" for a reason that has nothing to do with the gate: {r.text}")
 
 
 def _call(client, method, path, body):
@@ -580,10 +646,17 @@ def test_a_role_with_the_capability_is_not_refused_in_scope(
     A `view` route gated on `edit` refuses the Reader who is entitled to it, and
     nothing in the test above notices — every one of its assertions is about a
     refusal. The handler's own answer is not asserted here (some 422, some 409,
-    the export 503 for want of an EXPORT_DIR); only that the gate let it run.
+    some 200); only that the gate let it run.
+
+    The download is the one row that needs the world arranged before it can say
+    anything: it serves a built artifact, and *no artifact* is a 404 exactly
+    like *not yours* is. `_a_built_report` puts one there first, so the 200 this
+    asserts is the gate's answer and not the export directory's.
     """
     role = PANEL_WITH.get(path, WITH[capability])
     client = _client_as(data_root, tmp_path, role, _in_scope_for(path))
+    if path == DOWNLOAD:
+        _a_built_report(client)
     r = _call(client, method, path, body)
     assert r.status_code not in REFUSALS, (
         f"{method} {path} answered {r.status_code} to a {role} in"
@@ -661,7 +734,7 @@ def test_a_stranger_still_gets_401_everywhere(data_root, tmp_path, method, path,
     assert _call(client, method, path, body).status_code == 401, f"{method} {path}"
 
 
-def test_the_export_target_names_the_report_and_not_only_the_department(
+def test_the_report_target_names_the_report_and_not_only_the_department(
         data_root, tmp_path):
     """`dept:{code}/report:{kind}`, both segments, from their own path slots.
 
@@ -670,15 +743,15 @@ def test_the_export_target_names_the_report_and_not_only_the_department(
     alone, or reading `kind` where `code` belongs, lets them into both.
     """
     client = _client_as(data_root, tmp_path, "reader", "dept:cooking/report:steps")
-    mine = client.post("/api/departments/cooking/exports/steps")
+    mine = client.post("/api/departments/cooking/reports/steps")
     assert mine.status_code != 404, (
         f"the granted report answered {mine.status_code}: the gate is not"
         " reading the report kind out of the path")
-    assert client.post("/api/departments/cooking/exports/flowchart").status_code == 404
+    assert client.post("/api/departments/cooking/reports/flowchart").status_code == 404
     # …while a department-scoped reader reaches every kind in it (D10).
     whole = _client_as(data_root, tmp_path, "reader", "dept:cooking")
     for kind in ("steps", "flowchart"):
-        assert whole.post(f"/api/departments/cooking/exports/{kind}").status_code != 404
+        assert whole.post(f"/api/departments/cooking/reports/{kind}").status_code != 404
 
 
 def test_the_department_target_is_the_code_in_the_path(data_root, tmp_path):
@@ -946,8 +1019,13 @@ IN_SCOPE_MISSES = [
     ("GET", "/api/departments/logistics/overview", None),
     ("PUT", "/api/departments/nosuchplace/order", {"order": []}),
     ("GET", "/api/departments/nosuchplace/next-id", None),
-    ("POST", "/api/departments/cooking/exports/poster", None),
-    ("POST", "/api/departments/nosuchplace/exports/steps", None),
+    ("POST", "/api/departments/cooking/reports/poster", None),
+    ("POST", "/api/departments/nosuchplace/reports/steps", None),
+    #: The read and the download on an unknown kind: `_known` refuses both in
+    #: the same body, so neither tells a prober that `steps` is the one that
+    #: exists.
+    ("GET", "/api/departments/cooking/reports/poster", None),
+    ("GET", "/api/departments/cooking/reports/poster/file.pdf", None),
 ]
 
 

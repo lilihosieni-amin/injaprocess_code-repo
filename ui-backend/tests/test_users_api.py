@@ -888,7 +888,9 @@ def test_the_candidates_path_is_not_shadowed_by_the_id_route(world):
 
 
 def test_the_user_routes_are_registered_before_the_spa_catch_all(world, tmp_path):
-    """§11 test 18. `app.mount("/")` swallows everything registered after it.
+    """§11 test 18, for the user routes **and the report reads**.
+
+    `app.mount("/")` swallows everything registered after it.
 
     The mount is a catch-all, and for `/api/...` its fallback is a plain 404
     (`app.NOT_SPA_ROUTES`) rather than the app shell — which is the *same* 404
@@ -918,6 +920,25 @@ def test_the_user_routes_are_registered_before_the_spa_catch_all(world, tmp_path
         r = client.get(path)
         assert r.status_code == 200, f"{path} answered {r.status_code}: the SPA"
         assert isinstance(r.json(), list), f"{path} was answered by the mount"
+
+    # The two report READS, in their own loop because each answers an object
+    # rather than a list, and the named key is what says a handler and not the
+    # mount answered: the mount serves an HTML shell, which has no JSON at all.
+    #
+    # The registry (D26) is asked here because a screen asks for it before it
+    # can draw the reports dialog at all — so the mount swallowing it costs
+    # every department its reports and looks exactly like a permission that was
+    # taken away. The **download** is not asked: an unconfigured `EXPORT_DIR`
+    # answers it 404, which is the mount's own fallback for an `/api/` path and
+    # therefore says nothing. Its registration order is pinned by index in
+    # `test_reports_download.py::test_the_spa_mount_cannot_swallow_the_report_routes`,
+    # which is where all three are compared against the mount's own position.
+    for path, key in (("/api/reports", "reports"),
+                      ("/api/departments/cooking/reports/steps", "processes")):
+        r = client.get(path)
+        assert r.status_code == 200, f"{path} answered {r.status_code}: the SPA"
+        assert key in r.json(), f"{path} was answered by the mount"
+
     created = client.post("/api/users", json=_new_user(world, scopes=["*"]))
     assert created.status_code == 201, created.text
 

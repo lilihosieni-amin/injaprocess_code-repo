@@ -490,12 +490,13 @@ def test_the_in_scope_corpus_carries_no_forbidden_token(corpus):
 def _cfg(data_root, tmp_path, n: int):
     """Settings with the export feature **on**.
 
-    `POST /api/departments/{code}/exports/{kind}` answers 503 with no
+    `POST /api/departments/{code}/reports/{kind}` answers 503 with no
     `EXPORT_DIR`, and a 503 body is not the body this endpoint serves in
     production. Configured here so the sweep scans the real
-    `{"url": …, "generated_at": …}` — the URL carries a department code, which is
-    exactly the shape of thing this file exists to check. `CHROMIUM_PATH` stays
-    unset: the PDF is best-effort and never touches the response.
+    `{"generated_at": …}` rather than a deployment fault. `CHROMIUM_PATH` stays
+    unset: the PDF is best-effort and never touches the response, so the build
+    answers without a `pdf_url` and the download route is not this file's
+    subject (`NOT_SWEPT`).
     """
     cfg = cfg_for(data_root, tmp_path / f"app-{n}.db")
     tdir = tmp_path / "templates"
@@ -688,6 +689,11 @@ GLOBAL_READS = (
     Route("GET", "/api/facts", None, "/api/facts", 200),
     Route("GET", "/api/facts/branches", None, "/api/facts/branches", 200),
     Route("GET", "/api/facts/F-00001", None, "/api/facts/{fid}", 200),
+    #: The report registry (D26). Global because it names no department: it is
+    #: the one list of what kinds exist, and every signed-in caller gets the
+    #: same one. Swept because a registry is exactly where a department code or
+    #: a scope string would land if a kind were ever made department-specific.
+    Route("GET", "/api/reports", None, "/api/reports", 200),
 )
 
 #: Read routes that name a department. Swept for the caller's own department and
@@ -712,6 +718,18 @@ DEPT_READS = (
     Route("GET", "/api/processes/{d}-003", None, "/api/processes/{pid}", 200),
     Route("GET", "/api/confirmations?department={d}", None,
           "/api/confirmations", 200),
+    #: The read path (D25), both kinds. Two entries on one template, for
+    #: `/api/processes/{pid}`'s reason: they collapse in the coverage set and
+    #: each body is really walked. And this is the single largest body the
+    #: service now returns to a *reader* — `build_payload` inlines the whole
+    #: department, overview and every confirmed process — so if any filter in
+    #: `exports.py` disagrees with the one every other response goes through,
+    #: this is where it shows. The download beside it serves an opaque file and
+    #: is excluded by name (`NOT_SWEPT`).
+    Route("GET", "/api/departments/{d}/reports/steps", None,
+          "/api/departments/{code}/reports/{kind}", 200),
+    Route("GET", "/api/departments/{d}/reports/flowchart", None,
+          "/api/departments/{code}/reports/{kind}", 200),
 )
 
 
@@ -788,8 +806,8 @@ DEPT_WRITES = (
           "/api/confirmations/{target}", 200),
     Route("DELETE", "/api/confirmations/{d}-001", None,
           "/api/confirmations/{target}", 200),
-    Route("POST", "/api/departments/{d}/exports/steps", None,
-          "/api/departments/{code}/exports/{kind}", 200),
+    Route("POST", "/api/departments/{d}/reports/steps", None,
+          "/api/departments/{code}/reports/{kind}", 200),
     Route("PUT", "/api/departments/{d}/overview", _an_overview,
           "/api/departments/{code}/overview", 200),
     Route("PUT", "/api/departments/{d}/order", _the_whole_order,
@@ -1069,20 +1087,16 @@ def _api_routes(app):
 #:
 #: The previous shape of this test filtered on `path.startswith("/api/")` and
 #: then subtracted `/api/exports/`. The subtraction was at least visible; the
-#: prefix filter was not, and it dropped `GET /exports/{file_path:path}` —
-#: the one endpoint D56 writes a row about — without a word.
+#: prefix filter was not, and it dropped the public `GET /exports/{file_path:path}`
+#: — the one endpoint D56 writes a row about — without a word. That mount and
+#: the shared credential that guarded it are gone (D24); the download that
+#: replaced them is named below like everything else.
 _COMMENTS_NOT_SWEPT = (
     "comments carry no process content beyond the D31 snapshot (department,"
     " process and step names, which no visibility policy withholds); D66 is"
     " pinned by test_comments_api.py and test_comment_rules.py")
 
 NOT_SWEPT: dict[tuple[str, str], str] = {
-    ("POST", "/api/exports/login"): (
-        "the way in to the shared export credential (D25): not a session, no "
-        "role and no scope, so there is nothing here for a role-parametrised "
-        "scan to say. Covered by test_export_login.py."),
-    ("POST", "/api/exports/logout"): (
-        "the same credential's way out; test_export_login.py."),
     ("POST", "/api/users"): (
         "the four user-administration **writes** (D13, D14, D15). Excluded as a"
         " group, and for a reason about this file rather than about them: each"
@@ -1115,8 +1129,8 @@ NOT_SWEPT: dict[tuple[str, str], str] = {
         " the out-of-scope 404 and the stranger's 401) and its behaviour end to"
         " end in test_facts_write_and_download.py."),
     ("GET", "/api/facts/source"): (
-        "the source download (QF-39) — the `/exports/{file_path:path}` case"
-        " again, and excluded on that entry's reasoning: what this file scans"
+        "the source download (QF-39) — the report download's case again, and"
+        " excluded on that entry's reasoning: what this file scans"
         " is response bodies for foreign ids, and this route's body is an"
         " opaque file. The authorisation is the whole question, and it is"
         " pinned where it lives — the Panel gate, the department in the"
@@ -2058,20 +2072,27 @@ CONFIRMED_TARGETS = (MINE, f"{MINE}-001", f"{MINE}-002")
 def _published(client, kind="steps") -> str:
     """`MINE`'s exported document, read off disk as text.
 
-    **The sweep above cannot reach this.** `POST …/exports/{kind}` answers
-    `{"url": …, "generated_at": …}`, so `_leaks` walks a URL and a timestamp and
-    learns nothing whatever about what was published — while the file it names is
-    the largest body this service produces and is served from a route this file
-    does not sweep (`NOT_SWEPT`). That gap is how the export came to be the one
+    **The sweep above cannot reach this.** `POST …/reports/{kind}` answers
+    `{"generated_at": …}` and nothing else, so `_leaks` walks a timestamp and
+    learns nothing whatever about what was built — while the file it wrote is the
+    largest body this service produces and is served from a route this file does
+    not sweep (`NOT_SWEPT`). That gap is how the export came to be the one
     boundary handing a reader an unconfirmed process: every scan in this file was
-    green throughout. The route derives and checks a department scope now; what
-    it still does not check is `export_pdf`, and the `NOT_SWEPT` entry says which
-    half is which.
+    green throughout.
+
+    Read off disk by its layout rather than from the response, because the
+    response no longer names a file: there is no permanent link any more (D28),
+    the artifact is fetched through `…/reports/{kind}/file.pdf` and rebuilt when
+    its key moves. `write_export` prunes the department's older documents for
+    this kind, so the glob finds exactly one — and the assertion says so, since a
+    glob that silently picked the first of two would be reading yesterday's
+    bundle.
     """
-    r = client.post(f"/api/departments/{MINE}/exports/{kind}")
+    r = client.post(f"/api/departments/{MINE}/reports/{kind}")
     assert r.status_code == 200, r.text
-    return (client.cfg.export_dir / r.json()["url"][len("/exports/"):]).read_text(
-        encoding="utf-8")
+    built = sorted((client.cfg.export_dir / MINE).glob(f"{kind}-*.html"))
+    assert len(built) == 1, f"expected one built {kind} document, found {built}"
+    return built[0].read_text(encoding="utf-8")
 
 
 def _bundle(text: str) -> dict:
@@ -2175,7 +2196,7 @@ def test_the_export_publishes_nothing_for_a_department_the_gated_routes_refuse(
     assert client.get(f"/api/departments/{MINE}/processes").json() == []
 
     # …and now the fourth
-    r = client.post(f"/api/departments/{MINE}/exports/steps")
+    r = client.post(f"/api/departments/{MINE}/reports/steps")
     assert r.status_code == 409, (
         f"the export published a department every other boundary refuses:"
         f" {r.status_code} {r.text[:200]}")

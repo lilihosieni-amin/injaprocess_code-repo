@@ -69,6 +69,12 @@ async function reader(page: Page, depts: Department[] = TWO, over: Record<string
     // that loses it would otherwise reach the container on :8000 rather than
     // being named by `expectEveryEndpointStubbed`.
     '/api/confirmations?department=dining': [],
+    // P4's comment tray, which the department and process screens under this
+    // shell both read. Only the pathname is matched, so the one entry answers
+    // `?department=` and `?process=` alike. Unstubbed it was aborted and named
+    // by `expectEveryEndpointStubbed` — a red this spec carried in from the
+    // comments work rather than from the reports one.
+    '/api/comments?department=dining': [],
   })
 }
 
@@ -493,8 +499,11 @@ test('R4 — a reader with one department lands on its process list, with no way
   // …and sign-out is one control away, which is what the top bar being here
   // buys them: the back bar has no sign-out on it at all.
   // `exact`, because Playwright matches an accessible name as a SUBSTRING by
-  // default and the process list beneath this bar draws «خروجی‌ها» — the exports
-  // control — which contains «خروج» and is a different button entirely.
+  // default. It cost a real red: the process list beneath this bar used to draw
+  // «خروجی‌ها» — the exports control — which contains «خروج» and is a different
+  // button entirely. That control is «نمایش‌ها» now and the collision is gone,
+  // and `exact` stays: the guard is cheap and the next label to arrive under
+  // this bar gets it for free.
   await expect(page.getByRole('button', { name: 'خروج', exact: true })).toBeVisible()
   // …and «خانه» one level down points at THEIR root rather than at the list.
   await page.goto('/processes/dining-003')
@@ -564,6 +573,12 @@ async function everywhere(page: Page, depts: Department[] = TWO, over: Record<st
     '/api/departments/dining/overview': OVERVIEW,
     '/api/processes/dining-003': PROCESS,
     '/api/confirmations?department=dining': [],
+    // P4's comment tray, which the department and process screens under this
+    // shell both read. Only the pathname is matched, so the one entry answers
+    // `?department=` and `?process=` alike. Unstubbed it was aborted and named
+    // by `expectEveryEndpointStubbed` — a red this spec carried in from the
+    // comments work rather than from the reports one.
+    '/api/comments?department=dining': [],
   })
 }
 
@@ -614,7 +629,17 @@ test('the approval count is a 19px round badge in Persian', async ({ page }) => 
   // border-radius:50%` on the coral, and the digits Persian.
   await reader(page, TWO, { pendingApprovals: 4 })
   await visit(page, '/departments', 'departmentsReader')
-  const badge = page.getByRole('status')
+  // **Not `getByRole('status')` any more.** P4 moved the count into the comments
+  // link's own accessible NAME and made the chip `aria-hidden` decoration
+  // (`ReaderShell.tsx:190-201`) — which is the better arrangement, because a
+  // screen reader reads «کامنت‌ها، ۴ در انتظار تأیید شما» instead of a bare «۴»
+  // beside an unnamed icon. The role went with it, and this spec went on looking
+  // for it: the timeout that followed read as a missing badge rather than as a
+  // renamed one. So both halves are asserted where each now lives — the count in
+  // the link's name, the geometry on the chip.
+  const link = page.getByRole('link', { name: 'کامنت‌ها، ۴ در انتظار تأیید شما' })
+  await expect(link).toBeVisible()
+  const badge = link.locator('span[aria-hidden]')
   await expect(badge).toBeVisible()
   await expect(badge).toHaveText('۴')
   const box = (await badge.boundingBox())!
