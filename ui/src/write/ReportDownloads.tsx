@@ -61,7 +61,21 @@ export function useReportDownloads(department: string) {
 
   return {
     reports,
-    run: (r: ReportEntry) => { setBuilding(r); build.mutate(r.id) },
+    // **One build at a time.** Nothing aborts the POST (D-abort) and the file
+    // name is deterministic, so a second build races the first for the same file
+    // and the older write can land last. The dialog below is dismissible while
+    // pending (Escape, and the × in its header), so «press → close → press» is a
+    // sequence a person reaches by accident — and the rows stay live, because
+    // nothing here draws them. The guard is therefore on the act rather than on
+    // a trigger: three controls offer these rows (the bar's ⋯, the title row's ⋯
+    // at ≤760, the reader's ⋮) and a `disabled` on any one of them leaves the
+    // other two open. Pressing the row that IS building brings its dialog back,
+    // which is the only thing left to want; any other row waits.
+    run: (r: ReportEntry) => {
+      if (build.isPending) { if (r.id === build.variables) setBuilding(r); return }
+      setBuilding(r)
+      build.mutate(r.id)
+    },
     modal: building === null ? null : (
       <ExportModal
         title={building.name}
@@ -72,12 +86,11 @@ export function useReportDownloads(department: string) {
         url={build.data?.pdf_url ? `${window.location.origin}${build.data.pdf_url}` : undefined}
         error={build.error?.message ?? (noPdf ? NO_PDF : undefined)}
         onRetry={() => build.mutate(building.id)}
-        // Closing only dismisses the modal. Resetting a still-pending mutation
-        // would flip isPending to false and re-enable the trigger mid-flight —
-        // nothing aborts the POST (D-abort), so a second build would race the
-        // first for the same deterministic filename and the older write could
-        // land last. The observer is left alone until the request settles; the
-        // next `run` replaces its state anyway.
+        // Closing only dismisses the modal; the request runs on. Resetting a
+        // still-pending mutation would flip isPending to false, which is the one
+        // thing `run`'s guard above reads — the next press would then start the
+        // race that guard exists to refuse. The observer is left alone until the
+        // request settles; the next `run` replaces its state anyway.
         onClose={() => { setBuilding(null); if (!build.isPending) build.reset() }}
       />
     ),
