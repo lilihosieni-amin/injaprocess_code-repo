@@ -66,8 +66,17 @@ def list_reports(_user=Depends(require_session)):
 #: both halves of the requirement (complete the introduction, then confirm it)
 #: because the union of the two is true in either state and the difference
 #: between them is not this response's to disclose.
-NOT_PUBLISHABLE = ("معرفی این دپارتمان هنوز کامل و تأیید نشده است؛"
-                   " ابتدا آن را ثبت و سپس تأیید کنید.")
+#:
+#: **It names the screen**, because the owner hit this message with every process
+#: in the department confirmed and no way to guess what else was wanted: a report
+#: needs the department's introduction confirmed as well — it is the document's
+#: cover — and «معرفی دپارتمان» is not obviously the page the panel calls
+#: «اطلاعات دپارتمان». A refusal an Editor cannot act on is a refusal that costs
+#: somebody an afternoon. The wording still says «ثبت یا تأیید نشده», one clause
+#: covering both states, so naming the screen buys guidance without telling the
+#: caller which of the two they are in.
+NOT_PUBLISHABLE = ("معرفی این دپارتمان هنوز ثبت یا تأیید نشده است؛ از صفحهٔ"
+                   " «اطلاعات دپارتمان» آن را کامل و سپس تأیید کنید.")
 
 
 def _report_target(request: Request) -> str:

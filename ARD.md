@@ -658,7 +658,7 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 
 ### 13.3 Department Reports — build (FR-E1…E3)
 
-> Authoritative design: `docs/superpowers/specs/2026-07-26-department-export-design.md`, decisions **D1–D31**, as amended by `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D24–D29** — which retire the separate export access system and withdraw D25–D31. This section states the architecture; the specs state why each decision was taken and what was rejected.
+> Authoritative design: `docs/superpowers/specs/2026-07-26-department-export-design.md`, decisions **D1–D31**, as amended by `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D24–D29** — which retire the separate export access system and withdraw D25–D31 — and by `docs/superpowers/specs/2026-09-26-reports-reading-withdrawn-addendum.md`, which withdraws D25's reading half. This section states the architecture; the specs state why each decision was taken and what was rejected.
 
 > **Terminology, v0.3.** What these documents called an *export* is now a **report**. The build machinery below is unchanged and keeps its file and directory names; what changed is that the built single file is a **download** a signed-in user asks for, rather than a published document behind a shared credential.
 
