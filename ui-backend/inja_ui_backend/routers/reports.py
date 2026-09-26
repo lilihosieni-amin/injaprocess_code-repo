@@ -108,10 +108,11 @@ def _drop_stale_pdf(path: Path, code: str, kind: str) -> None:
     not stored, so re-exporting a department nothing has changed writes to that
     same path again. Whenever a render does not produce a new one, whatever
     is sitting at that path was printed from an *older* version of the document
-    that has just been overwritten — and it is served from the same public folder,
-    one extension away from a link people share. A reader tapping «چاپ / PDF»
-    would silently download a document that disagrees with the one on their
-    screen, which is strictly worse than no PDF at all.
+    that has just been overwritten — and the download route resolves both from the
+    same key, so `…/file.pdf` would hand it out beside the `…/file.html` the
+    reader is looking at. A reader tapping «چاپ / PDF» would silently download a
+    document that disagrees with the one on their screen, which is strictly worse
+    than no PDF at all.
 
     `exports.write_export` now clears that path *before* it writes the HTML, so on
     every normal path this finds nothing and does nothing. It stays as the second
@@ -143,11 +144,11 @@ def _render_pdf_beside(cfg, code: str, kind: str, token: str,
 
     **Nothing in here may raise, and that has not changed.** A browser that is
     missing, crashes, times out or prints nothing is a *deployment* fault, and the
-    document itself is already written and published by the time this runs — the
-    reader-facing `/exports` link, the exported page's own «چاپ / PDF» button and
-    the whole cache key are unaffected either way (D18, D21). What the caller does
-    with a `None` is the caller's decision; what this must never do is lose the
-    document over the enhancement.
+    document itself is already written by the time this runs, and `…/file.html`
+    serves it the moment this returns — the read route's payload, the document's
+    own «چاپ / PDF» button and the whole cache key are unaffected either way
+    (D18, D21). What the caller does with a `None` is the caller's decision; what
+    this must never do is lose the document over the enhancement.
 
     This runs inside a *sync* path operation, which FastAPI dispatches to its
     worker threadpool. That is deliberate and load-bearing: `pdf.render_pdf`
@@ -219,6 +220,29 @@ def _current_key(request: Request, code: str, kind: str) -> str | None:
     `None` means the overview is missing or carries no valid confirmation —
     `build_payload` refuses in exactly that case (D22), so a key would name a
     file that cannot exist.
+
+    **The whole department is re-read and re-fingerprinted on every call, and
+    that is accepted rather than overlooked.** `ordered_processes` opens and
+    parses every process file and `fingerprint` hashes each one — for the read,
+    for the build, and for the download, which is the one that multiplies: iOS
+    Safari's PDF viewer, the reader `_takes_the_file` exists for, fetches a
+    document as a run of byte ranges, and each range pays this again. The ceiling
+    is a department of tens of small JSON files, where the work is milliseconds
+    against a response measured in megabytes; what it buys is that the key is
+    always computed from what is on disk *now*, so there is no invalidation
+    anybody can forget.
+
+    The upgrade, if a department ever grows past that: memoise on `(code, kind,
+    the newest mtime under the department's directory, the policy version)` —
+    every input the key depends on, obtainable without opening a file.
+
+    **Not** the cheaper-looking fix of building the `stored_for` id list from
+    `list_process_files(...)` stems. A confirmation is keyed by the document's own
+    `id`, not by its filename, and a document where the two disagree is a case
+    this suite already carries (`test_reports_api.py`'s no-id document). Stems
+    would look such a process up under a key nothing was stored against, find
+    nothing, and drop it from the report as unconfirmed — a silent content loss,
+    bought for one avoided `read_json`.
     """
     cfg = request.app.state.cfg
     conn = request.app.state.db
@@ -413,8 +437,16 @@ def build_report(code: str, kind: str, request: Request,
 
     # The key is the content, not the department (D27): the fingerprints of the
     # confirmed processes in curated order, the overview's, and the policy
-    # version. `build_payload` published exactly the processes below, so the two
-    # cannot disagree about what this file contains.
+    # version.
+    #
+    # Derived here, *after* the payload rather than from it, and the gap is real:
+    # a confirmation or a policy write landing between the two makes this token
+    # name content the file does not carry. It is bounded to that one build — the
+    # next one re-derives both from the new state and writes the right pair — and
+    # the window is the template substitution above, not the print. Naming the
+    # file from the payload instead would close it, and would mean threading the
+    # fingerprints back out of `build_payload`; the trade is recorded, not
+    # overlooked.
     token = _current_key(request, code, kind)
     if token is None:
         # Readable a moment ago and not now — a `merge` run, or an operator

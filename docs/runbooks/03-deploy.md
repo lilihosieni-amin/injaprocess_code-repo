@@ -100,7 +100,22 @@ with the mobile number and password you just seeded.
 
 ## Updating after a code change
 
-Pull the latest code-repo, rebuild, and re-up in one line:
+**P2 cutover — once, at the deploy that ships reports, and first.** Empty the
+`ui-exports` cache before the new images go up. It runs against the image that is
+already on the host, so it belongs here rather than after the rebuild:
+
+```bash
+docker compose run --rm --entrypoint sh ui-backend -c 'rm -rf /exports/*'
+```
+
+Emptying costs one regeneration per department and kind — the next read or
+download just rebuilds the artifact. Leaving it in place would serve documents
+built before confirmation and the visibility filter existed, from files of the
+same `{kind}-{hex}` shape as the new content-keyed cache, so a stale one would
+never be told apart from a fresh one and would simply keep being served —
+including every process nobody has confirmed.
+
+Then pull the latest code-repo, rebuild, and re-up in one line:
 
 ```bash
 git -C /opt/inja/code-repo pull && docker compose build && docker compose up -d
@@ -109,21 +124,6 @@ git -C /opt/inja/code-repo pull && docker compose build && docker compose up -d
 `docker compose up -d` recreates only the containers whose image or config
 changed. The Claude subscription login survives updates because it lives in the
 `claude-credentials` volume, not in the image.
-
-**P2 cutover — once, at the deploy that ships reports.** Empty the `ui-exports`
-cache before bringing the new images up:
-
-```bash
-# P2 cutover — once, at the deploy that ships reports
-docker compose -f deploy/docker-compose.yml run --rm --entrypoint sh ui-backend \
-  -c 'rm -rf /exports/*'
-```
-
-Emptying costs one regeneration per department and kind — the next read or
-download just rebuilds the artifact. Leaving it in place would serve documents
-built before confirmation and the visibility filter existed, from files of the
-same shape as the new content-keyed cache, so a stale one would never be told
-apart from a fresh one and would simply keep being served.
 
 Accounts survive for the same reason: `app.db` is on the `ui-state` volume, not
 in the container. Re-running `inja-seed` after an update is harmless — it exits

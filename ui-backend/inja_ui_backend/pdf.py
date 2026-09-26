@@ -164,9 +164,10 @@ def render_pdf(chromium: Path, html_path: Path, out_path: Path,
         raise PdfRenderError(f"there is no export document to print at {html_path}")
     with _RENDER_LOCK:
         data = _render(Path(chromium), html_path, timeout_s)
-        # Atomic, and only after a complete render: the PDF sits in a publicly
-        # served folder beside its HTML, so a reader must never catch a truncated
-        # one — and a failure must leave no file at all rather than a
+        # Atomic, and only after a complete render: the PDF lands in the cache the
+        # download route resolves against, beside its HTML and under the same key,
+        # so a reader can ask for it the instant it appears and must never catch a
+        # truncated one — and a failure must leave no file at all rather than a
         # plausible-looking short one.
         #
         # Inside the lock, not after it. Nothing serialises exports per department,

@@ -198,7 +198,10 @@ def render(template: str, payload: dict) -> str:
 
     A missing slot raises rather than passing the template through untouched: the
     literal is a cross-task contract with the export build, and a silent no-op
-    here would publish a permanent link to a blank page with nothing logged.
+    here would write the template's own empty slot out as this department's
+    document. The build would then answer 200 with a `pdf_url`, and the download
+    would serve a blank page under the current key until the department's content
+    moved — with nothing in the log to say why.
     """
     if DATA_SLOT not in template:
         raise ExportUnavailable(f"the export template carries no {DATA_SLOT} slot")
@@ -214,10 +217,15 @@ def export_html_path(export_dir: Path, code: str, kind: str, token: str) -> Path
 def export_pdf_path(export_dir: Path, code: str, kind: str, token: str) -> Path:
     """The server-rendered PDF, beside its HTML with the same stem (spec §11).
 
-    Same stem is a contract with the document itself, not a convenience: the
-    «چاپ / PDF» button inside the exported page builds its href by swapping its
-    own `.html` for `.pdf`, having no other way to learn the name. Move one and
-    the button in every already-published document points at nothing.
+    The pairing is a contract, but the contract now lives one layer up. The
+    «چاپ / PDF» button inside the document builds its href by swapping `.html`
+    for `.pdf` on the **URL it was served at** (`export/shared/pdfLink.ts`), which
+    is `…/reports/{kind}/file.html` — it never learns this filename. What the
+    stem buys here is that the download route resolves both extensions for one
+    token, through `_ARTIFACT`, and deriving one path from the other is what
+    stops those two resolutions drifting apart. Split them and `file.pdf` 404s
+    under a document that is sitting right there, which the button reports to the
+    reader as "no PDF" and nobody reports as a bug.
     """
     return export_html_path(export_dir, code, kind, token).with_suffix(".pdf")
 
@@ -234,30 +242,40 @@ def _prune(paths: list[Path], code: str, kind: str) -> None:
     """Unlink each path, logging the ones that refuse rather than raising.
 
     A prune that fails is never fatal to the export — the document itself is
-    already written — but it is never silent either: what survives is a file still
-    being served from a public folder, and only a human can clear it.
+    already written — but it is never silent either, because a survivor is one of
+    two things and neither clears itself. Under an *old* token it is unreachable
+    (the key is derived from the content, so no request can name it) and simply
+    grows the cache for ever. Under the *current* token it is this department's
+    previous PDF, and the download route will hand it to the next reader under a
+    document it was not printed from. Which one it is, only a human can tell.
     """
     for old in paths:
         try:
             old.unlink(missing_ok=True)
         except OSError as e:
-            logger.warning("%s/%s: %s survives the prune and stays publicly served: %s",
+            logger.warning("%s/%s: %s survives the prune and must be removed by hand: %s",
                            code, kind, old, e)
 
 
 def write_export(export_dir: Path, code: str, kind: str, token: str, html: str) -> Path:
     """Drop this export's previous PDF, write the document, then prune the rest.
 
-    Atomic because the link is permanent and public: a reader must never catch a
-    half-written document. Pruning keeps one file per department+kind (D5) and
-    clears orphans left by a rotated signing key — after a rotation the stale
-    sibling *is* the revoked export, so a prune that fails is worth a log line.
-    The sweep also collects `.tmp` files a killed process left behind: they sit in
-    the publicly mounted folder and the `.html` glob cannot match them.
+    Atomic because a request can land at any moment: the download route resolves
+    *this* path from the key it computes per request, so a reader may be fetching
+    the file while it is being rewritten, and must never catch a half-written
+    document.
 
-    The `.pdf` siblings go on the same terms and for the same reason: a rotated key
-    orphans the rendered PDF exactly as it orphans the document, and an orphan PDF
-    is every bit as public as the HTML it was printed from.
+    Pruning keeps one file per department and kind (D5). What leaves a file behind
+    is nothing to do with any secret — `report_key` is a plain SHA-256 over the
+    department's content and the policy version — it is the content moving: the
+    key moves with it, the new pair is written under a new name, and the previous
+    pair stays where it is under a name nothing will ever ask for again. The sweep
+    also collects `.tmp` files a killed process left behind; those are not even
+    nameable (the route serves `{kind}-{token}.html` and `.pdf` and nothing else),
+    but nothing else collects them either, and the `.html` glob cannot match them.
+
+    The `.pdf` siblings go on the same terms and for the same reason: content that
+    moves orphans the rendered PDF exactly as it orphans the document.
 
     **The current token's PDF goes first, before the HTML is written**, and that
     ordering is the point rather than an accident. The token is derived from the
@@ -269,8 +287,9 @@ def write_export(export_dir: Path, code: str, kind: str, token: str, html: str) 
     The render that would replace it runs *after*
     this returns and takes seconds (~5 s measured), and the endpoint's own unlink
     (D21) runs later still — so the folder used to hold new HTML beside the previous
-    export's PDF for that whole window, both publicly served, and a container
-    restart or the OOM killer inside it made the mismatch permanent: a reader taps
+    export's PDF for that whole window, both served under the same key to anyone
+    holding `export_pdf`, and a container restart or the OOM killer inside it made
+    the mismatch permanent: a reader taps
     «چاپ / PDF», the file is there, and they silently download last week's flowchart
     under this week's document.
 
