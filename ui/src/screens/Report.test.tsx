@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { appRoutes } from '../routes'
@@ -108,13 +108,45 @@ describe('the report screen', () => {
     expect(screen.queryByText(/تأیید/)).toBeNull()   // D56: no derived signal
   })
 
+  it('a confirmed introduction with no confirmed process is still the document', async () => {
+    // The state D25 is about: the department's introduction is vouched for and
+    // none of its processes are. The FILE for this state is a cover and an
+    // introduction — so the screen reading it must not be «nothing here», or the
+    // two disagree about what an empty report is. `dept: null` above is the
+    // genuinely empty one, and it still says so.
+    server({ ...PAYLOAD, processes: [] } as ReportPayload)
+    renderAt('/departments/cooking/reports/steps', descriptor(['view'], ['dept:cooking']))
+    expect(await screen.findByRole('heading', { name: 'راهنمای گام‌به‌گام کار' })).toBeInTheDocument()
+    expect(screen.queryByText('هنوز چیزی در این نمایش نیست')).toBeNull()
+  })
+
   it('a 404 renders not-found and a 403 renders denied', async () => {
-    server(404)
-    const { container } = renderAt('/departments/dining/reports/steps',
-      descriptor(['view'], ['dept:cooking']))
-    await waitFor(() => expect(container.querySelector('[data-screen="refusal"]')).not.toBeNull())
+    // D56's own partition, and the one place in the app where the same route
+    // answers both: the department is out of scope (404, and it may not even
+    // admit the department exists) or it is in scope and the capability is not
+    // (403). One arm passing proves nothing about the other — `refusalStatus`
+    // maps them and `RefusalScreen` branches on them.
+    async function refusalAt(status: 403 | 404) {
+      server(status)
+      const { container } = renderAt('/departments/dining/reports/steps',
+        descriptor(['view'], ['dept:cooking']))
+      await waitFor(() => expect(container.querySelector('[data-screen="refusal"]')).not.toBeNull())
+      return within(container.querySelector('[data-screen="refusal"]') as HTMLElement)
+    }
+
+    const notFound = await refusalAt(404)
     // F13 — the not-found copy may not imply the resource exists
-    expect(screen.queryByText(/دسترسی/)).toBeNull()
+    expect(notFound.queryByText(/دسترسی/)).toBeNull()
+    // …and the pair that actually separates the two surfaces, because
+    // `DeniedState`'s copy does not contain «دسترسی» either: the line above is
+    // true of both screens and would not notice a 404 rendering the denial.
+    expect(notFound.getByText('چیزی اینجا نیست')).toBeInTheDocument()
+    expect(notFound.queryByText('اجازهٔ این کار را ندارید')).toBeNull()
+
+    cleanup()
+    const denied = await refusalAt(403)
+    expect(denied.getByText('اجازهٔ این کار را ندارید')).toBeInTheDocument()
+    expect(denied.queryByText('چیزی اینجا نیست')).toBeNull()
   })
 
   it('the back bar returns to the department', async () => {

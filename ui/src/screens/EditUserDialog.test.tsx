@@ -146,8 +146,9 @@ const RAHA: AdminUser = {
 const RAHA_UNSCOPED: AdminUser = { ...RAHA, scopes: [] }
 
 /** A report kind this build has no wording for — the server may know one before
- *  the UI does, and `exports.EXPORT_KINDS` is where the two meet. The form draws
- *  no box for it, must not silently drop it, and must say it is there.
+ *  the UI does, and `exports.REGISTRY` (served as `GET /api/reports`) is where
+ *  the two meet. The form draws no box for it, must not silently drop it, and
+ *  must say it is there.
  *
  *  **Note what this fixture is not.** Its scope is *well formed*:
  *  `parseScope` returns `{shape: 'report', code: 'dining', report: 'daily'}` and

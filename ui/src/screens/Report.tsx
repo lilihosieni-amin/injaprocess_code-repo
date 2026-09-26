@@ -60,8 +60,15 @@ export function Report() {
   if (q.isPending) return <ScreenSkeleton column="reader" cards={3} />
   if (q.isError) return <LoadFailedScreen message="این نمایش خوانده نشد" error={q.error} onRetry={() => q.refetch()} />
 
+  // `dept` is the whole test, and an empty `processes` is deliberately not part
+  // of it (D25). A department whose introduction is confirmed and whose processes
+  // are not is a report with a cover and an introduction in it — which is exactly
+  // what the downloadable file for that same state renders, «۰ فرآیند» and all,
+  // from these same components. Requiring a process here made the app say «nothing
+  // here» about a document the file said something about. Nothing confirmed at all
+  // arrives as `dept: null`, so the genuinely empty report still lands below.
   const Renderer = RENDERERS[kind]
-  const body = payload?.dept && payload.processes.length > 0 && Renderer && client
+  const body = payload?.dept && Renderer && client
     ? (
       <QueryClientProvider client={client}>
         <Suspense fallback={<ScreenSkeleton column="reader" cards={3} />}>
