@@ -30,6 +30,25 @@ const DEPARTMENTS = [
 ]
 
 /**
+ * The backend registry (D26), the two rows it really serves today.
+ *
+ * Answered by all three stubs below, and that is the point: what each of them
+ * varies is `/api/departments`, so the report registry is held constant rather
+ * than left to throw. Unanswered, `dept:dining/report:steps` was a grant the
+ * form could draw no box for whatever the department read did — which made the
+ * separating test at the bottom of this file, whose whole job is to show the
+ * notice is not permanent furniture, go red on a perfectly drawable account.
+ */
+const REPORTS = {
+  reports: [
+    { id: 'flowchart', name: 'سند فلوچارت دپارتمان', short: 'مستندات کامل',
+      description: 'هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان.' },
+    { id: 'steps', name: 'راهنمای گام‌به‌گام', short: 'راهنمای گام‌به‌گام',
+      description: 'همان فرآیندها، بازنویسی‌شده به گام‌های شماره‌دار.' },
+  ],
+}
+
+/**
  * Two grants of two different shapes — a whole department and one report of
  * another. Every one of them is drawn out of `/api/departments`, so with that
  * read gone this account has two rows and no control on the form.
@@ -44,6 +63,7 @@ const TWO_GRANTS = ['dept:cooking', 'dept:dining/report:steps']
 function stubDepartmentsInFlight() {
   vi.stubGlobal('fetch', vi.fn(async (path: string) => {
     if (path === '/api/departments') return new Promise<Response>(() => {})
+    if (path === '/api/reports') return json(REPORTS)
     throw new Error(`unexpected request: ${path}`)
   }))
 }
@@ -51,6 +71,7 @@ function stubDepartmentsInFlight() {
 function stubDepartmentsFailed() {
   vi.stubGlobal('fetch', vi.fn(async (path: string) => {
     if (path === '/api/departments') return json({ detail: 'نه' }, 500)
+    if (path === '/api/reports') return json(REPORTS)
     throw new Error(`unexpected request: ${path}`)
   }))
 }
@@ -58,14 +79,17 @@ function stubDepartmentsFailed() {
 function stubDepartments() {
   vi.stubGlobal('fetch', vi.fn(async (path: string) => {
     if (path === '/api/departments') return json(DEPARTMENTS)
+    if (path === '/api/reports') return json(REPORTS)
     throw new Error(`unexpected request: ${path}`)
   }))
 }
 
 /**
  * The fieldset on its own, with the two lists it takes as props already in hand
- * — so `/api/departments` is the component's only request and the only thing
- * these tests vary.
+ * — so `/api/departments` is the only request these tests vary. It reads
+ * `/api/reports` as well (a department tile's «نماها» boxes are one per report
+ * kind), and every stub above answers that one identically, so a difference
+ * below is always a difference about the department registry.
  *
  * Rendered directly rather than through a dialog on purpose: both dialogs now
  * stand a `LoadFailedScreen` in front of this component when that read fails, so

@@ -1,9 +1,21 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
-import { ExportModal } from './ExportModal'
+import { ExportModal, OPENS_FOR } from './ExportModal'
 import userEvent from '@testing-library/user-event'
 
 const TITLE = 'خروجی مستندات کامل — سند رسمی'
+
+/**
+ * **The `url` this dialog is ever given** — the absolute form of the server's
+ * own `pdf_url`, which is the download route (`routers/reports.py`).
+ *
+ * The fixtures here were `https://inja.example/exports/dining/steps-{fingerprint}.html`:
+ * the publicly mounted folder D24 retired, and an `.html` document at that, which
+ * `ReportsDialog` has not handed over since it started passing `pdf_url`. Two
+ * shapes the caller cannot produce, in the file that pins what the caller is
+ * shown. One constant now, so there is one shape and it is the real one.
+ */
+const PDF_URL = 'https://inja.example/api/departments/dining/reports/steps/file.pdf'
 
 // navigator.clipboard is absent in jsdom; the copy tests install and remove it.
 const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
@@ -42,7 +54,7 @@ describe('ExportModal', () => {
     fireEvent.mouseDown(scrim())
     expect(onClose).not.toHaveBeenCalled()
 
-    rerender(<ExportModal title={TITLE} status="ready" url="https://x/exports/a.html" onRetry={() => {}} onClose={onClose} />)
+    rerender(<ExportModal title={TITLE} status="ready" url={PDF_URL} onRetry={() => {}} onClose={onClose} />)
     fireEvent.mouseDown(scrim())
     expect(onClose).toHaveBeenCalled()
   })
@@ -51,7 +63,7 @@ describe('ExportModal', () => {
     // selecting the link by clicking the field is the field's whole purpose;
     // that click must not reach the backdrop.
     const onClose = vi.fn()
-    const url = 'https://inja.example/exports/dining/steps-0123456789abcdef.html'
+    const url = PDF_URL
     render(<ExportModal title={TITLE} status="ready" url={url} onRetry={() => {}} onClose={onClose} />)
     fireEvent.click(screen.getByDisplayValue(url))
     expect(onClose).not.toHaveBeenCalled()
@@ -71,7 +83,7 @@ describe('ExportModal', () => {
 
   it('shows the link, opens it in a new tab, and states the caveats', () => {
     const onClose = vi.fn()
-    const url = 'https://inja.example/exports/dining/steps-0123456789abcdef.pdf'
+    const url = PDF_URL
     render(<ExportModal title={TITLE} status="ready" url={url} onRetry={() => {}} onClose={onClose} />)
     expect(screen.getByText('خروجی آماده شد')).toBeInTheDocument()
     expect(screen.getByDisplayValue(url)).toHaveAttribute('readonly')
@@ -86,11 +98,21 @@ describe('ExportModal', () => {
     expect(screen.getByText('لینک فایل PDF خروجی:')).toBeInTheDocument()
     expect(screen.getByText('فایل PDF چاپ‌شده از سند رسمی است؛ برای چاپ و بایگانی آماده است.')).toBeInTheDocument()
     // The admin decides here who to send the link to, so this line must state the
-    // gate the recipient will actually meet (D25) — it said the opposite until the
-    // export password landed. It is about the *recipient* because the admin reading
-    // it has a session that opens exports without a prompt (D29), so "this link only
-    // opens with a password" would be contradicted by the button right below.
-    expect(screen.getByText('گیرندهٔ این لینک برای باز کردن آن به نام کاربری و گذرواژهٔ مشترک خروجی‌ها نیاز دارد و این لینک با خروجی بعدی جایگزین می‌گردد.')).toBeInTheDocument()
+    // gate the recipient will actually meet (D25). It named the shared export
+    // credential until D24 deleted it — there is no second login and no public
+    // `/exports` folder now, and this href is `…/reports/{kind}/file.pdf`, which
+    // re-derives scope and `export_pdf` from the caller's own session per
+    // request. So it is about a PERMISSION, and still about the *recipient*: the
+    // admin reading it holds `export_pdf` already, so any sentence about a
+    // password would be contradicted by «باز کردن خروجی» right below it.
+    expect(screen.getByText(OPENS_FOR)).toBeInTheDocument()
+    // …and it says nothing about a credential. Pinned apart from the line itself
+    // because the wording is the owner's to change and the constant is one
+    // place: this half is the D24 regression guard, and it fails on any
+    // re-wording that brings the shared export password back.
+    for (const gone of ['گذرواژه', 'نام کاربری', 'مشترک']) {
+      expect(OPENS_FOR).not.toContain(gone)
+    }
   })
 
   it('copies the link and flips the button label back after 1.8s', () => {
@@ -98,7 +120,7 @@ describe('ExportModal', () => {
     vi.useFakeTimers()
     const writeText = vi.fn().mockResolvedValue(undefined)
     setClipboard({ writeText })
-    const url = 'https://inja.example/exports/dining/steps-0123456789abcdef.html'
+    const url = PDF_URL
     render(<ExportModal title={TITLE} status="ready" url={url} onRetry={() => {}} onClose={onClose} />)
 
     fireEvent.click(screen.getByRole('button', { name: /کپی لینک/ }))
@@ -116,7 +138,7 @@ describe('ExportModal', () => {
     let copiedText: string | undefined
     const exec = vi.fn(() => { copiedText = document.querySelector('textarea')?.value; return true })
     Object.defineProperty(document, 'execCommand', { value: exec, configurable: true, writable: true })
-    const url = 'https://inja.example/exports/dining/steps-0123456789abcdef.html'
+    const url = PDF_URL
     render(<ExportModal title={TITLE} status="ready" url={url} onRetry={() => {}} onClose={onClose} />)
 
     fireEvent.click(screen.getByRole('button', { name: /کپی لینک/ }))
@@ -130,7 +152,7 @@ describe('ExportModal', () => {
     const onClose = vi.fn()
     setClipboard(undefined)
     Object.defineProperty(document, 'execCommand', { value: vi.fn(() => false), configurable: true, writable: true })
-    const url = 'https://inja.example/exports/dining/steps-0123456789abcdef.html'
+    const url = PDF_URL
     render(<ExportModal title={TITLE} status="ready" url={url} onRetry={() => {}} onClose={onClose} />)
 
     fireEvent.click(screen.getByRole('button', { name: /کپی لینک/ }))

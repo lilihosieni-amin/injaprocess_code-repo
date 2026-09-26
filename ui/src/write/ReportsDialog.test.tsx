@@ -78,13 +78,25 @@ it('مشاهده navigates to the report screen', async () => {
   expect(router.state.location.pathname).toBe('/departments/dining/reports/steps')
 })
 
+/** What the build really answers (`routers/reports.py`): the download ROUTE, not
+ *  a file in a public folder. The fixture said
+ *  `/exports/dining/flowchart-{fingerprint}.pdf` — the retired public mount
+ *  (D24), a shape the server cannot produce any more — so the one test that
+ *  reads a `pdf_url` was asserting against an impossible response. */
+const PDF_URL = '/api/departments/dining/reports/flowchart/file.pdf'
+
 it('دریافت فایل posts the build and reports it in the export dialog', async () => {
   const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-    new Response(JSON.stringify({ pdf_url: '/exports/dining/flowchart-0123456789abcdef.pdf', generated_at: '2026-07-26T09:00:00Z' }),
+    new Response(JSON.stringify({ pdf_url: PDF_URL, generated_at: '2026-07-26T09:00:00Z' }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }))
   renderDialog(descriptor(['export_pdf'], ['dept:dining']))
   fireEvent.click((await screen.findAllByRole('button', { name: 'دریافت فایل' }))[0])
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
     '/api/departments/dining/reports/flowchart', expect.objectContaining({ method: 'POST' })))
   expect(await screen.findByText('خروجی آماده شد')).toBeInTheDocument()
+  // …and the link the dialog hands over is the server's own `pdf_url`, absolute.
+  // Asserted so the fixture is load-bearing: a shape the endpoint cannot answer
+  // would otherwise sit here indefinitely, as the retired one did.
+  expect(screen.getByLabelText('لینک فایل خروجی'))
+    .toHaveValue(`${window.location.origin}${PDF_URL}`)
 })

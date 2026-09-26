@@ -5,6 +5,25 @@ import { pdfHref, servedPdfHref } from './pdfLink'
  *  it with a `URL`, which carries the two fields `pdfHref` reads. */
 const REAL_LOCATION = Object.getOwnPropertyDescriptor(window, 'location')!
 
+/**
+ * **Where a SERVED document actually sits** — the download route, not a folder.
+ *
+ * These fixtures said `/exports/dining/flowchart-{fingerprint}.html`, which was
+ * the publicly mounted folder D24 retired: over `http(s)` that is a path this
+ * deployment cannot serve any more, so the http cases were pinning the rule
+ * against a URL shape that no longer occurs. The rule itself is unchanged and
+ * still right — swap `.html` for `.pdf` beside the document — and it lands on
+ * `…/reports/{kind}/file.pdf`, which is exactly the download route's own
+ * `file.{ext}`.
+ *
+ * The `file:` cases below keep their `~/Downloads/flowchart-….html` paths on
+ * purpose: a downloaded copy on a stick or in a mail attachment is named however
+ * the person who saved it named it, and that is the case the whole fallback
+ * exists for.
+ */
+const SERVED = '/api/departments/dining/reports/flowchart/file'
+const SERVED_STEPS = '/api/departments/cooking/reports/steps/file'
+
 function openedAt(url: string) {
   Object.defineProperty(window, 'location', {
     configurable: true, enumerable: true, writable: true, value: new URL(url),
@@ -15,18 +34,18 @@ afterEach(() => { Object.defineProperty(window, 'location', REAL_LOCATION) })
 
 describe('pdfHref', () => {
   it('points at the PDF beside the document when it is served over http', () => {
-    openedAt('http://inja.local/exports/dining/flowchart-9f2c8a11d4e6b070.html')
-    expect(pdfHref()).toBe('/exports/dining/flowchart-9f2c8a11d4e6b070.pdf')
+    openedAt(`http://inja.local${SERVED}.html`)
+    expect(pdfHref()).toBe(`${SERVED}.pdf`)
   })
 
   it('does the same over https', () => {
-    openedAt('https://inja.example.com/exports/cooking/steps-0011aabb22cc33dd.html')
-    expect(pdfHref()).toBe('/exports/cooking/steps-0011aabb22cc33dd.pdf')
+    openedAt(`https://inja.example.com${SERVED_STEPS}.html`)
+    expect(pdfHref()).toBe(`${SERVED_STEPS}.pdf`)
   })
 
   it('keeps only the path — a query string or fragment is not part of the name', () => {
-    openedAt('https://inja.example.com/exports/dining/flowchart-9f2c.html?v=2#toc')
-    expect(pdfHref()).toBe('/exports/dining/flowchart-9f2c.pdf')
+    openedAt(`https://inja.example.com${SERVED}.html?v=2#toc`)
+    expect(pdfHref()).toBe(`${SERVED}.pdf`)
   })
 
   // The case the fallback exists for: an export is handed to staff by email or
@@ -48,7 +67,8 @@ describe('pdfHref', () => {
   // in `.html`. Anything else is a path this rule cannot reason about — a
   // directory index, a rewritten URL — and guessing there is how a 404 is built.
   it('is null when the served path does not end in .html', () => {
-    for (const path of ['/exports/dining/', '/exports/dining/flowchart-9f2c', '/']) {
+    // The route's own directory, the route with no extension, and the site root.
+    for (const path of ['/api/departments/dining/reports/flowchart/', SERVED, '/']) {
       openedAt(`https://inja.example.com${path}`)
       expect(pdfHref()).toBeNull()
     }
@@ -75,18 +95,18 @@ describe('servedPdfHref', () => {
   afterEach(() => { globalThis.fetch = REAL_FETCH })
 
   it('is the sibling PDF when the server actually has one', async () => {
-    openedAt('https://inja.example.com/exports/dining/flowchart-9f2c.html')
+    openedAt(`https://inja.example.com${SERVED}.html`)
     const f = servesPdf(true)
-    await expect(servedPdfHref()).resolves.toBe('/exports/dining/flowchart-9f2c.pdf')
+    await expect(servedPdfHref()).resolves.toBe(`${SERVED}.pdf`)
     // HEAD, not GET: the document may be several megabytes and the answer is one bit.
-    expect(f).toHaveBeenCalledWith('/exports/dining/flowchart-9f2c.pdf',
+    expect(f).toHaveBeenCalledWith(`${SERVED}.pdf`,
                                    expect.objectContaining({ method: 'HEAD' }))
   })
 
   // The case this whole function exists for: the render failed, so the reader's
   // primary action would 404. Fall back to the button that has always worked.
   it('is null when the sibling PDF is not there', async () => {
-    openedAt('https://inja.example.com/exports/dining/flowchart-9f2c.html')
+    openedAt(`https://inja.example.com${SERVED}.html`)
     servesPdf(false)
     await expect(servedPdfHref()).resolves.toBeNull()
   })
@@ -94,7 +114,7 @@ describe('servedPdfHref', () => {
   // Offline, a flaky connection, a blocked request: none of them is a reason to
   // show a link, and none of them may throw out of here.
   it('is null when the probe itself fails', async () => {
-    openedAt('https://inja.example.com/exports/dining/flowchart-9f2c.html')
+    openedAt(`https://inja.example.com${SERVED}.html`)
     servesPdf(new TypeError('Failed to fetch'))
     await expect(servedPdfHref()).resolves.toBeNull()
   })
@@ -111,7 +131,7 @@ describe('servedPdfHref', () => {
   // A browser too old for `fetch` cannot be asked, and guessing is what builds
   // the dead link.
   it('is null when the browser has no fetch', async () => {
-    openedAt('https://inja.example.com/exports/dining/flowchart-9f2c.html')
+    openedAt(`https://inja.example.com${SERVED}.html`)
     globalThis.fetch = undefined as unknown as typeof fetch
     await expect(servedPdfHref()).resolves.toBeNull()
   })

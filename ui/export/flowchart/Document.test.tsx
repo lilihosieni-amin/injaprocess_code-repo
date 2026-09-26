@@ -314,6 +314,19 @@ describe('the «چاپ / PDF» button', () => {
   const openedAt = (url: string) => Object.defineProperty(window, 'location', {
     configurable: true, enumerable: true, writable: true, value: new URL(url),
   })
+  /**
+   * **Where a SERVED document sits** — the download route, not a public folder.
+   *
+   * The fixtures here said `/exports/dining/{kind}-{fingerprint}.html`, the mount
+   * D24 retired: over `http(s)` that is a path this deployment no longer serves.
+   * `pdfHref`'s rule is unchanged — swap `.html` for `.pdf` beside the document —
+   * and on the real route it lands on `file.pdf`, which is the download's own
+   * `file.{ext}`. The `file:` case below keeps a `~/Downloads/…` path, because a
+   * copy on a stick is named however the person who saved it named it, and that is
+   * the case the print fallback exists for.
+   */
+  const SERVED = '/api/departments/dining/reports/flowchart/file'
+
   const serverHasThePdf = (ok: boolean) => {
     globalThis.fetch = vi.fn(() => Promise.resolve({ ok } as Response)) as unknown as typeof fetch
   }
@@ -324,11 +337,11 @@ describe('the «چاپ / PDF» button', () => {
   })
 
   it('links to the PDF beside the document when the server has one', async () => {
-    openedAt('https://inja.example.com/exports/dining/flowchart-9f2c8a11d4e6b070.html')
+    openedAt(`https://inja.example.com${SERVED}.html`)
     serverHasThePdf(true)
     renderDoc()
     const link = await screen.findByRole('link', { name: LABEL })
-    expect(link).toHaveAttribute('href', '/exports/dining/flowchart-9f2c8a11d4e6b070.pdf')
+    expect(link).toHaveAttribute('href', `${SERVED}.pdf`)
     expect(link.className).toBe(`${d.tbtn} ${d.solid}`)
   })
 
@@ -337,7 +350,7 @@ describe('the «چاپ / PDF» button', () => {
   // href would still be *correct* — and still 404, on the document's primary
   // action. So the button asks before it offers.
   it('prints in place when the server has no PDF beside the document', async () => {
-    openedAt('https://inja.example.com/exports/dining/flowchart-9f2c8a11d4e6b070.html')
+    openedAt(`https://inja.example.com${SERVED}.html`)
     serverHasThePdf(false)
     const print = vi.spyOn(window, 'print').mockImplementation(() => {})
     renderDoc()

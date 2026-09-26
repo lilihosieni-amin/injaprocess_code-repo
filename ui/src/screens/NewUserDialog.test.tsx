@@ -36,6 +36,25 @@ const DEPARTMENTS = [
 ]
 
 /**
+ * The backend registry (D26), the two rows it really serves today.
+ *
+ * The scope fieldset reads it to draw a department tile's «نماها» boxes — one
+ * per report kind — so without it the tile has no narrower grant to offer and
+ * the guard treats every `report:` scope it already holds as one it cannot
+ * draw. Answered in `stubServer` beside `/api/departments`, because the two are
+ * one picture: a report is named by a kind AND a department and neither list
+ * alone finishes a box.
+ */
+const REPORTS = {
+  reports: [
+    { id: 'flowchart', name: 'سند فلوچارت دپارتمان', short: 'مستندات کامل',
+      description: 'هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان.' },
+    { id: 'steps', name: 'راهنمای گام‌به‌گام', short: 'راهنمای گام‌به‌گام',
+      description: 'همان فرآیندها، بازنویسی‌شده به گام‌های شماره‌دار.' },
+  ],
+}
+
+/**
  * What `GET /api/roles` answers this Admin — **already filtered, server-side**
  * (D56: a list endpoint never returns rows it then declines to render).
  * `editor` is absent because the server left it out, and `admin` is present
@@ -174,6 +193,12 @@ function stubServer(opts: {
     if (path === '/api/departments') {
       return departmentsStatus === 200 ? json(DEPARTMENTS) : json({ detail: 'نه' }, departmentsStatus)
     }
+    // Always 200, and no `reportsStatus` beside `departmentsStatus`: what the
+    // failure options in this file exist to pin is the difference between a read
+    // that failed and an empty answer, and `departmentsStatus` already pins it
+    // for the fieldset. A second knob for the same guard would be a second copy
+    // of the same test.
+    if (path === '/api/reports') return json(REPORTS)
     if (path.startsWith('/api/users/supervisor-candidates')) {
       if (stalled) return new Promise<Response>(() => {})
       if (candidatesStatus !== 200) return json({ detail: 'نه' }, candidatesStatus)
@@ -329,10 +354,12 @@ describe('opening the create-user dialog', () => {
     const seen = stubServer()
     mountList()
     await screen.findByRole('button', { name: 'کاربر جدید' })
-    // Task 19's filter bar resolves department codes to Persian names, so the
-    // screen reads the registry on mount. The claim under test is unchanged:
-    // the DIALOG's own reads (roles, candidates) wait until it is opened.
-    await waitFor(() => expect([...seen.gets].sort()).toEqual(['/api/departments', '/api/users']))
+    // Task 19's filter bar resolves department codes to Persian names, and P2's
+    // scope labels resolve report kinds the same way, so the screen reads both
+    // registries on mount. The claim under test is unchanged: the DIALOG's own
+    // reads (roles, candidates) wait until it is opened.
+    await waitFor(() => expect([...seen.gets].sort())
+      .toEqual(['/api/departments', '/api/reports', '/api/users']))
   })
 
   it('is not offered to somebody the surface itself refuses', async () => {

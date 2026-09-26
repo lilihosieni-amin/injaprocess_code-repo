@@ -20,6 +20,33 @@ export type ExportModalProps = {
 const CHECK = 'M20 6L9 17l-5-5'
 const WARN = 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3'
   + 'L13.7 3.9a2 2 0 0 0-3.4 0z'
+/**
+ * **Who the link opens for** — the one sentence on this dialog about the gate the
+ * recipient will meet (D25), and it is a PERMISSION, not a password.
+ *
+ * Exported and named because the wording is the owner's to set and this is the
+ * only copy of it: `ExportModal.test.tsx` pins the rendered line against this
+ * constant and asserts separately that it names no credential, so a re-wording
+ * is one edit here and cannot quietly bring the old claim back.
+ *
+ * It named the shared export credential until D24 deleted it. There is no second
+ * login and no public `/exports` folder any more: the href below is
+ * `…/reports/{kind}/file.pdf`, which re-derives the caller's scope and
+ * `export_pdf` from their own session row on every request.
+ *
+ * The old wording's reasoning still decides the phrasing, and it is worth
+ * keeping: a claim the reader's very next click contradicts is worse than no
+ * claim. Whoever reads this line holds `export_pdf` — they just built the file —
+ * so «you need a password» was disproved by «باز کردن خروجی» opening it with no
+ * prompt. Said about *who* may open it, it is true for the admin and for the
+ * recipient alike.
+ *
+ * The first half is unchanged and is D28: the artifact is keyed on the content,
+ * so the next build of changed content answers at a different key and this link
+ * stops resolving. There is no permanent one.
+ */
+export const OPENS_FOR = 'این لینک با خروجی بعدی جایگزین می‌شود و تنها برای کسی باز می‌شود که اجازهٔ دریافت این نمایش را دارد.'
+
 /** The copy glyph — two overlapping sheets. */
 const COPY = 'M9 9h11v11H9zM5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'
 /** …and the open-in-a-new-tab arrow. */
@@ -139,17 +166,9 @@ export function ExportModal({ title, status, url, error, onRetry, onClose }: Exp
               saying is that this one is printed and fixed, which is what
               distinguishes it from the interactive document it was printed from. */}
           <p className="text-fs-xs text-faint mt-s6 leading-loose m-0">فایل PDF چاپ‌شده از سند رسمی است؛ برای چاپ و بایگانی آماده است.</p>
-          {/* The screen where the admin decides who to hand the link to, so it
-              states the gate the recipient will really meet (D25): the shared
-              export credential, which is not the panel's own login.
-
-              The recipient is the subject on purpose. The reader of this line
-              holds an `inja_session` scoped to `/`, and D29 opens exports to an
-              admin session — so the «باز کردن خروجی» button below opens the
-              document with no prompt at all. Any sentence claiming the link
-              *only* opens with a password is contradicted by the reader's very
-              next click; phrased about the recipient it is true for both. */}
-          <p className="text-fs-xs text-faint leading-loose m-0">گیرندهٔ این لینک برای باز کردن آن به نام کاربری و گذرواژهٔ مشترک خروجی‌ها نیاز دارد و این لینک با خروجی بعدی جایگزین می‌گردد.</p>
+          {/* `OPENS_FOR` — see its own note above for why it is a permission
+              and not a password. */}
+          <p className="text-fs-xs text-faint leading-loose m-0">{OPENS_FOR}</p>
         </>
       )}
     </Dialog>

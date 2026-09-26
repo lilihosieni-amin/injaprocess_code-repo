@@ -266,6 +266,19 @@ describe('the «چاپ» button', () => {
   const openedAt = (url: string) => Object.defineProperty(window, 'location', {
     configurable: true, enumerable: true, writable: true, value: new URL(url),
   })
+  /**
+   * **Where a SERVED document sits** — the download route, not a public folder.
+   *
+   * The fixtures here said `/exports/dining/{kind}-{fingerprint}.html`, the mount
+   * D24 retired: over `http(s)` that is a path this deployment no longer serves.
+   * `pdfHref`'s rule is unchanged — swap `.html` for `.pdf` beside the document —
+   * and on the real route it lands on `file.pdf`, which is the download's own
+   * `file.{ext}`. The `file:` case below keeps a `~/Downloads/…` path, because a
+   * copy on a stick is named however the person who saved it named it, and that is
+   * the case the print fallback exists for.
+   */
+  const SERVED = '/api/departments/dining/reports/steps/file'
+
   const serverHasThePdf = (ok: boolean) => {
     globalThis.fetch = vi.fn(() => Promise.resolve({ ok } as Response)) as unknown as typeof fetch
   }
@@ -278,18 +291,18 @@ describe('the «چاپ» button', () => {
   })
 
   it('links to the PDF beside the guide when the server has one', async () => {
-    openedAt('https://inja.example.com/exports/dining/steps-0011aabb22cc33dd.html')
+    openedAt(`https://inja.example.com${SERVED}.html`)
     serverHasThePdf(true)
     render(<StepsApp payload={PAYLOAD} />)
     const link = await screen.findByRole('link', { name: LABEL })
-    expect(link).toHaveAttribute('href', '/exports/dining/steps-0011aabb22cc33dd.pdf')
+    expect(link).toHaveAttribute('href', `${SERVED}.pdf`)
     expect(link.className).toBe(s.tbtn)
   })
 
   // Same rule as the flowchart document's: a render is best-effort (D21), so a
   // published guide may have no PDF beside it and the link would 404.
   it('prints in place when the server has no PDF beside the guide', async () => {
-    openedAt('https://inja.example.com/exports/dining/steps-0011aabb22cc33dd.html')
+    openedAt(`https://inja.example.com${SERVED}.html`)
     serverHasThePdf(false)
     const print = vi.spyOn(window, 'print').mockImplementation(() => {})
     render(<StepsApp payload={PAYLOAD} />)
@@ -320,12 +333,12 @@ describe('the «چاپ» button', () => {
   // landing page — `Shell` wraps them all, and a reader deep in a subprocess is
   // exactly who reaches for it.
   it('is the same link once the reader has opened a task', async () => {
-    openedAt('https://inja.example.com/exports/dining/steps-0011aabb22cc33dd.html')
+    openedAt(`https://inja.example.com${SERVED}.html`)
     serverHasThePdf(true)
     render(<StepsApp payload={PAYLOAD} />)
     await screen.findByRole('link', { name: LABEL })
     fireEvent.click(screen.getByText('پذیرایی از مشتری'))
     expect(screen.getByRole('link', { name: LABEL }))
-      .toHaveAttribute('href', '/exports/dining/steps-0011aabb22cc33dd.pdf')
+      .toHaveAttribute('href', `${SERVED}.pdf`)
   })
 })
