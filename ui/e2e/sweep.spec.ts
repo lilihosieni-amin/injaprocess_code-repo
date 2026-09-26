@@ -185,10 +185,12 @@ const STUBS: Record<string, unknown> = {
   '/api/facts/branches': BRANCHES,
   '/api/facts/F-00030': RULE,
   '/api/departments/dining/reports/steps': REPORT,
-  // The `HEAD` the document sends to find out whether a printed PDF exists for
+  '/api/departments/dining/reports/flowchart': REPORT,
+  // The `HEAD` each document sends to find out whether a printed PDF exists for
   // the content it is showing. Answered, because this sweep's session holds
   // `export_pdf` and would otherwise be asking for an endpoint nothing stubs.
   '/api/departments/dining/reports/steps/file.pdf': {},
+  '/api/departments/dining/reports/flowchart/file.pdf': {},
 }
 
 /**
@@ -223,10 +225,27 @@ const ROUTES = [
   // On the largest thing the app renders, that is worth more here than
   // anywhere.
   ['/departments/dining/reports/steps', 'report'],
+  // The same screen, the other document, and it is not a duplicate row. Only the
+  // flowchart chunk carries `doc-base.css` and `print/print.css`, only it mounts
+  // `PrintDiagrams` (which puts a second, offscreen copy of every process on the
+  // page) and only it settles in a loop before it is done — all of it now under
+  // the app shell rather than on the bare `body` the standalone bundle gave it.
+  // `Report.test.tsx` drives this document too, but jsdom lays nothing out, so
+  // the paint, the page width and the console below are graded here or nowhere.
+  //
+  // What this row does NOT reach: the `PROCESS` fixture has no nodes, so the
+  // measuring host is empty and no band is laid out — the geometry, and the
+  // 100 000px of overflow `print.css`'s `.pf-clip` exists for, are still on
+  // `export/`'s own specs. Giving the fixture nodes would change what the
+  // `summary` row grades too, so it is a decision, not an oversight.
+  ['/departments/dining/reports/flowchart', 'report', 'report-flowchart'],
 ] as const
 
-for (const [route, name] of ROUTES) {
-  test(`sweep — ${name}`, async ({ page }) => {
+// `label` names the test and its screenshot; it defaults to the screen name and
+// is written out only where two routes mount the same screen, which is where two
+// rows would otherwise share a title and one `sweep-{label}-{width}.png`.
+for (const [route, name, label = name] of ROUTES) {
+  test(`sweep — ${label}`, async ({ page }) => {
     const errors: string[] = []
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
     page.on('pageerror', (e) => errors.push(String(e)))
@@ -240,6 +259,16 @@ for (const [route, name] of ROUTES) {
 
     const screen = page.locator(`[data-screen="${name}"]`)
     await expect(screen, 'the screen did not mount at all').toHaveCount(1)
+
+    // The report screen mounts its outer div immediately and the DOCUMENT behind
+    // a `lazy()` boundary, so `[data-screen="report"]` is satisfied by the
+    // Suspense skeleton. Measured before this wait existed: both report rows
+    // graded three grey bars — the field, the family and the console were all
+    // true of a screen with no document on it, and the whole point of the row is
+    // the largest thing the app renders. `.doc-root` is the flowchart's wrapper,
+    // `.steps-root` the guide's; whichever chunk this route loads, its arrival is
+    // what the checks below have to be measuring.
+    if (name === 'report') await page.locator('.doc-root, .steps-root').first().waitFor()
 
     // §9.1 — both deliverables put the app on the deep-violet field, and the
     // app rendered these on cream. It is the largest area on screen and the
@@ -294,7 +323,7 @@ for (const [route, name] of ROUTES) {
     // Chrome's own complaints, which no vitest run would ever surface.
     expect(errors).toEqual([])
 
-    await shot(page, `sweep-${name}`)
+    await shot(page, `sweep-${label}`)
   })
 }
 
