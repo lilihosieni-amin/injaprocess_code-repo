@@ -412,13 +412,11 @@ def _reader_surface(world: World) -> list[tuple[str, str, dict | None, int]]:
         ("GET", "/api/pending", None, 200),
         # Gated on `set_visibility` at `*`: out of scope, so 404.
         ("GET", "/api/visibility", None, 404),
-        # `view`: the read path (D25), which is the largest body a Reader is
-        # served — `build_payload`'s whole department — and therefore the most
-        # likely place for a `confirmed_by` to arrive in one. One kind, not
-        # two: `read_report` builds the same payload whatever the kind, so a
-        # second row would scan the same bytes twice.
-        ("GET", f"/api/departments/{MINE}/reports/steps", None, 200),
-        # `export_pdf`, which a Reader does hold. Both kinds: the fixture
+        # `export_pdf`, which a Reader does hold. There is no report *read* row:
+        # the in-app viewer was built and withdrawn, so the only report body a
+        # Reader is served here is the build's `{"generated_at": …}`. What
+        # `build_payload` puts in the artifact itself is swept off disk, in
+        # `test_body_scan.py`. Both kinds: the fixture
         # writes a template for each, and `flowchart` is a second, independent
         # render of the same payload rather than a shape covered by `steps`.
         ("POST", f"/api/departments/{MINE}/reports/steps", None, 200),

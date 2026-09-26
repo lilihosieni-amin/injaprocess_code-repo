@@ -74,10 +74,10 @@ There used to be a second, shared username/password pair here that opened a
 published department export on its own — deliberately separate from the UI
 users above, and shared by everyone you handed an export link to. Spec D24
 (sub-project P2) retired it outright: reports are now three routes under `/api`
-behind the ordinary session (`GET /api/reports`, `GET|POST
+behind the ordinary session (`GET /api/reports`, `POST
 /api/departments/{code}/reports/{kind}`, `GET|HEAD …/file.{pdf,html}`), each
-re-deriving the caller's scope and `view`/`export_pdf` per request the same way
-every other route does (D12). One credential does everything the two used to,
+re-deriving the caller's scope and `export_pdf` per request the same way every
+other route does (D12). One credential does everything the two used to,
 and there is nothing left to configure here for it.
 
 ### `telegram-bot-api.env`

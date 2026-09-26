@@ -164,19 +164,16 @@ GATED = [
     ("PUT", "/api/departments/cooking/order", {"order": []}, "edit"),
     ("GET", "/api/departments/cooking/processes", None, "view"),
     ("GET", "/api/departments/cooking/next-id", None, "edit"),
-    #: The three report routes (D25, D26). Reading and downloading are two
-    #: responses on purpose, so they are two rows gated on two different
-    #: capabilities: `view` reads the department as the application renders it,
-    #: `export_pdf` builds the single file and `export_pdf` hands it over. A
-    #: table that gave the read row `export_pdf` would shut every
-    #: `reader_no_download` holder out of reading, which is the failure D25 is
-    #: written to prevent; `test_reading_is_not_downloading.py` asserts the
-    #: other half of it, on the bytes.
+    #: The two report routes that act on a department (D25, D26): `export_pdf`
+    #: builds the single file and `export_pdf` hands it over. There is no read
+    #: row and no `view` row — the in-app viewer was built and withdrawn, so
+    #: `export_pdf` on `dept:{code}/report:{kind}` is the only capability any
+    #: report route asks for. (The registry, `GET /api/reports`, is behind the
+    #: session and gated on nothing, so it is not in this table at all.)
     #:
-    #: The target is `dept:{code}/report:{kind}` on all three, which this
-    #: table's `dept:cooking` caller contains — the narrower grant is pinned by
+    #: The target is `dept:{code}/report:{kind}` on both, which this table's
+    #: `dept:cooking` caller contains — the narrower grant is pinned by
     #: `test_the_report_target_names_the_report_and_not_only_the_department`.
-    ("GET", "/api/departments/cooking/reports/steps", None, "view"),
     ("POST", "/api/departments/cooking/reports/steps", None, "export_pdf"),
     #: `_a_built_report` is what makes this row's non-refusal direction real:
     #: without an artifact on disk the handler answers 404 for a reason that
@@ -1021,10 +1018,9 @@ IN_SCOPE_MISSES = [
     ("GET", "/api/departments/nosuchplace/next-id", None),
     ("POST", "/api/departments/cooking/reports/poster", None),
     ("POST", "/api/departments/nosuchplace/reports/steps", None),
-    #: The read and the download on an unknown kind: `_known` refuses both in
-    #: the same body, so neither tells a prober that `steps` is the one that
+    #: The download on an unknown kind: `_known` refuses it in the same body the
+    #: build above gets, so neither tells a prober that `steps` is the one that
     #: exists.
-    ("GET", "/api/departments/cooking/reports/poster", None),
     ("GET", "/api/departments/cooking/reports/poster/file.pdf", None),
 ]
 

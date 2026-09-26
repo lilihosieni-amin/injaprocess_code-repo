@@ -718,18 +718,12 @@ DEPT_READS = (
     Route("GET", "/api/processes/{d}-003", None, "/api/processes/{pid}", 200),
     Route("GET", "/api/confirmations?department={d}", None,
           "/api/confirmations", 200),
-    #: The read path (D25), both kinds. Two entries on one template, for
-    #: `/api/processes/{pid}`'s reason: they collapse in the coverage set and
-    #: each body is really walked. And this is the single largest body the
-    #: service now returns to a *reader* — `build_payload` inlines the whole
-    #: department, overview and every confirmed process — so if any filter in
-    #: `exports.py` disagrees with the one every other response goes through,
-    #: this is where it shows. The download beside it serves an opaque file and
-    #: is excluded by name (`NOT_SWEPT`).
-    Route("GET", "/api/departments/{d}/reports/steps", None,
-          "/api/departments/{code}/reports/{kind}", 200),
-    Route("GET", "/api/departments/{d}/reports/flowchart", None,
-          "/api/departments/{code}/reports/{kind}", 200),
+    #: No report read: the in-app viewer and its `GET …/reports/{kind}` were
+    #: built and withdrawn, so the only report bodies left are the build's
+    #: timestamp (swept under `DEPT_WRITES`) and the download's opaque file
+    #: (excluded by name, `NOT_SWEPT`). The artifact the build writes is the
+    #: largest body this service produces and it is walked directly off disk, by
+    #: `test_the_published_bundle_carries_nothing_a_reader_may_not_have`.
 )
 
 

@@ -652,7 +652,7 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 - **Every response is permission-filtered (FR-V5, FR-V6, NFR-12).** The content-visibility strip that used to live in `exports.py` and apply only to exports is now a single filter over every response the API sends, driven by the global policy plus the caller's capabilities (§19.4). One implementation, one place to be wrong, one place tests pin.
 - **Writes are attributed.** Every handler that mutates records the acting user, in the activity record and in the commit trailer. Previously the session user was bound and discarded, and every commit was authored `ui-edit` regardless of who acted (§15).
 - The edit loop is independent of both bots, working directly from the JSON on disk.
-- **Reports (FR-I8):** the department header keeps ترتیب فرآیندها as its own button. Reports are read in the application; a user holding `export_pdf` can download one, and a pending state is shown only when the artifact must actually be produced rather than served from the fingerprint cache (§13.4).
+- **Reports (FR-I8):** the department header keeps ترتیب فرآیندها as its own button. A report is a file a user holding `export_pdf` downloads; a pending state is shown only when the artifact must actually be produced rather than served from the fingerprint cache (§13.4). **Reading a report in the application was built and withdrawn** — the process screens already show that content, so there is no in-app report view and no route that serves one (§13.4).
 - **Two shells over one component set.** `docs/superpowers/specs/2026-08-05-frontend-system-design.md` is authoritative for the frontend system — tokens, the shell split, shared components, responsiveness, RTL, the accessibility baseline and the loading/empty/error/denied states. One Vite build; the shell is selected at runtime **by capability** (F2): holders of `edit`, `confirm`, `set_visibility`, `manage_users` or `view_audit` get the Panel, everyone else the Reader. Individual screens belong to whichever sub-project owns their feature. This section fixes only that there is one application, that affordances derive from the session descriptor, and that the server decides independently of what was drawn (§19.5).
 - **The flowchart implementation does not change.** `ui/src/flow/` is used as-is in both shells and in the reports, which preserves `parity.test.tsx` (§13.3) and keeps one renderer across panel, report and printed PDF.
 
@@ -660,7 +660,7 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 
 > Authoritative design: `docs/superpowers/specs/2026-07-26-department-export-design.md`, decisions **D1–D31**, as amended by `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D24–D29** — which retire the separate export access system and withdraw D25–D31. This section states the architecture; the specs state why each decision was taken and what was rejected.
 
-> **Terminology, v0.3.** What these documents called an *export* is now a **report**. The build machinery below is unchanged and keeps its file and directory names; what changed is that a report is read in the application by a signed-in user, and the built single file is a **download** rather than a published document.
+> **Terminology, v0.3.** What these documents called an *export* is now a **report**. The build machinery below is unchanged and keeps its file and directory names; what changed is that the built single file is a **download** a signed-in user asks for, rather than a published document behind a shared credential.
 
 Two separate Vite entries under `ui/export/`, built to `ui/dist-export/` alongside the SPA's `ui/dist/`:
 
@@ -677,7 +677,9 @@ Two separate Vite entries under `ui/export/`, built to `ui/dist-export/` alongsi
 
 **Registry (FR-E1).** The report kinds are a **backend registry** served to the frontend, replacing the two hand-synchronised lists that existed before (`EXPORT_KINDS` in `exports.py` and `KINDS` in `ExportMenu.tsx`). Grants reference registry ids (`dept:{code}/report:{kind}`, §19.2), so adding a report is one registry entry plus its renderer and it appears in the permission UI with no further change.
 
-**Endpoint.** Reading a report is a `GET` behind the session, authorised by `view` on `dept:{code}` or on `dept:{code}/report:{kind}`. Downloading it is authorised by `export_pdf` on the same target. Both re-derive permission from the session row; neither trusts the client (§19.5).
+**Endpoint.** Building a report and downloading it are both authorised by `export_pdf` on `dept:{code}` or on `dept:{code}/report:{kind}`, re-derived from the session row per request; neither trusts the client (§19.5).
+
+> **Withdrawn in v0.3.** A third route read a report *inside the application* — a `GET` on the same target authorised by `view`, answering `build_payload`'s payload rather than the file — and the screen that rendered it. Both are gone: the application already shows this content through its own process screens, so the viewer was a second way to say the same thing. A report is now the downloadable file and nothing else, and `export_pdf` is the only capability any report route asks for.
 
 **Payload (NFR-12, FR-V4…V6).** Built by the **single content-visibility filter** (§19.4), not by export-specific code. On top of the policy: tombstoned processes are excluded (D11, D15), and so is anything without a valid confirmation (FR-V4). The strip happens in the payload, not in CSS — a reader with dev tools finds nothing hidden.
 
@@ -700,7 +702,7 @@ EXPORT_DIR/{dept}/{kind}-{fingerprint}.pdf      # its printable form, same stem
 - It waits on the page's own completeness signal, **`window.__INJA_PRINT_READY__`**, not the load event. This is load-bearing and was measured: waiting yields 166/250 node ids in the PDF, printing on load yields 20 or 0 — **at the same page count**, so the failure is silent.
 - `displayHeaderFooter: false`, `printBackground: true`, paper box exactly matching `@page` (D23, D24).
 - Renders are **serialised process-wide** by a module lock (D22); peak 300–400 MB against a 3.7 GB host shared with the bots.
-- **A failed render never costs the report** (D21, NFR-13): the download path catches broadly, logs, and falls back to the standalone HTML. The report itself is read in the application and is unaffected either way.
+- **A failed render never costs the report** (D21, NFR-13): the download path catches broadly, logs, and falls back to the standalone HTML — the document itself is already written and served by the time the print is attempted.
 - Opened from `file://`, the document's «چاپ / PDF» button falls back to `window.print()` (D20) — the standalone copy keeps working, the served copy gets the good PDF. `ui/export/shared/pdfLink.ts` is the one place that decides.
 
 ### 13.5 Department Reports — access (amends D25–D31; FR-E7; NFR-11 withdrawn)
