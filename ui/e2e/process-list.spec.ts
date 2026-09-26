@@ -229,7 +229,7 @@ test('process list — the reader’s own composition', async ({ page }) => {
   await expect(page.getByTitle('حذف فرآیند')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'اطلاعات دپارتمان' })).toBeVisible()
   // RTL: the `⋮` comes after the button in source and therefore to its LEFT.
-  const exports = page.getByRole('button', { name: 'خروجی‌ها' })
+  const exports = page.getByRole('button', { name: 'دریافت خروجی' })
   await expect(exports).toBeVisible()
   expect((await exports.boundingBox())!.x)
     .toBeLessThan((await page.getByRole('button', { name: 'اطلاعات دپارتمان' }).boundingBox())!.x)

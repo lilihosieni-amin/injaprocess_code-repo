@@ -407,7 +407,7 @@ export function ProcessList() {
               {reportActs.length > 0 && (
                 <OverflowMenu
                   actions={reportActs}
-                  label="خروجی‌ها"
+                  label="دریافت خروجی"
                   className="relative flex-none"
                   // The reader's own square, `--size-menu-more-reader` 38×38
                   // radius 11 (reader 162) — the R3 sibling of the panel's 36px

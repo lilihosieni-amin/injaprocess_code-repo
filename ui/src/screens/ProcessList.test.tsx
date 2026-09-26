@@ -544,7 +544,7 @@ describe('the row, the empty state and the mobile overflow', () => {
       <SurfaceProvider surface="reader"><ProcessList /></SurfaceProvider>,
       '/departments/cooking', READER)
     await screen.findByText('پرداخت هزینه')
-    fireEvent.click(screen.getByRole('button', { name: 'خروجی‌ها' }))
+    fireEvent.click(screen.getByRole('button', { name: 'دریافت خروجی' }))
     expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual([
       'دانلود گام‌به‌گام', 'دانلود فلوچارتی',
     ])
@@ -563,7 +563,7 @@ describe('the row, the empty state and the mobile overflow', () => {
       <SurfaceProvider surface="reader"><ProcessList /></SurfaceProvider>,
       '/departments/cooking', NO_DOWNLOAD)
     await screen.findByText('پرداخت هزینه')
-    expect(screen.queryByRole('button', { name: 'خروجی‌ها' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'دریافت خروجی' })).toBeNull()
     // …and the control it stands beside is untouched.
     expect(screen.getByRole('button', { name: 'اطلاعات دپارتمان' })).toBeInTheDocument()
   })
