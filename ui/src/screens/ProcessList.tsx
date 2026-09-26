@@ -16,7 +16,7 @@ import { isTopDismissible, popDismissible, pushDismissible } from '../ui/dismiss
 import { CreateProcessModal } from '../write/CreateProcessModal'
 import { DeleteProcessConfirm } from '../write/DeleteProcessConfirm'
 import { ReorderModal } from '../write/ReorderModal'
-import { useReportActions } from '../write/ReportsDialog'
+import { useReportDownloads } from '../write/ReportDownloads'
 import { refusalStatus } from '../api/client'
 import { ScreenSkeleton } from '../ui/states'
 import { RefusalScreen } from './Refusal'
@@ -220,7 +220,7 @@ function OverflowMenu({ actions, label, className, children, glyph, hook, onOpen
  * **The LTR box (O1).** This root used to pin the direction as an ATTRIBUTE —
  * `ltr` on the region, because §8 wants the scrollbar on the right, and `rtl`
  * back on exactly one child. Every dialog that mounts beside that child
- * therefore stayed left-to-right, which is the workaround five files under
+ * therefore stayed left-to-right, which is the workaround four files under
  * `src/write/` each carry a comment about. The same intent is now two lines in
  * `base.css` (`[data-r-pad]{direction:ltr}` and `[data-r-pad] > *{direction:
  * rtl}`), where the rule catches all of them. This file pins the direction
@@ -286,16 +286,16 @@ export function ProcessList() {
   const mayConfirm = can('confirm', `dept:${code}`)
   const { data: marks = [] } = useConfirmations(code, { enabled: mayConfirm })
   /**
-   * The reports dialog, for the ⋯ that replaces the bar at ≤760 — owner ruling:
-   * *"in process list page, in mobile version we don't have download buttomn in
-   * : menu.add it."*
+   * The downloads, for every ⋯ and ⋮ that offers them — owner ruling: *"in
+   * process list page, in mobile version we don't have download buttomn in :
+   * menu.add it."*
    *
-   * One row now opens it from every surface — the bar's own ⋯, the title row's
-   * ⋯ at ≤760, and the reader's ⋮ — so this hook has one instance and `dialog`
-   * is rendered once, at the screen root: a `position:fixed` dialog inside a
-   * `display:none` box (`[data-r-plistactions]` below the breakpoint) is not
-   * painted at all, which is why it cannot live inside either trigger. */
-  const reports = useReportActions(code, dept?.name ?? '')
+   * One hook instance and one `modal`, rendered at the screen root: three
+   * controls draw these rows (the bar's own ⋯, the title row's ⋯ at ≤760, the
+   * reader's ⋮) and a `position:fixed` dialog inside a `display:none` box
+   * (`[data-r-plistactions]` below the breakpoint) is not painted at all, which
+   * is why it cannot live inside any of them. See `useReportDownloads`. */
+  const reports = useReportDownloads(code)
   // `mark`, not `m`: `m` used to be this department's tile metadata, which
   // `IconTile` now reads for itself.
   const markOf = new Map(marks.map((mark) => [mark.target, mark]))
@@ -341,13 +341,14 @@ export function ProcessList() {
    */
   if (isPending) return <ScreenSkeleton column={reader ? 'reader' : 'list'} cards={5} />
 
-  // One row for every report surface: the dialog behind it is what tells a
-  // caller which reports there are and what they may do with each. The row is
-  // absent when that dialog would be empty — the same rule the per-kind rows
-  // followed.
-  const reportActs: Act[] = reports.hasAny
-    ? [{ key: 'reports', label: 'نمایش‌های دپارتمان', run: reports.open }]
-    : []
+  // One row per document, each starting its download, labelled by the backend
+  // registry (D26) — `useReportDownloads` has already dropped every report this
+  // caller may not take, so `reader_no_download` gets an empty list here for the
+  // same reason they see no trigger on the bar, and the reader's ⋮ below is not
+  // drawn at all rather than drawn and empty.
+  const reportActs: Act[] = reports.reports.map(
+    (r) => ({ key: `report-${r.id}`, label: r.name, run: () => reports.run(r) }),
+  )
 
   // R5 — the overflow is the action bar, not a superset of it, so both are
   // built from one list. An act a caller may not perform is in neither.
@@ -398,17 +399,15 @@ export function ProcessList() {
 
                 The ⋮ comes AFTER the button in source and therefore to its LEFT:
                 this document is RTL, so the row starts at the right edge. It holds
-                the reports row ONLY — «نمایش‌ها», not «دریافت خروجی» any more, since
-                it now offers مشاهده beside دریافت فایل. «اطلاعات دپارتمان» is the
-                button it sits beside and R48's ruling stands — one control says a
-                thing once. */}
+                the download rows ONLY. «اطلاعات دپارتمان» is the button it sits
+                beside and R48's ruling stands — one control says a thing once. */}
             <div className="flex items-center justify-center gap-s5 mt-s10">
               <Button variant="ghost" onClick={() => nav(`/departments/${code}/overview`)}
                 className="px-s9 text-fs-menu">اطلاعات دپارتمان</Button>
               {reportActs.length > 0 && (
                 <OverflowMenu
                   actions={reportActs}
-                  label="نمایش‌ها"
+                  label="خروجی‌ها"
                   className="relative flex-none"
                   // The reader's own square, `--size-menu-more-reader` 38×38
                   // radius 11 (reader 162) — the R3 sibling of the panel's 36px
@@ -472,19 +471,16 @@ export function ProcessList() {
                 <Button variant="coral" onClick={() => setCreating(true)}
                   className="px-s8 py-s6 text-fs-sm">فرآیند جدید</Button>
               )}
-              {/* The bar's own ⋯, in `ExportMenu`'s old place and its old
-                  shape: that trigger held the export rows ONLY (its other
-                  three siblings on the bar are the plain buttons just above),
-                  and this one holds `reportActs` only, for the same reason —
-                  the bar's other acts are already their own buttons here, so
-                  restating them in this menu too would be R48's "one control
-                  says a thing once" broken the other way. `ExportMenu` was
-                  named «خروجی‌ها»; this is «نمایش‌ها», because the one row it
-                  now offers opens the reports dialog rather than firing a
-                  download. The title row's ⋯ at ≤760 is a different menu —
-                  «کارهای بیشتر», holding every act including this one — because
-                  the bar itself is gone at that width and has nothing left to
-                  stand beside.
+              {/* The bar's own ⋯, in `ExportMenu`'s old place, its old shape
+                  and its old name: that trigger held the export rows ONLY (its
+                  other three siblings on the bar are the plain buttons just
+                  above), and this one holds `reportActs` only, for the same
+                  reason — the bar's other acts are already their own buttons
+                  here, so restating them in this menu too would be R48's "one
+                  control says a thing once" broken the other way. The title
+                  row's ⋯ at ≤760 is a different menu — «کارهای بیشتر», holding
+                  every act including these — because the bar itself is gone at
+                  that width and has nothing left to stand beside.
 
                   **The box is `ExportMenu`'s own, not the title row's** —
                   `Inja Panel.dc.html:320`: `40×40`, `radius:12`, white, a
@@ -499,7 +495,7 @@ export function ProcessList() {
               {reportActs.length > 0 && (
                 <OverflowMenu
                   actions={reportActs}
-                  label="نمایش‌ها"
+                  label="خروجی‌ها"
                   className="relative flex-none"
                   glyph={
                     'relative before:absolute before:content-[""] before:-inset-[2px] '
@@ -731,10 +727,10 @@ export function ProcessList() {
       {reordering && <ReorderModal department={code} departmentName={dept?.name ?? ''} processes={procs} onClose={() => setReordering(false)} />}
       {delTarget && <DeleteProcessConfirm pid={delTarget.pid} name={delTarget.name} onClose={() => setDelTarget(null)} />}
       {/* At the SCREEN root, not inside any of its three triggers: whichever
-          one opened it unmounts on the press that starts a build, and
+          one was pressed unmounts on the press that starts the download, and
           `[data-r-plistactions]` — where the bar's own ⋯ lives — is
           `display:none` at the width the other two are used at. */}
-      {reports.dialog}
+      {reports.modal}
       <DeptFab code={code} />
     </div>
   )

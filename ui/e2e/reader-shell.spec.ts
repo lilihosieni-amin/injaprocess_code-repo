@@ -499,11 +499,8 @@ test('R4 — a reader with one department lands on its process list, with no way
   // …and sign-out is one control away, which is what the top bar being here
   // buys them: the back bar has no sign-out on it at all.
   // `exact`, because Playwright matches an accessible name as a SUBSTRING by
-  // default. It cost a real red: the process list beneath this bar used to draw
-  // «خروجی‌ها» — the exports control — which contains «خروج» and is a different
-  // button entirely. That control is «نمایش‌ها» now and the collision is gone,
-  // and `exact` stays: the guard is cheap and the next label to arrive under
-  // this bar gets it for free.
+  // default and the process list beneath this bar draws «خروجی‌ها» — the exports
+  // control — which contains «خروج» and is a different button entirely.
   await expect(page.getByRole('button', { name: 'خروج', exact: true })).toBeVisible()
   // …and «خانه» one level down points at THEIR root rather than at the list.
   await page.goto('/processes/dining-003')

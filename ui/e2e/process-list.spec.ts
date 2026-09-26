@@ -1,7 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import type {
-  Confirmation, Department, Process, ProcNode, ReportPayload,
-} from '../src/api/types'
+import type { Confirmation, Department, Process, ProcNode } from '../src/api/types'
 import { expectDesign, serve, shot, signedIn, visit } from './_harness'
 
 const CODE = 'cooking'
@@ -52,24 +50,6 @@ const CONFIRMATIONS: Confirmation[] = [
   },
 ]
 
-/**
- * What `GET /api/departments/{code}/reports/steps` answers — the payload the
- * document is rendered FROM, not a link to a file (D25, D28). Typed as the
- * endpoint's own response, so a renamed field is a `tsc -b` error here.
- *
- * `PROCESSES[0]` and not a literal: `ReadableProcess` is `Process` minus the
- * fields no report carries, and reusing the screen's own fixture keeps the two
- * from drifting into documents about different processes.
- */
-const REPORT: ReportPayload = {
-  dept: {
-    department: CODE, name: 'دپارتمان پخت', description: 'یک بند.',
-    sub_units: [], personnel: [], updated_at: '2026-09-23T09:00:00Z',
-  },
-  processes: [PROCESSES[0]],
-  generated_at: '2026-09-23T09:00:00Z',
-}
-
 /** Every read either shell or this screen makes, in one place. */
 async function reads(page: Page) {
   await serve(page, {
@@ -81,38 +61,7 @@ async function reads(page: Page) {
     // it was aborted and named by `expectEveryEndpointStubbed` — a red this
     // spec carried in from the comments work, not from the reports one.
     [`/api/comments?department=${CODE}`]: [],
-    // The report screen «مشاهده» opens, and the `HEAD` the document sends to
-    // find out whether a printed PDF exists for it. The probe is made only by a
-    // caller holding `export_pdf`, so the reader test below never reaches it —
-    // stubbed all the same, because `expectEveryEndpointStubbed` names what a
-    // screen asked for and nothing answered, and an over-broad table costs
-    // nothing.
-    [`/api/departments/${CODE}/reports/steps`]: REPORT,
-    [`/api/departments/${CODE}/reports/steps/file.pdf`]: {},
   })
-}
-
-/**
- * Open the reports dialog from the `⋯`/`⋮` that carries it on this width and
- * this surface, and answer with the cards it drew.
- *
- * One helper for three callers, and the trigger is a parameter rather than a
- * lookup: the panel's bar has its own `⋯` above 760, the title row's `⋯`
- * replaces the bar below it, and the reader has a `⋮` of its own — three
- * controls, one menu row, one dialog.
- */
-async function openReports(page: Page, trigger: string) {
-  await page.getByRole('button', { name: trigger }).click()
-  await page.getByRole('menuitem', { name: 'نمایش‌های دپارتمان' }).click()
-  // The title names the department, which is the dialog saying WHOSE reports
-  // these are — the old per-kind menu rows never did.
-  await expect(page.getByText('نمایش‌های دپارتمان پخت')).toBeVisible()
-  // One card per registry entry (D26), in the registry's order — so `nth(1)` is
-  // `steps` below, and a card the build cannot draw would show up here as a
-  // count rather than as a blank screen after the click.
-  for (const name of ['سند فلوچارت دپارتمان', 'راهنمای گام‌به‌گام']) {
-    await expect(page.getByText(name, { exact: true })).toBeVisible()
-  }
 }
 
 /** The painted box of a control, rounded the way a person would read a ruler. */
@@ -145,17 +94,15 @@ test('process list — the panel', async ({ page }) => {
     const trigger = page.getByRole('button', { name: 'کارهای بیشتر' })
     expect(await box(page, '[data-r-plistmore] button')).toEqual({ w: 36, h: 36 })
     await trigger.click()
-    // The reports are in here as of the owner's ruling — *"in mobile version we
-    // don't have download buttomn in : menu.add it."* The bar's fourth control
-    // was the one act the ⋯ never mirrored, so at this width a person could not
-    // take a document out of the product at all.
-    //
-    // ONE row now, where there were two: the kinds are no longer acts on this
-    // menu, because each offers «مشاهده» as well as «دریافت فایل» and a menu row
-    // cannot be two acts. What the kinds are, and what this caller may do with
-    // each, is the dialog's to say — `the reports dialog` below opens it.
+    // The downloads are in here as of the owner's ruling — *"in mobile version
+    // we don't have download buttomn in : menu.add it."* The bar's fourth
+    // control is the ⋯ that holds them, and it was the one act this ⋯ never
+    // mirrored, so at this width a person could not take a document out of the
+    // product at all. One row per document, under the backend registry's own
+    // names and in its order (D26).
     await expect(page.getByRole('menuitem')).toHaveText([
-      'ترتیب فرآیندها', 'اطلاعات دپارتمان', 'فرآیند جدید', 'نمایش‌های دپارتمان',
+      'ترتیب فرآیندها', 'اطلاعات دپارتمان', 'فرآیند جدید',
+      'دانلود گام‌به‌گام', 'دانلود فلوچارتی',
     ])
     await page.keyboard.press('Escape')
     await expect(page.getByRole('menuitem')).toHaveCount(0)
@@ -254,9 +201,14 @@ test('process list — the reader’s own composition', async ({ page }) => {
   // Two reachable departments, so R4 leaves this reader on the list rather than
   // redirecting: `ReaderShell` decides that from the LENGTH of the scope-filtered
   // `/api/departments`, and the redirect itself is proved in reader-shell.spec.ts.
+  //
+  // `export_pdf` because this is the reader the owner's ⋮ ruling is about — *"in
+  // reader view with dowanload permission"* — and the ⋮ below is drawn only for
+  // a caller who may take a file. The reader who may NOT is the other half, and
+  // it is `ProcessList.test.tsx` that pairs them.
   await signedIn(page, {
     username: 'reader', displayName: 'خواننده', role: 'reader',
-    capabilities: ['view'], scopes: ['dept:cooking', 'dept:warehouse'],
+    capabilities: ['view', 'export_pdf'], scopes: ['dept:cooking', 'dept:warehouse'],
   })
   await reads(page)
   await visit(page, `/departments/${CODE}`, 'processListReader')
@@ -268,7 +220,7 @@ test('process list — the reader’s own composition', async ({ page }) => {
   // greyed or explained. `Inja Reader.dc.html:196` draws one centred
   // «اطلاعات دپارتمان» button, and — owner ruling, *"in reader view with
   // dowanload permission, it doesn't show any download option"* — the `⋮` beside
-  // it, which is the reader's only way to a report. Neither the panel's action
+  // it, which is the reader's only way to a download. Neither the panel's action
   // bar nor its title-row `⋯` is here.
   await expect(page.locator('[data-r-plistactions]')).toHaveCount(0)
   await expect(page.locator('[data-r-plistmore]')).toHaveCount(0)
@@ -277,10 +229,18 @@ test('process list — the reader’s own composition', async ({ page }) => {
   await expect(page.getByTitle('حذف فرآیند')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'اطلاعات دپارتمان' })).toBeVisible()
   // RTL: the `⋮` comes after the button in source and therefore to its LEFT.
-  const reports = page.getByRole('button', { name: 'نمایش‌ها' })
-  await expect(reports).toBeVisible()
-  expect((await reports.boundingBox())!.x)
+  const exports = page.getByRole('button', { name: 'خروجی‌ها' })
+  await expect(exports).toBeVisible()
+  expect((await exports.boundingBox())!.x)
     .toBeLessThan((await page.getByRole('button', { name: 'اطلاعات دپارتمان' }).boundingBox())!.x)
+  // …and it holds the two downloads, which is what the ruling asked for: the
+  // rows are the registry's, so this reader gets exactly what the panel's ⋯
+  // gets, on the surface that has no bar to put them on.
+  await exports.click()
+  await expect(page.getByRole('menuitem')).toHaveText([
+    'دانلود گام‌به‌گام', 'دانلود فلوچارتی',
+  ])
+  await page.keyboard.press('Escape')
 
   // The confirmation chip is an editor's mark: `GET /api/confirmations` 403s a
   // reader, so the query is never made and the chip is absent — asserted here
@@ -289,64 +249,4 @@ test('process list — the reader’s own composition', async ({ page }) => {
   await expect(page.getByText('تأیید شده')).toHaveCount(0)
 
   await shot(page, 'process-list-reader')
-})
-
-/* ------------------------------------------------------------------ *
- * The reports dialog, and what «مشاهده» actually does
- *
- * The acts used to be menu rows — one per kind, each firing a build — so the
- * menu was the whole surface and a click was the whole assertion. Now the menu
- * carries one row, the dialog says what the kinds are, and reading and
- * downloading are two different acts on each card (D25). So there are three
- * things to pin and the old shape could not state any of them: which acts a
- * caller is offered, that «مشاهده» NAVIGATES rather than downloads, and that
- * what it lands on is the document itself.
- * ------------------------------------------------------------------ */
-
-test('the reports dialog — the panel is offered both acts, and «مشاهده» renders the document', async ({ page }) => {
-  await signedIn(page)   // the editor, who holds `view` and `export_pdf`
-  await reads(page)
-  await visit(page, `/departments/${CODE}`, 'processList')
-  await page.locator('[data-r-prow]').first().waitFor()
-  const w = page.viewportSize()!.width
-
-  // The bar's own `⋯` above 760; below it the bar is gone and the title row's
-  // `⋯` holds this row among every other act. Both are exercised, because a
-  // dialog reachable at one width only is the defect the ⋯ exists to prevent.
-  await openReports(page, w <= 760 ? 'کارهای بیشتر' : 'نمایش‌ها')
-
-  // Both acts, on both cards: this session holds `view` and `export_pdf`, and
-  // the card asks for each at `dept:cooking/report:{id}`.
-  await expect(page.getByRole('button', { name: 'مشاهده' })).toHaveCount(2)
-  await expect(page.getByRole('button', { name: 'دریافت فایل' })).toHaveCount(2)
-
-  // «مشاهده» navigates. Nothing is downloaded and no build is fired: the URL
-  // changes and the document renders in place, which is the whole of the read
-  // path. The heading is `StepsApp`'s own (`export/steps/StepsApp.tsx:97`), so
-  // this asserts the DOCUMENT arrived and not merely the route.
-  await page.getByRole('button', { name: 'مشاهده' }).nth(1).click()
-  await expect(page).toHaveURL(new RegExp(`/departments/${CODE}/reports/steps$`))
-  await expect(page.getByRole('heading', { name: 'راهنمای گام‌به‌گام کار' })).toBeVisible()
-})
-
-test('the reports dialog — a reader without `export_pdf` is offered «مشاهده» and no file', async ({ page }) => {
-  // D25's whole point, on the screen: `view` without `export_pdf` reads the
-  // report and is not offered the file. The backend half — that the read
-  // response carries no artifact bytes even so — is
-  // `ui-backend/tests/test_reading_is_not_downloading.py`.
-  await signedIn(page, {
-    username: 'reader', displayName: 'خواننده', role: 'reader',
-    capabilities: ['view'], scopes: ['dept:cooking', 'dept:warehouse'],
-  })
-  await reads(page)
-  await visit(page, `/departments/${CODE}`, 'processListReader')
-  await page.locator('[data-r-prow]').first().waitFor()
-
-  await openReports(page, 'نمایش‌ها')
-  await expect(page.getByRole('button', { name: 'مشاهده' })).toHaveCount(2)
-  await expect(page.getByRole('button', { name: 'دریافت فایل' })).toHaveCount(0)
-
-  await page.getByRole('button', { name: 'مشاهده' }).nth(1).click()
-  await expect(page).toHaveURL(new RegExp(`/departments/${CODE}/reports/steps$`))
-  await expect(page.getByRole('heading', { name: 'راهنمای گام‌به‌گام کار' })).toBeVisible()
 })

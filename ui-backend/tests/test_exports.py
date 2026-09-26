@@ -494,7 +494,13 @@ def test_a_list_cannot_be_confused_with_its_concatenation():
 
 def test_cross_task_contract_constants():
     # Tasks 4 and 5 bind to both of these; a typo surfaces downstream only as a blank export
-    assert exports.REPORT_IDS == ("flowchart", "steps")
+    #
+    # As a SET: the ids are this test's business, their order is not. The tuple
+    # is ordered — it is the order of the download rows on the process list —
+    # and `test_reports_registry.py` is where that is pinned, with the owner's
+    # ruling beside it. Asserting it here as well would make a re-ordering of
+    # the menu fail a test about spelling.
+    assert set(exports.REPORT_IDS) == {"flowchart", "steps"}
     assert exports.DATA_SLOT == "__INJA_EXPORT_DATA__"
 
 

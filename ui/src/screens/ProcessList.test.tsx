@@ -65,14 +65,14 @@ const PROCS = [
   { id: 'cooking-002', department: 'cooking', name: 'فرآیند قدیمی', summary: 's3', parent: null, idef0: NO_ICOM, kpis: [], pending: [], nodes: [], tombstoned: true, superseded_by: ['cooking-050'] },
 ]
 
-/** The registry `useReportActions` reads, so its one menu row has something to
- *  be gated on — the same two reports every other screen's fixture uses. */
+/** The registry `useReportDownloads` reads — one menu row per entry, in this
+ *  order — the same two reports every other screen's fixture uses. */
 const REPORTS = {
   reports: [
-    { id: 'flowchart', name: 'سند فلوچارت دپارتمان', short: 'مستندات کامل',
-      description: 'هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان.' },
-    { id: 'steps', name: 'راهنمای گام‌به‌گام', short: 'راهنمای گام‌به‌گام',
+    { id: 'steps', name: 'دانلود گام‌به‌گام', short: 'راهنمای گام‌به‌گام',
       description: 'همان فرآیندها، بازنویسی‌شده به گام‌های شماره‌دار.' },
+    { id: 'flowchart', name: 'دانلود فلوچارتی', short: 'مستندات کامل',
+      description: 'هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان.' },
   ],
 }
 
@@ -489,46 +489,51 @@ describe('the row, the empty state and the mobile overflow', () => {
     expect(screen.queryByRole('menuitem', { name: 'ترتیب فرآیندها' })).not.toBeInTheDocument()
   })
 
-  it('offers an editor every act the bar holds, reports included', async () => {
+  it('offers an editor every act the bar holds, downloads included', async () => {
     // The other half of R5: the overflow REPLACES the bar at ≤760, so an act
     // the bar offers and the ⋯ drops is an act that stops existing on a phone.
     //
-    // **The reports dialog was exactly that** — owner ruling, *"in mobile
+    // **The two downloads were exactly that** — owner ruling, *"in mobile
     // version we don't have download buttomn in : menu.add it."* The bar's
-    // fourth control used to be `ExportMenu`; it is now one row, «نمایش‌های
-    // دپارتمان», that opens the same dialog the bar's own ⋯ opens.
+    // fourth control is the ⋯ that holds them, and it was the one act the title
+    // row's ⋯ never mirrored, so a person on a phone could not take a document
+    // out of the product at all.
+    //
+    // In the registry's order and under the registry's names (D26): these rows
+    // are `GET /api/reports` mapped one-to-one, so a re-wording there is the
+    // whole change and this assertion is where it lands.
     mock()
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking', EDITOR)
     fireEvent.click(await screen.findByRole('button', { name: 'کارهای بیشتر' }))
     expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual([
-      'ترتیب فرآیندها', 'اطلاعات دپارتمان', 'فرآیند جدید', 'نمایش‌های دپارتمان',
+      'ترتیب فرآیندها', 'اطلاعات دپارتمان', 'فرآیند جدید',
+      'دانلود گام‌به‌گام', 'دانلود فلوچارتی',
     ])
   })
 
-  it('drops «نمایش‌های دپارتمان» from the ⋯ for a caller who holds neither report act', async () => {
-    // The row is gated on the dialog it opens being non-empty (`reports.hasAny`)
-    // — the same rule the per-kind export rows followed. `READER` holds `view`
-    // and reaches every card's «مشاهده»; stripped of `view` AND `export_pdf` it
-    // reaches neither act on any report, so the dialog would draw nothing and
-    // the row that opens it is absent too.
+  it('offers no download in the ⋯ to somebody who may not take one', async () => {
+    // `reader_no_download` holds no `export_pdf`, and that role exists for
+    // exactly this: the affordance must never be drawn for them. `READER` here
+    // holds it, so the pairing is what proves the rows are gated rather than
+    // absent — a menu that never drew them would pass the second half alone.
     mock()
     const { unmount } = renderAt('/departments/:code', <ProcessList />, '/departments/cooking', READER)
     fireEvent.click(await screen.findByRole('button', { name: 'کارهای بیشتر' }))
-    expect(screen.getByRole('menuitem', { name: 'نمایش‌های دپارتمان' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'دانلود گام‌به‌گام' })).toBeInTheDocument()
     unmount()
 
-    const NO_REPORTS: SessionDescriptor = { ...READER, capabilities: ['comment'] }
-    renderAt('/departments/:code', <ProcessList />, '/departments/cooking', NO_REPORTS)
+    const NO_DOWNLOAD: SessionDescriptor = { ...READER, capabilities: ['view', 'comment'] }
+    renderAt('/departments/:code', <ProcessList />, '/departments/cooking', NO_DOWNLOAD)
     fireEvent.click(await screen.findByRole('button', { name: 'کارهای بیشتر' }))
-    expect(screen.queryByRole('menuitem', { name: 'نمایش‌های دپارتمان' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: /^دانلود/ })).toBeNull()
   })
 
-  it('gives a reader somewhere to reach the reports dialog, beside the centred button', async () => {
+  it('gives a reader who may download somewhere to do it, beside the centred button', async () => {
     // **Owner ruling** — *"in reader view with dowanload permission, it doesn't
     // show any download option.add ⋮menu in left of اطلاعات دپارتمان buttomn in
-    // center."* The panel carries its reports on the action bar and, at ≤760, in
+    // center."* The panel carries its downloads on the action bar and, at ≤760, in
     // the title row's ⋯. The reader surface has neither: it drew one centred
-    // «اطلاعات دپارتمان» and nothing else, so a reports act was a permission with
+    // «اطلاعات دپارتمان» and nothing else, so `export_pdf` was a permission with
     // no affordance anywhere on the screen.
     //
     // The surface has to be provided explicitly. `renderAt` sets the SESSION, and
@@ -539,26 +544,26 @@ describe('the row, the empty state and the mobile overflow', () => {
       <SurfaceProvider surface="reader"><ProcessList /></SurfaceProvider>,
       '/departments/cooking', READER)
     await screen.findByText('پرداخت هزینه')
-    fireEvent.click(screen.getByRole('button', { name: 'نمایش‌ها' }))
+    fireEvent.click(screen.getByRole('button', { name: 'خروجی‌ها' }))
     expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual([
-      'نمایش‌های دپارتمان',
+      'دانلود گام‌به‌گام', 'دانلود فلوچارتی',
     ])
     // R48 — the button beside it already says this, and one control says a thing
-    // once. The panel's ⋯ mirrors its whole bar; the reader's carries reports only.
+    // once. The panel's ⋯ mirrors its whole bar; the reader's carries downloads only.
     expect(screen.queryByRole('menuitem', { name: 'اطلاعات دپارتمان' })).toBeNull()
   })
 
-  it('draws no ⋮ at all for a reader who holds neither report act', async () => {
+  it('draws no ⋮ at all for a reader who may not download', async () => {
     // R5 — absent, not drawn and inert. The pairing with the test above is what
     // proves the trigger is gated rather than simply never built: an empty menu
     // button would satisfy neither half.
     mock()
-    const NO_REPORTS: SessionDescriptor = { ...READER, capabilities: ['comment'] }
+    const NO_DOWNLOAD: SessionDescriptor = { ...READER, capabilities: ['view', 'comment'] }
     renderAt('/departments/:code',
       <SurfaceProvider surface="reader"><ProcessList /></SurfaceProvider>,
-      '/departments/cooking', NO_REPORTS)
+      '/departments/cooking', NO_DOWNLOAD)
     await screen.findByText('پرداخت هزینه')
-    expect(screen.queryByRole('button', { name: 'نمایش‌ها' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'خروجی‌ها' })).toBeNull()
     // …and the control it stands beside is untouched.
     expect(screen.getByRole('button', { name: 'اطلاعات دپارتمان' })).toBeInTheDocument()
   })

@@ -11,7 +11,7 @@ const TITLE = 'خروجی مستندات کامل — سند رسمی'
  *
  * The fixtures here were `https://inja.example/exports/dining/steps-{fingerprint}.html`:
  * the publicly mounted folder D24 retired, and an `.html` document at that, which
- * `ReportsDialog` has not handed over since it started passing `pdf_url`. Two
+ * `ReportDownloads` has not handed over since it started passing `pdf_url`. Two
  * shapes the caller cannot produce, in the file that pins what the caller is
  * shown. One constant now, so there is one shape and it is the real one.
  */

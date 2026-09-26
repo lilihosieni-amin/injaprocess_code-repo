@@ -39,12 +39,7 @@ export function PrintDoc({ payload }: { payload: ExportPayload }) {
   const model = useMemo(() => new Map(payload.processes.map((x) => [x.id, linearize(x)])), [payload])
 
   return (
-    /* `steps-root` for the document typography this half used to inherit from
-       `body`, before that rule was scoped so the guide could also be read
-       inside the application — see `steps-base.css`. Not `steps-screen`: the
-       page paint and the 17px type are the screen's, and paper is white at
-       12.5pt. */
-    <div className={`steps-root ${p.printdoc}`}>
+    <div className={p.printdoc}>
       <section className={`${p.psec} ${p.pindex}`} data-testid="print-index">
         <h2>راهنمای گام‌به‌گام کار — {payload.dept.name}</h2>
         <div className={p.ptype}>فهرست کارها</div>

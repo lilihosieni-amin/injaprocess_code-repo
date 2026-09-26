@@ -47,9 +47,8 @@
      because the attribute form only flipped back the one child somebody
      remembered — every dialog that mounted in the same container stayed LTR and
      had to re-pin itself, which is the workaround `write/CreateProcessModal`,
-     `DeleteProcessConfirm`, `ReorderModal`, `ExportModal` and `ReportsDialog`
-     (the file `ExportMenu` carried this about before Task 8 deleted it) each
-     carry a comment about. (The attribute is not spelled out in this comment
+     `DeleteProcessConfirm`, `ReorderModal` and `ExportModal` each carry a
+     comment about. (The attribute is not spelled out in this comment
      for the reason `src/shell/crumbs.ts`'s docstring does not spell it either:
      guards.test.ts's island scan reads a comment exactly as it reads code, so a
      file that merely DESCRIBES an island would have to be declared as one.)

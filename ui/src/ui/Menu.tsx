@@ -21,9 +21,8 @@ export interface MenuItem { id: string; label: string; onSelect: () => void; ton
  *
  * (A third reason once stood here: `src/write/ExportMenu.tsx` drew an icon
  * trigger over two-line tiled items — a coloured icon tile, a bold label, a
- * muted hint. Task 8 deleted that file; the export rows it drew are now cards
- * in `src/write/ReportsDialog.tsx`'s dialog, not a menu popover at all, so the
- * divergence it stood for is gone rather than migrated.)
+ * muted hint. That file is gone; its rows are one-line items on `OverflowMenu`
+ * now, so the divergence it stood for is gone rather than migrated.)
  *
  * The lift is to give `Menu` an icon trigger and a hint line, and delete both
  * — not to restyle it from the outside, and not to widen it from inside a task

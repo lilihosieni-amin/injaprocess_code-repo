@@ -25,9 +25,16 @@ class Report:
     against it would silently start covering nothing.
 
     `short` exists beside `name` because the two say the same thing in different
-    places: `name` titles the card in the reports dialog, `short` is what a scope
-    chip reads («سالن (فقط راهنمای گام‌به‌گام)»). One string for both would make
-    either the card curt or the chip a paragraph.
+    places: `name` is the download row on the process list's ⋯ and the title of
+    the dialog that reports the build, `short` is what a scope chip reads
+    («سالن (فقط راهنمای گام‌به‌گام)»). One string for both would make either the
+    row curt or the chip a paragraph.
+
+    `description` has no consumer today — it was written for the reports dialog
+    the in-app viewer put these on, and that dialog is gone. It stays served
+    rather than deleted because it is the one sentence saying what each document
+    IS, and the next surface that needs one would otherwise write its own copy
+    here — which is the hand-synchronised list this registry exists to abolish.
     """
     id: str
     name: str
@@ -45,14 +52,14 @@ class Report:
 #: new id the moment it is here (`contains` is a shape test, not a list), so the
 #: permission UI grows a checkbox with no further change.
 REGISTRY: tuple[Report, ...] = (
-    Report(id="flowchart",
-           name="سند فلوچارت دپارتمان",
-           short="مستندات کامل",
-           description="هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان."),
     Report(id="steps",
-           name="راهنمای گام‌به‌گام",
+           name="دانلود گام‌به‌گام",
            short="راهنمای گام‌به‌گام",
            description="همان فرآیندها، بازنویسی‌شده به گام‌های شماره‌دار."),
+    Report(id="flowchart",
+           name="دانلود فلوچارتی",
+           short="مستندات کامل",
+           description="هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان."),
 )
 
 #: Derived, never restated — the ids and the wording cannot come apart.

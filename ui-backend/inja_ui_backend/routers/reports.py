@@ -35,7 +35,7 @@ router = APIRouter(prefix="/api/departments")
 
 @registry_router.get("")
 def list_reports(_user=Depends(require_session)):
-    """The registry, for the dialog that lists reports and the scope picker.
+    """The registry, for the process list's download rows and the scope picker.
 
     Behind the session and gated on nothing else: it is the catalogue of kinds,
     not of anybody's departments, and it names no content. What a given caller

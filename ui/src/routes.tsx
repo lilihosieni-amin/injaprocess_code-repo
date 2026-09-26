@@ -4,7 +4,6 @@ import { SignIn } from './screens/SignIn'
 import { Departments } from './screens/Departments'
 import { ProcessList } from './screens/ProcessList'
 import { Overview } from './screens/Overview'
-import { Report } from './screens/Report'
 import { Summary } from './screens/Summary'
 import { Steps } from './screens/Steps'
 import { FlowScreen } from './flow/FlowScreen'
@@ -28,11 +27,6 @@ export const appRoutes: RouteObject[] = [
       { path: '/departments', element: <Departments /> },
       { path: '/departments/:code', element: <ProcessList /> },
       { path: '/departments/:code/overview', element: <Overview /> },
-      // P2 — a department's report, read in the application (D25). Its own
-      // entry for the reason `/visibility` and `/users` have one: the catch-all
-      // below sends every unknown path to /departments, so a missing route is a
-      // silent redirect rather than a blank page.
-      { path: '/departments/:code/reports/:kind', element: <Report /> },
       { path: '/processes/:pid', element: <Summary /> },
       { path: '/processes/:pid/flow', element: <FlowScreen /> },
       // «گام‌به‌گام» — a route rather than the deliverable's `flowView: 'steps'`

@@ -839,13 +839,12 @@ function FlowEditor() {
             that needed 410 ellipsised into half a bar for nothing.
 
             `:empty` is the exact question — has this group any children to lay
-            out — and it is asked in CSS rather than in a `cards.length` the way
-            `useReportActions`'s `hasAny` asks it, because the two things that
-            fill this group are gated one level down inside their own
-            components. Written for
-            every width and both surfaces: a group with nothing in it is a box
-            holding space for controls this caller does not have, which is R5
-            one step out. */}
+            out — and it is asked in CSS rather than in a `reports.length` the
+            way `useReportDownloads` asks it, because the two things that fill
+            this group are gated one level down inside their own components.
+            Written for every width and both surfaces: a group with nothing in
+            it is a box holding space for controls this caller does not have,
+            which is R5 one step out. */}
         <div
           data-r-actions
           className={

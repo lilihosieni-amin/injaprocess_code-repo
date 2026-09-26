@@ -6,12 +6,6 @@ import { fileURLToPath } from 'node:url'
 // ui/export — this file lives at ui/export/flowchart/parity.test.tsx
 const EXPORT_DIR = dirname(dirname(fileURLToPath(import.meta.url)))
 
-/** The application's frozen colour file. Found rather than spelled: `_ds` holds
- *  exactly one design system and its directory is a uuid, so writing the uuid
- *  here would make a re-export of the system look like a deleted file. */
-const DS_DIR = join(dirname(EXPORT_DIR), 'design/_ds')
-const DS_COLORS = join(DS_DIR, readdirSync(DS_DIR)[0], 'tokens/colors.css')
-
 // Stylesheets are scanned too: a CSS file cannot define a React component, but it
 // is exactly where a restyled diagram would land — and a print stylesheet that
 // resizes .react-flow__node forks the rendering just as surely as a copied component.
@@ -129,107 +123,5 @@ describe('the exported document never changes the metrics the canvas inherits', 
   it('opens no global escape hatch out of the hashed module', () => {
     const mod = readFileSync(join(EXPORT_DIR, 'flowchart/document.module.css'), 'utf8')
     expect(mod).not.toMatch(/:global/)
-  })
-})
-
-/**
- * **Both documents are also read inside the application**, at
- * `/departments/{code}/reports/{kind}`, where each is one screen among many and
- * its stylesheet arrives in a lazy chunk that then stays for the session. A rule
- * on a selector no wrapper contains does not stop at the document: it repaints
- * every other screen, permanently, from the moment a reader opens a report.
- *
- * The scan above is the older and narrower half of this — it asks only about
- * *inherited typography*, because its question is what the flow canvas inherits,
- * and it reads only `doc-base.css`. Four things would sail through it and still
- * escape: `body{background}` (not inherited, but it propagates to the canvas and
- * paints the whole viewport), `*{box-sizing}` (not typography), and the bare
- * `::selection` and `a` rules both documents were ported with. So this asks the
- * other question — *may this rule leave the document at all* — of BOTH
- * stylesheets.
- *
- * `:root` is deliberately not on the list. Its custom properties do reach the
- * application and nine of them collide by name with the design system's, but
- * moving them onto a wrapper means moving them onto one that also contains
- * `FlowViewer` — which mounts OUTSIDE `.doc-root` by design, and is pinned so by
- * the test above — and that is a change to the export bundle's DOM with a
- * page-by-page PDF re-verification behind it. Recorded, parked, not smuggled in
- * under a guard — and the last test here is what makes parking it safe: while
- * every colliding name carries the same value in both files, the document's copy
- * winning is a no-op, and the day one of them is re-cut on its own the escape
- * stops being theoretical and this goes red instead of the application quietly
- * changing colour.
- *
- * `print/print.css` is the third stylesheet in the flowchart chunk
- * (`src/reports/FlowchartReport.tsx` imports it) and it is NOT scanned, which is
- * a second deliberate exclusion rather than an oversight. It does escape: `@page`,
- * `body{background:#fff}` and `*{print-color-adjust}` are all global, and all
- * three sit inside `@media print`. It is allowed to stand because the application
- * declares no print styles of its own — there is nothing for them to override,
- * and what they describe (white paper, colours printed as drawn, one page box)
- * is what any of these screens would want on paper anyway. It stops being true
- * the moment a screen grows its own `@media print` block, which is a change
- * whoever writes it will be looking at.
- */
-describe('neither document stylesheet can escape the document', () => {
-  /** A selector with nothing in front of it — one the application's own screens
-   *  match just as readily as the document does. `:root` excluded, above. */
-  const GLOBAL = /^(?:html|body|\*|::selection|a(?:[:[].*)?)$/
-  /** Declared on such a selector, these leave the document: `background` paints
-   *  the app's page, `box-sizing` resets the app's box model. */
-  const ESCAPES = ['background', 'background-color', 'box-sizing']
-  const SHEETS = ['flowchart/doc-base.css', 'steps/steps-base.css']
-
-  for (const sheet of SHEETS) {
-    it(`${sheet} declares none of them on a global selector`, () => {
-      const css = readFileSync(join(EXPORT_DIR, sheet), 'utf8')
-      const offenders = rules(css).flatMap((r) =>
-        r.selectors.filter((s) => GLOBAL.test(s)).flatMap((s) =>
-          // `::selection` and `a` are offences by their selector alone: whatever
-          // they declare, they declare it on every screen in the application.
-          /^(?:::selection|a(?:[:[].*)?)$/.test(s)
-            ? [`${s} { … }`]
-            : declaredProps(r.body)
-              .filter((prop) => ESCAPES.includes(prop))
-              .map((prop) => `${s} { ${prop} }`),
-        ),
-      )
-      expect(offenders).toEqual([])
-    })
-  }
-
-  /** The `:root` custom properties one stylesheet declares, name → value.
-   *  Hex is lower-cased and three-digit shorthand expanded, so `#fff` and
-   *  `#FFFFFF` are the one colour they both render as rather than two strings. */
-  function rootVars(css: string): Map<string, string> {
-    const out = new Map<string, string>()
-    for (const r of rules(css).filter((x) => x.selectors.includes(':root'))) {
-      for (const decl of r.body.split(';')) {
-        const at = decl.indexOf(':')
-        const name = decl.slice(0, at).trim()
-        if (at < 0 || !name.startsWith('--')) continue
-        out.set(name, decl.slice(at + 1).trim().toLowerCase()
-          .replace(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/, '#$1$1$2$2$3$3'))
-      }
-    }
-    return out
-  }
-
-  it('gives every name it shares with the design system the same value', () => {
-    const ds = rootVars(readFileSync(DS_COLORS, 'utf8'))
-    let shared = 0
-    const drift = SHEETS.flatMap((sheet) => {
-      const doc = rootVars(readFileSync(join(EXPORT_DIR, sheet), 'utf8'))
-      const both = [...doc].filter(([name]) => ds.has(name))
-      shared += both.length
-      return both
-        .filter(([name, value]) => ds.get(name) !== value)
-        .map(([name, value]) => `${sheet}: ${name} is ${value}, the app's is ${ds.get(name)}`)
-    })
-    // Without this the test passes just as happily on a mistyped path, an empty
-    // file or a renamed design system — which is the exact shape of a guard that
-    // stops guarding without anybody noticing.
-    expect(shared, 'no name collides at all — the design system was not read').toBeGreaterThan(0)
-    expect(drift).toEqual([])
   })
 })

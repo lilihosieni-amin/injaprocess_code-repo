@@ -1352,17 +1352,17 @@ async function stubs(page: Page): Promise<Stubs> {
 /**
  * The backend registry (D26), the two rows it really serves today. Session-wide
  * furniture like the session descriptor itself: `useReports()` fires on the
- * ScopePicker, the user list and the user detail screen (and, from Task 8/9 on,
- * the process list and the report screen), so `signedIn` answers it beside
+ * ScopePicker, the user list, the user detail screen and the process list
+ * (whose ⋯ draws one download row per entry), so `signedIn` answers it beside
  * `/api/auth/me` rather than leaving every spec that reaches one of those
  * screens to stub it by hand — the hand-synchronised list D26 exists to abolish.
  */
 const REPORTS = {
   reports: [
-    { id: 'flowchart', name: 'سند فلوچارت دپارتمان', short: 'مستندات کامل',
-      description: 'هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان.' },
-    { id: 'steps', name: 'راهنمای گام‌به‌گام', short: 'راهنمای گام‌به‌گام',
+    { id: 'steps', name: 'دانلود گام‌به‌گام', short: 'راهنمای گام‌به‌گام',
       description: 'همان فرآیندها، بازنویسی‌شده به گام‌های شماره‌دار.' },
+    { id: 'flowchart', name: 'دانلود فلوچارتی', short: 'مستندات کامل',
+      description: 'هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان.' },
   ],
 }
 

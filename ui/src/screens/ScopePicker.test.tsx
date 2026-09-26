@@ -17,10 +17,10 @@ const DEPTS = [
 /** The backend registry (D26), the two rows it really serves today. */
 const REPORTS = {
   reports: [
-    { id: 'flowchart', name: 'سند فلوچارت دپارتمان', short: 'مستندات کامل',
-      description: 'هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان.' },
-    { id: 'steps', name: 'راهنمای گام‌به‌گام', short: 'راهنمای گام‌به‌گام',
+    { id: 'steps', name: 'دانلود گام‌به‌گام', short: 'راهنمای گام‌به‌گام',
       description: 'همان فرآیندها، بازنویسی‌شده به گام‌های شماره‌دار.' },
+    { id: 'flowchart', name: 'دانلود فلوچارتی', short: 'مستندات کامل',
+      description: 'هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان.' },
   ],
 }
 

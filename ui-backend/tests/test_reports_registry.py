@@ -3,7 +3,7 @@ from inja_ui_backend.tests_helpers import signed_in_client
 
 
 def test_the_registry_is_the_only_list_of_kinds():
-    assert exports.REPORT_IDS == ("flowchart", "steps")
+    assert exports.REPORT_IDS == ("steps", "flowchart")
     assert not hasattr(exports, "EXPORT_KINDS"), \
         "EXPORT_KINDS is the hand-synchronised list D26 replaces"
 
@@ -17,13 +17,15 @@ def test_the_registry_is_served_to_the_frontend(data_root, tmp_path):
     client, _cfg = signed_in_client(data_root, tmp_path / "app.db")
     r = client.get("/api/reports")
     assert r.status_code == 200, r.text
+    # In the registry's order, which is the order of the download rows on the
+    # process list's ⋯ — the owner listed «دانلود گام‌به‌گام» first.
     assert r.json() == {"reports": [
-        {"id": "flowchart", "name": "سند فلوچارت دپارتمان",
-         "short": "مستندات کامل",
-         "description": "هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان."},
-        {"id": "steps", "name": "راهنمای گام‌به‌گام",
+        {"id": "steps", "name": "دانلود گام‌به‌گام",
          "short": "راهنمای گام‌به‌گام",
          "description": "همان فرآیندها، بازنویسی‌شده به گام‌های شماره‌دار."},
+        {"id": "flowchart", "name": "دانلود فلوچارتی",
+         "short": "مستندات کامل",
+         "description": "هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان."},
     ]}
 
 

@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
-import { useBuildReport, useReport, useReports } from './hooks'
+import { useBuildReport, useReports } from './hooks'
 import { createWrapper } from '../test/utils'
 
 afterEach(() => vi.restoreAllMocks())
 
 const REGISTRY = {
   reports: [
-    { id: 'flowchart', name: 'سند فلوچارت دپارتمان', short: 'مستندات کامل',
-      description: 'هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان.' },
-    { id: 'steps', name: 'راهنمای گام‌به‌گام', short: 'راهنمای گام‌به‌گام',
+    { id: 'steps', name: 'دانلود گام‌به‌گام', short: 'راهنمای گام‌به‌گام',
       description: 'همان فرآیندها، بازنویسی‌شده به گام‌های شماره‌دار.' },
+    { id: 'flowchart', name: 'دانلود فلوچارتی', short: 'مستندات کامل',
+      description: 'هر فرآیند در یک برگ، به ترتیب سازمان‌یافتهٔ دپارتمان.' },
   ],
 }
 
@@ -25,21 +25,6 @@ describe('useReports', () => {
 
     expect(fetchSpy).toHaveBeenCalledWith('/api/reports', expect.objectContaining({ credentials: 'include' }))
     expect(result.current.data?.reports).toEqual(REGISTRY.reports)
-  })
-})
-
-describe('useReport', () => {
-  it('reads one department report from GET /api/departments/{code}/reports/{kind}', async () => {
-    const payload = { dept: null, processes: [], generated_at: '2026-09-23T09:00:00Z' }
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify(payload),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }),
-    )
-    const { result } = renderHook(() => useReport('dining', 'steps'), { wrapper: createWrapper() })
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
-
-    expect(fetchSpy).toHaveBeenCalledWith('/api/departments/dining/reports/steps', expect.objectContaining({ credentials: 'include' }))
-    expect(result.current.data).toEqual(payload)
   })
 })
 

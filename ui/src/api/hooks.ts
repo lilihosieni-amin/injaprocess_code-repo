@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchJson } from './client'
-import type { Branch, Confirmation, Department, DepartmentOrder, ExportResult, FactBundle, FactsListResponse, Me, Overview, PendingItem, PolicyField, Process, ReportEntry, ReportPayload, VisibilityPolicy } from './types'
+import type { Branch, Confirmation, Department, DepartmentOrder, ExportResult, FactBundle, FactsListResponse, Me, Overview, PendingItem, PolicyField, Process, ReportEntry, VisibilityPolicy } from './types'
 
 export const useDepartments = (opts?: { enabled?: boolean }) =>
   useQuery({
@@ -326,8 +326,8 @@ export function useSetVisibilityField() {
 
 /** The report kinds this deployment serves (D26). One request for the whole
  *  session: the registry is a fixed artefact of the build, not per-caller data,
- *  and three surfaces read it (the reports dialog, the scope picker, the user
- *  lists). */
+ *  and three surfaces read it (the process list's download rows, the scope
+ *  picker, the user lists). */
 export const useReports = () =>
   useQuery({
     queryKey: ['reports'],
@@ -343,12 +343,6 @@ export function useReportNames(): Record<string, string> {
     [q.data],
   )
 }
-
-export const useReport = (code: string, kind: string) =>
-  useQuery({
-    queryKey: ['report', code, kind],
-    queryFn: () => fetchJson<ReportPayload>(`/api/departments/${code}/reports/${kind}`),
-  })
 
 export function useBuildReport(code: string) {
   // No invalidation: building a report reads the department, it changes nothing.

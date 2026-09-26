@@ -40,27 +40,9 @@
   --out-fg:#1F8A5B; --out-bg:#E4F6EC; --mech-fg:#4A25A9; --mech-bg:#F0E9FB;
   --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
 }
-/* Scoped to `.doc-root` (the wrapper this document already carries) so that the
- * same stylesheet can be loaded inside the application, where the report is one
- * screen among many, without repainting the rest of it. In the standalone
- * bundle nothing changes: `main.tsx` renders `Document`, whose outermost
- * element IS `.doc-root`, and `body` there has no other content — `FlowViewer`
- * is the one thing outside it, and the bundle's `src/index.css` gives it the
- * box-sizing reset the app's own canvas is measured with anyway.
- *
- * `min-height:100vh` is what the move costs and pays back. `--desk` used to be
- * `body`'s, and a background on `body` propagates to the canvas and paints the
- * whole viewport however short the content is; on a wrapper it paints only the
- * wrapper. A document with less in it than a screenful would have ended in
- * paper-white where it used to end in desk, so the wrapper is at least a
- * viewport tall. */
+*{box-sizing:border-box}
 html{scroll-behavior:smooth}
-body{margin:0}
-/* The wrapper's own rule comes before its reset on purpose: `parity.test.tsx`
- * reads "the rule that carries the document's typography" as the FIRST rule
- * whose selector list names `.doc-root`, and the reset names it too. */
-.doc-root{min-height:100vh;background:var(--desk);font-family:'Vazirmatn Variable','Vazirmatn',system-ui,sans-serif;color:var(--ink);line-height:1.75}
-.doc-root,.doc-root *{box-sizing:border-box}
-.doc-root ::selection{background:var(--coral);color:#fff}
-.doc-root a{color:var(--violet);text-decoration:none}
-.doc-root a:hover{color:var(--coral)}
+body{margin:0;background:var(--desk)}
+.doc-root{font-family:'Vazirmatn Variable','Vazirmatn',system-ui,sans-serif;color:var(--ink);line-height:1.75}
+::selection{background:var(--coral);color:#fff}
+a{color:var(--violet);text-decoration:none}a:hover{color:var(--coral)}
