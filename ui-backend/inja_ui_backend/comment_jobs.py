@@ -1,9 +1,11 @@
-"""Background work for comments: the D59 outbox drain and the D63 reconcile.
+"""Background work: the D59 outbox drain, the D63 reconcile, the git
+projection (D79) and the state backups (D82).
 
-Both run every 30 seconds on a daemon thread started by the app's lifespan
-(`app.py`), each on connections of their own — never the shared request
-connections `app.state.db` / `app.state.comments_db`, per `db.connect`'s
-invariant that only one thread may hold an explicit transaction on those.
+Both the comment tick and the projection run every 30 seconds on a daemon
+thread started by the app's lifespan (`app.py`), each on connections of their
+own — never the shared request connections `app.state.db` /
+`app.state.comments_db`, per `db.connect`'s invariant that only one thread may
+hold an explicit transaction on those.
 """
 from __future__ import annotations
 
@@ -14,7 +16,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import comment_rules, comments_db, db
+from . import backups, comment_rules, comments_db, db, projection
 from .store import audit
 
 log = logging.getLogger(__name__)
@@ -121,11 +123,16 @@ def tick(cfg) -> None:
 
 
 def loop(cfg, stop: threading.Event) -> None:
-    """Run `tick` immediately, then every `INTERVAL` seconds, until `stop` is set."""
+    """Every `INTERVAL` seconds, until `stop` is set: the comment tick, the git
+    projection and the backup check — each guarded, so one failing never stops
+    the others."""
+    jobs = (("comment tick", tick), ("git projection", projection.run),
+            ("state backup", backups.maybe_run))
     while True:
-        try:
-            tick(cfg)
-        except Exception:                       # keep the loop alive; log and retry
-            log.exception("comment tick failed")
+        for name, job in jobs:
+            try:
+                job(cfg)
+            except Exception:                   # keep the loop alive; log and retry
+                log.exception("%s failed", name)
         if stop.wait(INTERVAL):
             return

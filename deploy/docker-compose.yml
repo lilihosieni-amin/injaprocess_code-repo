@@ -172,12 +172,17 @@ services:
       # comments.db (D1/D5) — outside DATA_ROOT and outside app.db, shared with
       # control-bot on the ui-comments volume below.
       COMMENTS_DB: /comments/comments.db
+      # Twice-daily `.backup` copies of app.db and comments.db (addendum D82).
+      # On the host, NOT off-site: see docs/runbooks/05-operations.md.
+      BACKUP_DIR: /backups
     volumes:
       - /opt/inja/data-repo:/data
       # app.db — mounted ONLY here (ARD §16): the activity record must be
       # unreachable from the Telegram runtime by a mount boundary, not by
       # convention. NOT covered by git-push; see docs/runbooks/05-operations.md.
       - ui-state:/state
+      # copies of app.db — mounted ONLY here, exactly like ui-state (D5, D82)
+      - /opt/inja/backups:/backups
       # generated export documents — build artifacts, deliberately outside the
       # data-repo so they never appear in its working tree (D8)
       - ui-exports:/exports

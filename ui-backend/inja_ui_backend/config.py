@@ -41,6 +41,9 @@ class Settings:
     chromium_path: Optional[Path]
     git_author_name: str
     git_author_email: str
+    #: Where the twice-daily `.backup` copies of both SQLite files go (addendum
+    #: D82). Optional: unset — tests, a local run — means no backups.
+    backup_dir: Optional[Path]
 
 
 def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
@@ -97,6 +100,14 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         raise RuntimeError(
             "COMMENTS_DB must not be APP_DB: comments.db is mounted into control-bot"
             " and app.db must never be (D5).")
+    backup_dir = Path(env["BACKUP_DIR"]) if env.get("BACKUP_DIR") else None
+    if backup_dir is not None:
+        resolved_bak = backup_dir.resolve()
+        if resolved_bak == resolved_root or resolved_root in resolved_bak.parents:
+            raise RuntimeError(
+                f"BACKUP_DIR must not be inside DATA_ROOT: {resolved_bak} is inside"
+                f" {resolved_root}. A backup of app.db holds every password hash;"
+                " DATA_ROOT is readable by the pipeline runtime and gets pushed.")
     return Settings(
         data_root=data_root,
         schema_dir=schema_dir,
@@ -117,4 +128,5 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         chromium_path=Path(chromium) if chromium else None,
         git_author_name=env.get("GIT_AUTHOR_NAME", "ui-edit"),
         git_author_email=env.get("GIT_AUTHOR_EMAIL", "ui-edit@inja.local"),
+        backup_dir=backup_dir,
     )

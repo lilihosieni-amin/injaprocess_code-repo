@@ -145,6 +145,8 @@ services:
       # comments.db (D1/D5) — outside DATA_ROOT and outside app.db, shared with
       # control-bot on the local-ui-comments volume below.
       COMMENTS_DB: /comments/comments.db
+      # Twice-daily `.backup` copies of app.db and comments.db (addendum D82).
+      BACKUP_DIR: /backups
       # SCHEMA_DIR + UI_STATIC_DIR are baked into the image; the schemas dir is
       # overlaid with the live ../schemas volume below (no rebuild on schema edits).
       # UI edits git-commit into the mounted data-repo, which is owned by the host
@@ -173,6 +175,7 @@ services:
       # comments.db — shared with control-bot (D5), which reads it via the
       # engine `comments` CLI.
       - local-ui-comments:/comments
+      - local-ui-backups:/backups
 
 volumes:
   local-claude-credentials:
@@ -181,3 +184,5 @@ volumes:
   local-ui-state:
   # comments.db — mounted into ui-backend AND control-bot (D5); never app.db.
   local-ui-comments:
+  # app.db/comments.db backups — ui-backend only (D5, D82).
+  local-ui-backups:
