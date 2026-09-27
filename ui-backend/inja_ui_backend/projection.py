@@ -193,31 +193,46 @@ def _target_relpath(target: str) -> str:
     return f"departments/{target}/overview.json"
 
 
-def _head_fingerprint(cfg, head: str, target: str):
-    """`target`'s fingerprint AT `head` — never the live working tree.
+_FACT_FILES = ("records", "measurements", "rules", "notes")
+
+
+def _head_fact_entries(cfg, head: str) -> dict[str, dict]:
+    """Every fact entry at `head`, id -> entry, across the four kind files —
+    each read once per pass, not once per confirmed fact (fix review: 236
+    confirmed facts at today's size, 1,798 at nine departments, each
+    re-parsing all four aggregate files, made a single pass with HEAD moved
+    take 0.42s-24s under `_LOCK`)."""
+    out: dict[str, dict] = {}
+    for name in _FACT_FILES:
+        out.update(_entries_at(cfg, head, f"facts/{name}.json"))
+    return out
+
+
+def _head_fingerprint(cfg, target: str, *, doc_head: str, facts: dict[str, dict]):
+    """`target`'s fingerprint AT `doc_head` — never the live working tree.
 
     A writer (a chat edit, a pipeline run) saves the file and commits it as
     two separate steps; a pass that lands in between would see the new bytes
     before any commit names who made them, and credit the change to whatever
     unrelated commit happens to be newest instead (the reviewer's AAAA/BBBB
-    case). Reading at `head` instead means the fingerprint here always has a
-    real commit behind it. `None` when the target does not exist at `head`;
-    `_UNREADABLE` when it exists but its JSON cannot be parsed there — the
-    fact-file case already returns "not found" for that (`_entries_at`
-    swallows a parse error), which is fine: the aggregate never truly
-    disappears.
+    case). Reading at `doc_head` instead means the fingerprint here always
+    has a real commit behind it. `None` when the target does not exist at
+    `doc_head` (or, for a fact, is not in `facts`, already read once for the
+    whole pass by `_head_fact_entries`); `_UNREADABLE` when a document exists
+    but its JSON cannot be parsed there — the fact case cannot reach this: an
+    unparseable fact file already came back as "no entries" from
+    `_entries_at`, which swallows the parse error, so the aggregate never
+    truly disappears from this function's point of view.
 
-    ponytail: one `git show` subprocess per confirmed target whenever HEAD
-    moves. Fine at today's confirmation counts (tens, not thousands); batch
-    with `git cat-file --batch` if that count reaches the thousands.
+    ponytail: one `git show` subprocess per confirmed *process or department*
+    target whenever HEAD moves (facts are batched above, four reads for the
+    whole pass). Fine at today's non-fact confirmation counts (tens, not
+    thousands); batch with `git cat-file --batch` if that count reaches the
+    thousands.
     """
     if _FACT_ID.fullmatch(target):
-        for name in ("records", "measurements", "rules", "notes"):
-            entries = _entries_at(cfg, head, f"facts/{name}.json")
-            if target in entries:
-                return fact_fingerprint(entries[target])
-        return None
-    r = gitcommit._git(cfg, "show", f"{head}:{_target_relpath(target)}")
+        return fact_fingerprint(facts[target]) if target in facts else None
+    r = gitcommit._git(cfg, "show", f"{doc_head}:{_target_relpath(target)}")
     if r.returncode != 0:
         return None
     try:
@@ -226,12 +241,13 @@ def _head_fingerprint(cfg, head: str, target: str):
         return _UNREADABLE
 
 
-def _working_fingerprint(cfg, target: str):
+def _working_fingerprint(cfg, target: str, *, facts: dict[str, dict]):
     """`target`'s fingerprint in the live working tree — same shape as
     `_head_fingerprint`, compared against it to tell "already committed" from
-    "a writer still has this file open" (D80)."""
+    "a writer still has this file open" (D80). `facts` is the working tree's
+    own id -> entry map, read once for the whole pass exactly like the head
+    side's."""
     if _FACT_ID.fullmatch(target):
-        facts = {e.get("id"): e for e in facts_store.load_all(cfg.data_root)}
         return fact_fingerprint(facts[target]) if target in facts else None
     path = (storage.proc_path(cfg.data_root, target) if "-" in target
             else storage.overview_path(cfg.data_root, target))
@@ -250,9 +266,15 @@ def _judgeable(cfg, head: str, targets: list[str]) -> dict[str, str | None]:
     yet checked out here) is left out of the map entirely, and picked up on a
     later pass once the two agree (D80). `_UNREADABLE` never equals anything,
     including another `_UNREADABLE`, so an unparseable target is left out too
-    rather than silently judged "unchanged"."""
-    head_fp = {t: _head_fingerprint(cfg, head, t) for t in targets}
-    work_fp = {t: _working_fingerprint(cfg, t) for t in targets}
+    rather than silently judged "unchanged".
+
+    The two fact maps are each built once for every target in this call, not
+    once per fact target — see `_head_fact_entries`."""
+    head_facts = _head_fact_entries(cfg, head)
+    work_facts = {e.get("id"): e for e in facts_store.load_all(cfg.data_root)}
+    head_fp = {t: _head_fingerprint(cfg, t, doc_head=head, facts=head_facts)
+              for t in targets}
+    work_fp = {t: _working_fingerprint(cfg, t, facts=work_facts) for t in targets}
     return {t: head_fp[t] for t in targets
             if head_fp[t] is not _UNREADABLE and head_fp[t] == work_fp[t]}
 
@@ -271,6 +293,17 @@ def _staleness(cfg, conn, head: str, now_fp: dict[str, str | None], credit: dict
     so old staleness is not announced as new. A target missing from `now_fp`
     (confirmed after the map was built, or still mid-write) is left untouched
     this pass — neither announced, marked, nor cleared.
+
+    ponytail: measured at HEAD, not per commit — when two commits in one
+    batch both touch the target, the event is credited to the later, never to
+    both. A target `_judgeable` skips because its working tree still
+    disagrees with `head` is not judged at all this pass; it is picked up
+    again only on a later pass once HEAD has moved on and the two agree —
+    credited then to whatever commit that later pass's `credit` map names for
+    it (a fresh edit that landed since), or to `fallback`/`SYSTEM` when the
+    working copy was simply restored to match an unrelated commit that moved
+    HEAD in the meantime. Per-commit fingerprints would mean reading every
+    confirmed document out of every commit instead of once per pass.
     """
     rows = conn.execute(
         "SELECT target, fingerprint, emitted_for_sha FROM confirmations").fetchall()
