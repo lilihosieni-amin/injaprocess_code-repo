@@ -57,7 +57,7 @@ def list_users(request: Request, _=Depends(star)):
 
 @router.get("/users/{user_id}")
 def one_user(request: Request, user_id: int = Path(..., ge=1, le=2**62),
-             _=Depends(star),
+             _=Depends(star), user=Depends(require_session),
              day: int | None = Query(None, ge=0, le=1_000_000),
              kind: Literal["access", "content", "governance"] | None = None,
              outcome: Literal["ok", "fail"] | None = None,
@@ -67,7 +67,8 @@ def one_user(request: Request, user_id: int = Path(..., ge=1, le=2**62),
     if not found:
         raise HTTPException(status_code=404, detail=NOT_FOUND)
     body = activity.user_events(conn, found[0]["username"], day=day, kind=kind,
-                                outcome=outcome, offset=offset)
+                                outcome=outcome, offset=offset,
+                                servable=_servable(request, user))
     return {"user": found[0], **body,
             "sessions": activity.user_sessions(
                 conn, user_id, ttl=request.app.state.cfg.session_ttl,
@@ -85,14 +86,15 @@ def list_permissions(request: Request, _=Depends(star)):
 
 
 def _servable(request: Request, user) -> Callable[[str | None], bool]:
-    """The department report's own disclosure gate (review round 1): a
-    `process.viewed` row naming a process this caller may not be told exists —
-    unconfirmed or tombstoned, D22/D17 — must not surface its id, its name, or
-    even its count through the activity record. `Disclosure.may_serve` is the
-    same question `GET /api/processes/{pid}` answers for the document itself;
-    memoised per pid so a report with many rows for one process reads its file
-    once. A missing, unreadable or invalid document is never servable — the
-    activity record's own dubious row must not raise, only be excluded."""
+    """The activity record's own disclosure gate (review round 1, extended in
+    round 2 to `one_user`'s timeline): a `process.viewed` row naming a process
+    this caller may not be told exists — unconfirmed or tombstoned, D22/D17 —
+    must not surface its id, its name, or even its count through any activity
+    report. `Disclosure.may_serve` is the same question `GET /api/processes/
+    {pid}` answers for the document itself; memoised per pid so a report with
+    many rows for one process reads its file once. A missing, unreadable,
+    non-JSON or non-object document is never servable — the activity record's
+    own dubious row must not raise, only be excluded."""
     cfg = request.app.state.cfg
     shown = Disclosure(request.app.state.db, user)
     cache: dict[str, bool] = {}
@@ -103,7 +105,12 @@ def _servable(request: Request, user) -> Callable[[str | None], bool]:
         if pid not in cache:
             try:
                 doc = storage.read_json(storage.proc_path(cfg.data_root, pid))
-                cache[pid] = shown.may_serve(doc, storage.dept_of(pid), pid)
+                # `may_serve` calls `.get`/`.get` on `doc`, so anything valid
+                # JSON but not an object (`[]`, `null`, a bare string) would
+                # otherwise raise AttributeError instead of answering False
+                # (review round 2).
+                cache[pid] = isinstance(doc, dict) and shown.may_serve(
+                    doc, storage.dept_of(pid), pid)
             except (OSError, ValueError):
                 cache[pid] = False
         return cache[pid]

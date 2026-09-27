@@ -3,6 +3,17 @@
 and no access or governance events; a `*` holder sees both."""
 import json
 
+from inja_ui_backend import db
+
+
+def _uid(people, name):
+    conn = db.connect(people["editor"].app_db)
+    try:
+        return conn.execute("SELECT id FROM users WHERE display_name = ?",
+                            (name,)).fetchone()[0]
+    finally:
+        conn.close()
+
 
 def _add_unconfirmed_process(data_root, pid, name):
     """A second cooking process, never confirmed — servable to the Editor
@@ -85,3 +96,22 @@ def test_an_editors_own_report_still_counts_their_own_unconfirmed_view(
     rows = people["editor"].get("/api/activity/departments").json()
     cooking = next(r for r in rows if r["code"] == "cooking")
     assert cooking["topProcess"]["id"] == "cooking-002"
+
+
+def test_an_unconfirmed_processs_id_never_surfaces_on_an_admins_timeline(
+        people, data_root):
+    """Review round 2: the same D56 leak, on `GET /api/activity/users/{id}` —
+    an Admin reading the Editor's own timeline must not learn the id of a
+    process the Editor alone may see."""
+    _add_unconfirmed_process(data_root, "cooking-002", "SECRET-UNCONFIRMED")
+    people["editor"].get("/api/processes/cooking-002")
+    eid = _uid(people, "editor")
+
+    res = people["admin"].get(f"/api/activity/users/{eid}")
+    assert res.status_code == 200
+    targets = [r["target"] for r in res.json()["rows"]]
+    assert "cooking-002" not in targets
+    assert "cooking-002" not in res.text
+
+    own = people["editor"].get(f"/api/activity/users/{eid}")
+    assert "cooking-002" in [r["target"] for r in own.json()["rows"]]

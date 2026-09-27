@@ -6,12 +6,18 @@ credential — `audit.session_tag` instead) or a comment's text (D44).
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from pathlib import Path
 
 from .. import comment_rules, storage
 from ..scopes import dept_of as scope_dept
 from . import audit
+
+#: A process id, exactly `routers/departments.PROCESS_ID_RE` — duplicated
+#: rather than imported to keep this module free of `routers` (it is imported
+#: the other way already, and a cycle here would be a new one, not this one).
+_PROCESS_ID_RE = re.compile(r"^[a-z]+-[0-9]{3}$")
 
 #: D42 as amended by D76 — every event the record holds, by the one-user page's
 #: three kinds. `tests/test_activity_catalogue.py` pins it against the writers.
@@ -80,7 +86,8 @@ def users(conn: sqlite3.Connection, user_id: int | None = None) -> list[dict]:
 
 
 def user_events(conn: sqlite3.Connection, username: str, *, day: int | None,
-                kind: str | None, outcome: str | None, offset: int) -> dict:
+                kind: str | None, outcome: str | None, offset: int,
+                servable) -> dict:
     # ponytail: keyed on the CURRENT username (`actor = username`), not the
     # user id — `PATCH /api/users/{id}` can change a username (D57's phone
     # number). After a number change this page shows only events recorded
@@ -91,6 +98,15 @@ def user_events(conn: sqlite3.Connection, username: str, *, day: int | None,
     # rows. Upgrade path: follow former usernames too, each with the time
     # window it held them, read off `user.modified`'s `detail.changed.username`
     # rows in the governance record.
+    #
+    # `servable(pid)` is the caller's own disclosure gate (D56, review round
+    # 2): this timeline is an Admin's read of somebody else's history, and an
+    # Editor's `process.viewed` row for a process D22 withholds from that
+    # Admin must not hand its id over here either, even though the row's
+    # *action* and *kind* still stand — the event happened, only the process
+    # it names is not this caller's to be told about. Every other target
+    # (a department code, a fact id, a `CMT-n`, a `dept:x/report:k`) passes
+    # through unchanged; `_PROCESS_ID_RE` is what tells the two apart.
     where, args = ["actor = ?"], [username]
     if day is not None:
         start = day * 86400 - TEHRAN_OFFSET_S
@@ -114,10 +130,14 @@ def user_events(conn: sqlite3.Connection, username: str, *, day: int | None,
     days = {str(d): n for d, n in conn.execute(
         "SELECT (at + ?) / 86400, COUNT(*) FROM audit_events WHERE actor = ? GROUP BY 1",
         (TEHRAN_OFFSET_S, username))}
+
+    def visible_target(t: str | None) -> str | None:
+        return None if t and _PROCESS_ID_RE.match(t) and not servable(t) else t
+
     return {"total": total, "days": days, "rows": [
         {"id": r["id"], "at": r["at"], "action": r["action"],
          "kind": CATALOGUE.get(r["action"], "governance"),
-         "target": r["target"], "ip": r["ip"],
+         "target": visible_target(r["target"]), "ip": r["ip"],
          "userAgent": r["user_agent"], "outcome": r["outcome"],
          "session": audit.session_tag(r["session_id"])} for r in rows]}
 
