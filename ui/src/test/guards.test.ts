@@ -451,6 +451,10 @@ describe('F10 — RTL is structural', () => {
       'src/comments/MiniCard.tsx',
       // The panel inbox's anchor id and addressing commit (Panel L1829, L1929).
       'src/comments/PanelInbox.tsx',
+      // The activity screen's three mono latin columns: a comment ref
+      // (`CMT-12`, which bidi-reorders to «12-CMT» unpinned), a username and an
+      // IP — each a stored token that must keep the order it was written in.
+      'src/screens/Activity.tsx',
       // §8 — the flow canvas is laid out left-to-right and re-flips its own
       // nodes. Declared even though `src/flow/` is unpolicedso that this list is
       // the whole truth about the app rather than the whole truth about what is
