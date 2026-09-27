@@ -149,3 +149,12 @@ def test_the_writes_open_no_transaction(tmp_path):
     # between would either hit "cannot start a transaction within a
     # transaction" or have its own half-written work committed by this one.
     assert not any(sql.strip().lower().startswith("begin") for sql in statements)
+
+
+def test_reconfirming_clears_the_staleness_marker(tmp_path):
+    conn = db.connect(tmp_path / "app.db")
+    db.migrate(conn)
+    confirmations.set_confirmation(conn, target="cooking-001", fingerprint="a", by="x", at=1)
+    conn.execute("UPDATE confirmations SET emitted_for_sha = 'abc'")
+    confirmations.set_confirmation(conn, target="cooking-001", fingerprint="b", by="x", at=2)
+    assert conn.execute("SELECT emitted_for_sha FROM confirmations").fetchone()[0] is None

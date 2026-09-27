@@ -16,7 +16,8 @@ import re
 import threading
 import time
 
-from . import db, facts_store, gitcommit
+from . import db, facts_store, gitcommit, storage
+from .fingerprint import fact_fingerprint, fingerprint
 from .store import audit
 
 log = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ _PROC = re.compile(r"^departments/([a-z]+)/processes/([a-z]+-[0-9]{3})\.json$")
 _DEPT = re.compile(r"^departments/([a-z]+)/(?:overview|order)\.json$")
 _FACTS = re.compile(r"^facts/(?:records|measurements|rules|notes)\.json$")
 _RUN = re.compile(r"^runs/(facts/)?([a-z]+)/([0-9]{8}-[0-9]{6})/")
+_FACT_ID = re.compile(r"^F-[0-9]{5}$")
 #: Commit kinds the Telegram runtime makes (ARD §15 and the data-repo's own
 #: history since): each is the agent's, whoever the git author is — the server
 #: authors `chat-edit` and `ui-edit` under the same identity.
@@ -167,9 +169,65 @@ def _touched(cfg, c: dict) -> list[tuple[str, str, str, dict]]:
     return [(a, t, ch, ex) for (a, t), (ch, ex) in found.items()]
 
 
+def _current(cfg, targets: list[str]) -> dict[str, str | None]:
+    """Each confirmation target's fingerprint now — `None` when it is gone.
+
+    The kind test is `routers/confirmations._kind`'s, restated in two lines
+    rather than imported: a router is not something the background loop
+    depends on. Facts are loaded once for the lot, not once per target.
+    """
+    facts = None
+    out: dict[str, str | None] = {}
+    for t in targets:
+        if _FACT_ID.fullmatch(t):
+            if facts is None:
+                facts = {e.get("id"): e for e in facts_store.load_all(cfg.data_root)}
+            out[t] = fact_fingerprint(facts[t]) if t in facts else None
+        else:
+            path = (storage.proc_path(cfg.data_root, t) if "-" in t
+                    else storage.overview_path(cfg.data_root, t))
+            out[t] = fingerprint(storage.read_json(path)) if path.is_file() else None
+    return out
+
+
+def _staleness(cfg, conn, head: str, credit: dict, fallback: tuple, *,
+               announce: bool) -> int:
+    """Compare every confirmation with its target's content at HEAD (D80).
+
+    A new mismatch writes `confirmation.invalidated` once — credited to the
+    newest commit in the batch that touched the target — and marks the row with
+    `emitted_for_sha`. A match clears the mark silently: the content is back to
+    what was vouched for. With `announce=False` (seeding) mismatches are marked
+    and nothing is written, so old staleness is not announced as new.
+
+    ponytail: measured at HEAD, not per commit — when two commits land within
+    one pass the event is credited to the later. Per-commit fingerprints would
+    mean reading every confirmed document out of every commit.
+    """
+    rows = conn.execute(
+        "SELECT target, fingerprint, emitted_for_sha FROM confirmations").fetchall()
+    now_fp = _current(cfg, [r["target"] for r in rows])
+    n = 0
+    for r in rows:
+        stale = now_fp[r["target"]] != r["fingerprint"]
+        if stale and r["emitted_for_sha"] is None:
+            if announce:
+                sha, at, actor = credit.get(r["target"], fallback)
+                audit.record(conn, actor=actor, action="confirmation.invalidated",
+                             now=at, target=r["target"], detail={"commit": sha})
+                n += 1
+            conn.execute("UPDATE confirmations SET emitted_for_sha = ? WHERE target = ?",
+                         (head, r["target"]))
+        elif not stale and r["emitted_for_sha"] is not None:
+            conn.execute("UPDATE confirmations SET emitted_for_sha = NULL WHERE target = ?",
+                         (r["target"],))
+    return n
+
+
 def _seed(cfg, conn, head: str) -> None:
     conn.execute("BEGIN IMMEDIATE")
     try:
+        _staleness(cfg, conn, head, {}, (head, 0, SYSTEM), announce=False)
         _set_marker(conn, head)
         conn.execute("COMMIT")
     except BaseException:
@@ -203,25 +261,34 @@ def run(cfg) -> int:
                 _seed(cfg, conn, head)
                 return 1
             commits = _commits(cfg, marker, head)
-            rows = []
+            rows, credit = [], {}
             for c in commits:
                 actor = _actor(c)
-                if actor is None:
-                    continue
+                # ui-edit commits write no edit event, but ARE checked for
+                # staleness — credited to the person in their Acted-By trailer.
+                credited = actor or c["acted_by"] or f"git:{c['author']}"
                 for action, target, change, extra in _touched(cfg, c):
-                    rows.append((c["at"], actor, action, target,
-                                 {"change": change, "commit": c["sha"], **extra}))
+                    credit[target] = (c["sha"], c["at"], credited)
+                    if actor is not None:
+                        rows.append((c["at"], actor, action, target,
+                                     {"change": change, "commit": c["sha"], **extra}))
+            last = commits[-1] if commits else None
+            fallback = ((head, last["at"], _actor(last) or last["acted_by"]
+                         or f"git:{last['author']}") if last
+                        else (head, int(time.time()), SYSTEM))
             conn.execute("BEGIN IMMEDIATE")
             try:
                 for at, actor, action, target, detail in rows:
                     audit.record(conn, actor=actor, action=action, now=at,
                                  target=target, detail=detail)
+                n = len(rows) + _staleness(cfg, conn, head, credit, fallback,
+                                           announce=True)
                 _set_marker(conn, head)
                 conn.execute("COMMIT")
             except BaseException:
                 if conn.in_transaction:
                     conn.execute("ROLLBACK")
                 raise
-            return len(rows)
+            return n
         finally:
             conn.close()

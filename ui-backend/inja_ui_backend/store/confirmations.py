@@ -40,7 +40,8 @@ def set_confirmation(conn: sqlite3.Connection, *, target: str, fingerprint: str,
         " fingerprint = excluded.fingerprint,"
         " confirmed_by = excluded.confirmed_by,"
         " confirmed_at = excluded.confirmed_at,"
-        " data_repo_commit = excluded.data_repo_commit",
+        " data_repo_commit = excluded.data_repo_commit,"
+        " emitted_for_sha = NULL",
         (target, fingerprint, by, at, data_repo_commit))
 
 
