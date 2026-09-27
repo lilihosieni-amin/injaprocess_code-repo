@@ -12,6 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import comment_jobs, comments_db, db
 from .config import Settings, load_settings
+from .routers import activity as activity_router
 from .routers import auth as auth_router
 from .routers import comments as comments_router
 from .routers import confirmations as confirmations_router
@@ -173,6 +174,7 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
     comments_db.open_comments(cfg.comments_db).close()
     app.state.comments_db = db.PerThread(cfg.comments_db)
     app.include_router(auth_router.router)
+    app.include_router(activity_router.router)
     app.include_router(comments_router.router)
     app.include_router(confirmations_router.router)
     app.include_router(departments_router.router)

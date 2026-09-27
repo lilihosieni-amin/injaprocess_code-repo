@@ -1,0 +1,82 @@
+"""The activity reports (spec D44; addendum D83). GET only — the record has no
+write surface of any kind (D45)."""
+from __future__ import annotations
+
+import logging
+import time
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+
+from .. import comment_jobs, projection
+from ..access import NOT_FOUND, reachable_departments, requires
+from ..auth import require_session
+from ..store import activity
+
+router = APIRouter(prefix="/api/activity")
+log = logging.getLogger(__name__)
+
+
+def _fresh(request: Request) -> None:
+    """Drain the outbox and project git first, so a report never reads a stale
+    record (D59 rule 4, D79). A failure is logged, not answered: a report one
+    pass behind is better than none."""
+    cfg = request.app.state.cfg
+    try:
+        comment_jobs.drain(cfg.app_db, cfg.comments_db)
+    except Exception:
+        log.exception("outbox drain before a report failed")
+    try:
+        projection.run(cfg)
+    except Exception:
+        log.exception("git projection before a report failed")
+
+
+def star(request: Request, user=Depends(requires("view_audit", "*"))):
+    """Access and governance events name no department, so only a `*` holder
+    sees them (D44). A scoped holder is 404'd, as for any `*` surface (D56)."""
+    _fresh(request)
+    return user
+
+
+def reach(request: Request, user=Depends(require_session)) -> set[str] | None:
+    """The departments the caller's `view_audit` covers — `None` for every one.
+    No `view_audit` anywhere: the surface does not exist for them (404)."""
+    codes = reachable_departments(request.app.state.db, user, "view_audit")
+    if codes is not None and not codes:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    _fresh(request)
+    return codes
+
+
+@router.get("/users")
+def list_users(request: Request, _=Depends(star)):
+    return activity.users(request.app.state.db)
+
+
+@router.get("/users/{user_id}")
+def one_user(request: Request, user_id: int, _=Depends(star),
+             day: int | None = None,
+             kind: Literal["access", "content", "governance"] | None = None,
+             outcome: Literal["ok", "fail"] | None = None,
+             offset: int = Query(0, ge=0)):
+    conn = request.app.state.db
+    found = activity.users(conn, user_id)
+    if not found:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    body = activity.user_events(conn, found[0]["username"], day=day, kind=kind,
+                                outcome=outcome, offset=offset)
+    return {"user": found[0], **body,
+            "sessions": activity.user_sessions(
+                conn, user_id, ttl=request.app.state.cfg.session_ttl,
+                now=int(time.time()))}
+
+
+@router.get("/failures")
+def list_failures(request: Request, _=Depends(star)):
+    return activity.failures(request.app.state.db)
+
+
+@router.get("/permissions")
+def list_permissions(request: Request, _=Depends(star)):
+    return activity.permissions(request.app.state.db)
