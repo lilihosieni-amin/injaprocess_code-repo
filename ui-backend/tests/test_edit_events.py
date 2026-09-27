@@ -47,3 +47,13 @@ def test_overview_and_order_are_department_edits(data_root, tmp_path):
                       json={"order": ["cooking-001"]}).status_code == 200
     assert _changes(client, "department.edited") == [("cooking", "updated"),
                                                      ("cooking", "updated")]
+
+
+def test_a_write_that_changes_nothing_records_nothing(data_root, tmp_path):
+    """Final review M8: the second PUT of the same order makes no commit, and
+    a decision nobody made must not appear in the record."""
+    client = _client(data_root, tmp_path)
+    for _ in range(2):
+        assert client.put("/api/departments/cooking/order",
+                          json={"order": ["cooking-001"]}).status_code == 200
+    assert _changes(client, "department.edited") == [("cooking", "updated")]

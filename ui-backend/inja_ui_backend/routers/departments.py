@@ -209,8 +209,8 @@ async def put_overview(code: str, body: dict, request: Request,
     path = storage.overview_path(cfg.data_root, code)
     async with storage.file_lock(path):
         storage.write_json_atomic(path, body)
-        gitcommit.commit(cfg, [path], code, "update overview", actor=user["username"])
-        record_edit(request, user, "department.edited", code, "updated")
+        if gitcommit.commit(cfg, [path], code, "update overview", actor=user["username"]):
+            record_edit(request, user, "department.edited", code, "updated")
     return body
 
 
@@ -247,9 +247,12 @@ async def put_order(code: str, body: dict, request: Request,
                 logger.warning("%s: could not run the order CLI: %s", code, e)
                 status, detail = 500, f"the order CLI could not be run: {e}"
             raise HTTPException(status_code=status, detail=detail)
-        gitcommit.commit(cfg, [path], code, "update process order",
-                         actor=user["username"])
-        record_edit(request, user, "department.edited", code, "updated")
+        # Only when a commit was made: re-sending the order already stored
+        # changes nothing, and a decision nobody made must not appear in the
+        # record (D78).
+        if gitcommit.commit(cfg, [path], code, "update process order",
+                            actor=user["username"]):
+            record_edit(request, user, "department.edited", code, "updated")
     return {"order": sequence}
 
 

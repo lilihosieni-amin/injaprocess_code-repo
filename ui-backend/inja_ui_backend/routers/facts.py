@@ -1059,8 +1059,8 @@ async def resolve_fact(fid: str, body: ResolveFactBody, request: Request,
         except engine.EngineError as e:
             raise HTTPException(status_code=422, detail=e.message)
         engine.finish_facts_run(run)
-        gitcommit.commit(cfg, [cfg.data_root / "facts", run], fid,
-                         f"facts resolve {body.field}", actor=user["username"])
-        record_edit(request, user, "fact.edited", fid, "updated",
-                    department=facts_store.first_department(entry))
+        if gitcommit.commit(cfg, [cfg.data_root / "facts", run], fid,
+                            f"facts resolve {body.field}", actor=user["username"]):
+            record_edit(request, user, "fact.edited", fid, "updated",
+                        department=facts_store.first_department(entry))
     return _bundle(request, user, fid)
