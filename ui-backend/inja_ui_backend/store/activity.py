@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from pathlib import Path
 
+from .. import comment_rules, storage
+from ..scopes import dept_of as scope_dept
 from . import audit
 
 #: D42 as amended by D76 — every event the record holds, by the one-user page's
@@ -180,3 +183,90 @@ def permissions(conn: sqlite3.Connection) -> list[dict]:
                     "action": a, "subject": names.get(r["target"], r["target"]),
                     "before": before, "after": after})
     return out
+
+
+_VIEWS = ("department.viewed", "process.viewed")
+
+
+def _target_department(action: str, target: str | None) -> str | None:
+    """The department a view or download row belongs to, from its `target`
+    alone — a department code for `department.viewed`, a process id (resolved
+    through `storage.dept_of`) for `process.viewed`, and a `dept:{code}/report:
+    {kind}` scope (resolved through `scopes.dept_of`) for a download."""
+    if not target:
+        return None
+    if action == "report.downloaded":
+        return scope_dept(target)
+    return storage.dept_of(target) if action == "process.viewed" else target
+
+
+def departments(conn: sqlite3.Connection, root: Path,
+                codes: set[str] | None) -> list[dict]:
+    """The board's activity report (D83): one row per department the caller
+    reaches, registry order, with its readership and its most-viewed process."""
+    reg = storage.read_json(storage.registry_path(root))["departments"]
+    stats = {d["code"]: {"code": d["code"], "name": d.get("name", d["code"]),
+                         "readers": set(), "views": 0, "downloads": 0,
+                         "top": {}, "lastViewed": None}
+             for d in reg if codes is None or d["code"] in codes}
+    for r in conn.execute(
+            "SELECT action, target, actor, COUNT(*) AS n, MAX(at) AS last"
+            " FROM audit_events WHERE action IN (?, ?, 'report.downloaded')"
+            " GROUP BY action, target, actor", _VIEWS):
+        s = stats.get(_target_department(r["action"], r["target"]))
+        if s is None:
+            continue
+        if r["action"] == "report.downloaded":
+            s["downloads"] += r["n"]
+            continue
+        s["views"] += r["n"]
+        s["readers"].add(r["actor"])
+        s["lastViewed"] = max(s["lastViewed"] or 0, r["last"])
+        if r["action"] == "process.viewed":
+            s["top"][r["target"]] = s["top"].get(r["target"], 0) + r["n"]
+    out = []
+    for s in stats.values():
+        top = max(s["top"], key=s["top"].get) if s["top"] else None
+        path = storage.proc_path(root, top) if top else None
+        name = (storage.read_json(path).get("name") or top) if path and path.is_file() else top
+        out.append({"code": s["code"], "name": s["name"], "readers": len(s["readers"]),
+                    "views": s["views"], "downloads": s["downloads"],
+                    "topProcess": {"id": top, "name": name} if top else None,
+                    "lastViewed": s["lastViewed"]})
+    return out
+
+
+def comments(conn: sqlite3.Connection, cc: sqlite3.Connection,
+             codes: set[str] | None) -> list[dict]:
+    """Where each comment sits — metadata only, never its text (D44)."""
+    names = {r["id"]: r["display_name"]
+             for r in conn.execute("SELECT id, display_name FROM users")}
+    rows = cc.execute("""
+        SELECT c.id, c.department, c.author_name, c.state, c.stage, c.approver_id,
+          (SELECT MAX(e.at) FROM comment_events e WHERE e.comment_id = c.id) AS moved
+        FROM comments c ORDER BY c.id DESC""").fetchall()
+    return [{"ref": comment_rules.cmt(r["id"]), "department": r["department"],
+             "author": r["author_name"], "state": r["state"], "stage": r["stage"],
+             "holder": names.get(r["approver_id"]) if r["stage"] == "reader" else None,
+             "waitingSince": r["moved"] if r["state"] in ("awaiting", "approved") else None}
+            for r in rows if codes is None or r["department"] in codes]
+
+
+def summary(conn: sqlite3.Connection, cc: sqlite3.Connection, root: Path,
+            codes: set[str] | None) -> dict:
+    """The report's headline numbers (D83). `activeUsers` and `failedSignIns`
+    name no department, so — like the access/governance tabs — they show only
+    to a `*` holder; a scoped caller gets `None` rather than a number that
+    would silently answer a question about accounts outside their scope."""
+    star = codes is None
+    return {
+        "activeUsers": (conn.execute("SELECT COUNT(*) FROM users"
+                                     " WHERE disabled_at IS NULL").fetchone()[0]
+                        if star else None),
+        "views": sum(d["views"] for d in departments(conn, root, codes)),
+        "failedSignIns": (conn.execute(
+            f"SELECT COUNT(*) FROM audit_events WHERE action IN ({_in(_SIGN_IN_FAILURES)})",
+            _SIGN_IN_FAILURES).fetchone()[0] if star else None),
+        "commentsAwaiting": sum(1 for c in comments(conn, cc, codes)
+                                if c["state"] == "awaiting"),
+    }

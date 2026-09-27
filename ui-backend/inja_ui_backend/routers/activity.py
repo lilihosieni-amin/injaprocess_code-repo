@@ -81,3 +81,20 @@ def list_failures(request: Request, _=Depends(star)):
 @router.get("/permissions")
 def list_permissions(request: Request, _=Depends(star)):
     return activity.permissions(request.app.state.db)
+
+
+@router.get("/departments")
+def list_departments(request: Request, codes=Depends(reach)):
+    return activity.departments(request.app.state.db,
+                                request.app.state.cfg.data_root, codes)
+
+
+@router.get("/comments")
+def list_comments(request: Request, codes=Depends(reach)):
+    return activity.comments(request.app.state.db, request.app.state.comments_db, codes)
+
+
+@router.get("/summary")
+def get_summary(request: Request, codes=Depends(reach)):
+    return activity.summary(request.app.state.db, request.app.state.comments_db,
+                            request.app.state.cfg.data_root, codes)
