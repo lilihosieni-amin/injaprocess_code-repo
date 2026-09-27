@@ -114,8 +114,11 @@ def _prepare_exports(cfg: Settings) -> Settings:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    """Drain the CLI's outbox and reconcile stuck comments every 30 seconds
-    (`comment_jobs.loop`), on a daemon thread of its own connections.
+    """Run the background jobs every 30 seconds (`comment_jobs.loop`), on a
+    daemon thread of its own connections: drain the CLI's outbox, reconcile
+    stuck comments, project the data-repo's git history into the activity
+    record (`projection.run`, D79) and take the twice-daily state backups
+    (`backups.maybe_run`, D82).
 
     Reads `app.state.cfg` rather than closing over a `cfg` passed to
     `create_app` directly: `_prepare_exports` below only finishes preparing it

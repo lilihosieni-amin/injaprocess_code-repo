@@ -17,7 +17,8 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 #: The git-push crontab's hours (`deploy/git-push/crontab`: `0 11,23 * * *`),
-#: read in the container's local time as busybox crond reads them.
+#: read in the container's local time as busybox crond reads them — UTC, since
+#: no container sets `TZ`: 11:00/23:00 UTC is 14:30/02:30 in Tehran.
 HOURS = (11, 23)
 KEEP = 14
 
@@ -34,15 +35,20 @@ def slot(now: float) -> str:
 def _copy(src: Path, dst: Path) -> None:
     """`.backup`, not a file copy: both files are in WAL mode, and a copy taken
     mid-write can be torn. Written beside the target and renamed, so a crash
-    never leaves a file that looks finished."""
+    never leaves a file that looks finished.
+
+    The `.tmp` is created `0600` before sqlite opens it — app.db is a file of
+    password hashes, and a crash mid-copy must not leave a world-readable one
+    behind (final review M2); `maybe_run` sweeps any such leftover."""
     tmp = dst.with_suffix(".tmp")
+    os.close(os.open(tmp, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600))
+    os.chmod(tmp, 0o600)                 # a leftover from before keeps its old mode
     s, d = sqlite3.connect(str(src)), sqlite3.connect(str(tmp))
     try:
         s.backup(d)
     finally:
         d.close()
         s.close()
-    os.chmod(tmp, 0o600)                 # app.db is a file of password hashes
     os.replace(tmp, dst)
 
 
@@ -63,5 +69,7 @@ def maybe_run(cfg, now: float | None = None) -> bool:
     for name in ("app", "comments"):
         for old in sorted(out.glob(f"{name}-*.db"))[:-KEEP]:
             old.unlink()
+    for torn in out.glob("*.tmp"):      # a copy a crash cut short (`_copy`)
+        torn.unlink()
     log.info("state backup %s written to %s", s, out)
     return True

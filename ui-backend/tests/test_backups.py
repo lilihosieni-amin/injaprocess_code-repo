@@ -65,6 +65,31 @@ def test_rotation_keeps_the_newest_fourteen_of_each(cfg):
         assert len(kept) == backups.KEEP and kept[-1] == f"{name}-20260927-1100.db"
 
 
+def test_the_temporary_copy_is_owner_only_from_its_first_byte(cfg, monkeypatch):
+    """Final review M2: a crash mid-copy must not leave a world-readable copy
+    of app.db — so the `.tmp` is already 0600 when sqlite opens it."""
+    cfg.backup_dir.mkdir()
+    modes = []
+    real = sqlite3.connect
+
+    def spy(path, *a, **k):
+        if str(path).endswith(".tmp"):
+            modes.append(oct(os.stat(path).st_mode & 0o777))
+        return real(path, *a, **k)
+
+    monkeypatch.setattr(backups.sqlite3, "connect", spy)
+    backups.maybe_run(cfg, now=_at("2026-09-27 12:30"))
+    assert modes == ["0o600", "0o600"]
+
+
+def test_rotation_sweeps_a_torn_temporary_copy(cfg):
+    cfg.backup_dir.mkdir()
+    torn = cfg.backup_dir / "app-20260926-2300.tmp"
+    torn.write_bytes(b"half a database")
+    backups.maybe_run(cfg, now=_at("2026-09-27 12:30"))
+    assert list(cfg.backup_dir.glob("*.tmp")) == []
+
+
 def test_no_backup_dir_means_no_backups(cfg):
     assert backups.maybe_run(dataclasses.replace(cfg, backup_dir=None)) is False
 
