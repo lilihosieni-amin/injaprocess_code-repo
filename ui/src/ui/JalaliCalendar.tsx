@@ -32,13 +32,18 @@ export function JalaliCalendar({ days, value, onPick }: {
   return (
     <div data-cal className="w-cal">
       <div className="flex items-center justify-between mb-s5">
-        {/* next month sits on the LEFT in RTL — Pager's rule */}
-        <button type="button" aria-label="ماه بعد" onClick={() => setAnchor(first + length)}>
-          <Icon name="chevronNext" stroke={2.6} className="w-chevron h-chevron" />
-        </button>
-        <span className="text-fs-sm font-bold text-ink">{`${MONTHS[m - 1]} ${toFa(y)}`}</span>
+        {/* Pager's rule (Pager.tsx L29-47): the FIRST button in the DOM renders
+            on the RIGHT in RTL, and «قبلی» is first — pointing right, towards
+            where the previous item lies. The design agrees byte for byte
+            (Inja Panel.dc.html L2374-2391): `aCalPrev` first with
+            `M9 6l6 6-6 6` (`chevronPrev`), `aCalNext` second with
+            `M15 6l-6 6 6 6` (`chevronNext`). */}
         <button type="button" aria-label="ماه قبل" onClick={() => setAnchor(first - 1)}>
           <Icon name="chevronPrev" stroke={2.6} className="w-chevron h-chevron" />
+        </button>
+        <span className="text-fs-sm font-bold text-ink">{`${MONTHS[m - 1]} ${toFa(y)}`}</span>
+        <button type="button" aria-label="ماه بعد" onClick={() => setAnchor(first + length)}>
+          <Icon name="chevronNext" stroke={2.6} className="w-chevron h-chevron" />
         </button>
       </div>
       <div className="grid grid-cols-7 gap-s1 text-center">

@@ -99,19 +99,15 @@ export function panelCrumbs(pathname: string, deptName: (code: string) => string
   }
 
   /*
-   * «گزارش فعالیت کاربران» is a root screen of its own — reached from
-   * `adminItems` beside «دپارتمان‌ها» rather than nested under it (D83) — so its
-   * own list carries a single crumb with no way back, exactly as `/departments`
-   * does, and only its one-user detail gets a trail. Handled here, ahead of the
-   * generic FLAT fallback, because that fallback always seeds «دپارتمان‌ها» —
-   * right for `/users`, `/visibility` and `/facts`, wrong for a screen that is
-   * not one of their children.
+   * `/activity/users/{id}` — the one-user detail, the same shape as
+   * `/users/{id}` above. `/activity` itself is NOT handled here: owner ruling
+   * R41 makes every administration screen a two-crumb trail seeded with
+   * «دپارتمان‌ها», so a caller always has «بازگشت» — and the bare list falls
+   * through to the generic FLAT fallback below like `/users`, `/visibility`
+   * and `/profile` do, rather than a special case here.
    */
-  if (parts[0] === 'activity') {
-    if (parts[1] === 'users' && parts[2] !== undefined) {
-      return [{ label: FLAT.activity, to: '/activity' }, { label: 'تاریخچهٔ فعالیت' }]
-    }
-    return [{ label: FLAT.activity }]
+  if (parts[0] === 'activity' && parts[1] === 'users' && parts[2] !== undefined) {
+    return [{ label: FLAT.activity, to: '/activity' }, { label: 'تاریخچهٔ فعالیت' }]
   }
 
   /*

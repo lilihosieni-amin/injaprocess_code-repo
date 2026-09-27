@@ -24,4 +24,36 @@ describe('JalaliCalendar', () => {
       <JalaliCalendar days={{ [String(MEHR_1)]: 1 }} value={null} onPick={() => {}} />)
     expect(container.querySelectorAll('[data-cal-blank]').length).toBe(4)
   })
+
+  it('points its two chevrons Pager’s way, and never inward', () => {
+    // Pager's rule (Pager.tsx L29-47, pinned for Pager itself in
+    // src/ui/table.test.tsx): the FIRST button in the DOM renders on the RIGHT
+    // in RTL, and «قبلی» is first, pointing right at where the previous item
+    // lies. The design draws this calendar the same way (Inja Panel.dc.html
+    // L2374-2391): `aCalPrev` first with `M9 6l6 6-6 6`, `aCalNext` second with
+    // `M15 6l-6 6 6 6` — the same two `d`s Pager's own chevrons carry.
+    const { container } = render(
+      <JalaliCalendar days={{ [String(MEHR_1)]: 1 }} value={null} onPick={() => {}} />)
+    const d = (name: string) =>
+      screen.getByRole('button', { name }).querySelector('path')!.getAttribute('d')
+    expect(d('ماه قبل')).toBe('M9 6l6 6-6 6')
+    expect(d('ماه بعد')).toBe('M15 6l-6 6 6 6')
+    // A pairing, not two independent literals: both lines above would still
+    // pass if the component drew one glyph twice and the labels traded DOM
+    // positions instead.
+    expect(
+      Array.from(container.querySelectorAll('[aria-label]')).map((b) => b.getAttribute('aria-label')),
+    ).toEqual(['ماه قبل', 'ماه بعد'])
+    expect(d('ماه قبل')).not.toBe(d('ماه بعد'))
+  })
+
+  it('moves a month at a time, backward and forward', async () => {
+    render(<JalaliCalendar days={{ [String(MEHR_1)]: 1 }} value={null} onPick={() => {}} />)
+    expect(screen.getByText('مهر ۱۴۰۵')).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: 'ماه قبل' }))
+    expect(screen.getByText('شهریور ۱۴۰۵')).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: 'ماه بعد' }))
+    await userEvent.click(screen.getByRole('button', { name: 'ماه بعد' }))
+    expect(screen.getByText('آبان ۱۴۰۵')).toBeTruthy()
+  })
 })

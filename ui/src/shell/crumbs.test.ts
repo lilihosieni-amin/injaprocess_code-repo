@@ -80,10 +80,16 @@ describe('panelCrumbs', () => {
       { label: 'دپارتمان‌ها', to: '/departments' },
       { label: 'پروفایل و گذرواژه' },
     ])
+    // P3/D83 — the same ruling, on the fourth administration screen: a bare
+    // two-crumb trail like `/users`, `/visibility` and `/profile`, so
+    // `PanelShell` draws «بازگشت» here too.
+    expect(panelCrumbs('/activity', name)).toEqual([
+      { label: 'دپارتمان‌ها', to: '/departments' },
+      { label: 'گزارش فعالیت کاربران' },
+    ])
   })
 
   it('names the activity screens', () => {
-    expect(panelCrumbs('/activity', name)).toEqual([{ label: 'گزارش فعالیت کاربران' }])
     expect(panelCrumbs('/activity/users/7', name)).toEqual([
       { label: 'گزارش فعالیت کاربران', to: '/activity' }, { label: 'تاریخچهٔ فعالیت' }])
   })
@@ -103,7 +109,7 @@ describe('panelCrumbs', () => {
       '/departments/dining', '/departments/dining/overview',
       '/processes/dining-003', '/processes/dining-003/flow',
       '/users', '/users/09120000000', '/visibility', '/profile', '/facts', '/comments',
-      '/activity/users/7',
+      '/activity', '/activity/users/7',
     ]) {
       const trail = panelCrumbs(path, name)
       expect(trail.length, path).toBeGreaterThan(1)
