@@ -157,6 +157,38 @@ def test_a_merge_projects_its_commits_once_and_itself_never(cfg, data_root):
     assert len(_rows(cfg, "process.edited")) == 1
 
 
+def test_a_commit_landing_between_head_read_and_log_is_not_duplicated(cfg, data_root, monkeypatch):
+    projection.run(cfg)
+    _rename(data_root, "cooking-001", "الف")
+    sha_a = _commit(data_root, "chat-edit(cooking-001): a")
+    monkeypatch.setattr(projection.gitcommit, "head", lambda cfg: sha_a)
+    assert projection.run(cfg) == 1
+    assert _rows(cfg, "process.edited") == [
+        ("agent:control-bot", "cooking-001", {"change": "updated", "commit": sha_a})]
+    assert _marker(cfg) == sha_a
+
+    monkeypatch.undo()
+    _rename(data_root, "cooking-001", "ب")
+    sha_b = _commit(data_root, "chat-edit(cooking-001): b")
+    assert projection.run(cfg) == 1
+    rows = _rows(cfg, "process.edited")
+    assert [d["commit"] for _, _, d in rows] == [sha_a, sha_b]
+
+
+def test_a_pipeline_commit_names_the_newest_matching_run_not_leftovers(cfg, data_root):
+    projection.run(cfg)
+    for dept, stamp in [("cashier", "20260101-000000"), ("chat", "20260101-000000"),
+                        ("cooking", "20260927-101500"), ("cooking", "20260927-111500")]:
+        run = data_root / "runs" / dept / stamp
+        run.mkdir(parents=True)
+        (run / ("x.json" if dept == "chat" else "meta.json")).write_text(
+            "{}", encoding="utf-8")
+    _rename(data_root, "cooking-001", "از جلسه")
+    _commit(data_root, "pipeline(cooking): 1 processes from 1 transcripts")
+    projection.run(cfg)
+    assert _rows(cfg, "process.edited")[0][0] == "run:cooking/20260927-111500"
+
+
 def test_a_rewritten_history_is_recorded_and_reseeded(cfg, data_root):
     projection.run(cfg)
     conn = db.connect(cfg.app_db)

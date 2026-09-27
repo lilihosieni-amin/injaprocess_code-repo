@@ -49,12 +49,19 @@ def _set_marker(conn, sha: str) -> None:
                  " ON CONFLICT(id) DO UPDATE SET sha = excluded.sha", (sha,))
 
 
-def _commits(cfg, since: str) -> list[dict]:
-    """Every non-merge commit after `since`, oldest first. `--no-merges` walks
-    the commits a merge brings in, each once, and never the merge itself, whose
-    diff against its first parent would count them twice."""
+def _commits(cfg, since: str, head: str) -> list[dict]:
+    """Every non-merge commit in `(since, head]`, oldest first. `--no-merges`
+    walks the commits a merge brings in, each once, and never the merge
+    itself, whose diff against its first parent would count them twice.
+
+    Bounded by `head` — the sha `run()` already read and will set the marker
+    to — and never by the live ref `HEAD`. The data-repo is written by other
+    containers; walking `HEAD` here would pick up a commit that lands after
+    `run()` read it, project its events, and then leave the marker at the
+    older `head`, so the next pass projects that same commit again — a
+    permanent duplicate, and the record is append-only (D45)."""
     r = gitcommit._git(cfg, "log", "--no-merges", "--reverse", "--no-renames",
-                       "--name-status", f"--format={_FMT}", f"{since}..HEAD")
+                       "--name-status", f"--format={_FMT}", f"{since}..{head}")
     if r.returncode != 0:
         raise RuntimeError(f"git log failed: {(r.stderr or r.stdout).strip()}")
     out = []
@@ -72,6 +79,10 @@ def _kind(subject: str) -> str:
     return re.split(r"[(:]", subject, maxsplit=1)[0].strip()
 
 
+#: `pipeline(cooking): ...` / `quantify(cooking): ...` -> `cooking`.
+_SUBJECT_DEPT = re.compile(r"^\w+\(([a-z]+)\)")
+
+
 def _actor(c: dict) -> str | None:
     """Who the edit events of commit `c` name — `None` for a `ui-edit` commit,
     whose endpoint already recorded the edit with the real user (D78)."""
@@ -79,11 +90,29 @@ def _actor(c: dict) -> str | None:
     if kind == "ui-edit":
         return None
     if kind in ("pipeline", "quantify"):
+        dept_m = _SUBJECT_DEPT.match(c["subject"])
+        dept = dept_m.group(1) if dept_m else None
+        # `merge` commits `git add … runs`, which sweeps up whatever else sits
+        # under `runs/` — an abandoned chat-edit's scratch directory, another
+        # department's failed attempt — alongside the run this commit is
+        # actually reporting. `--name-status` lists paths sorted, so crediting
+        # the first match in path order can name the wrong run. Trust only a
+        # run whose own department matches the subject's, and among those the
+        # newest stamp (the stamps sort lexicographically, so string max
+        # works): a re-run of the same department leaves the older run's
+        # files untouched in this commit, so only the new one's paths appear.
+        stamps = []
         for _, path in c["files"]:
             m = _RUN.match(path)
-            if m and bool(m.group(1)) == (kind == "quantify"):
-                return f"run:{m.group(1) or ''}{m.group(2)}/{m.group(3)}"
-        return f"run:{kind}"        # no run directory in the commit: invent no stamp
+            if not m or bool(m.group(1)) != (kind == "quantify"):
+                continue
+            if dept is not None and m.group(2) != dept:
+                continue
+            stamps.append((m.group(1) or "", m.group(2), m.group(3)))
+        if stamps:
+            facts_prefix, run_dept, stamp = max(stamps, key=lambda s: s[2])
+            return f"run:{facts_prefix}{run_dept}/{stamp}"
+        return f"run:{kind}"        # no matching run directory: invent no stamp
     if kind in _AGENT_KINDS:
         return audit.AGENT
     return f"git:{c['author']}"
@@ -173,7 +202,7 @@ def run(cfg) -> int:
                              now=int(time.time()), detail={"from": marker, "to": head})
                 _seed(cfg, conn, head)
                 return 1
-            commits = _commits(cfg, marker)
+            commits = _commits(cfg, marker, head)
             rows = []
             for c in commits:
                 actor = _actor(c)
