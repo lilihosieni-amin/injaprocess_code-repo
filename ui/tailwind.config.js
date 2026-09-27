@@ -606,6 +606,8 @@ export default {
         // is 38px too and is the reader chrome's own square button.
         'flowback-mobile': 'var(--width-flowback-mobile)', // 38px — at ≤760
         'cmt-list': 'var(--width-cmt-list)',            // 400px — Panel L1771
+        // Task 11 — the activity record's Jalali calendar, Panel L2374–2397.
+        cal: 'var(--width-cal)',                        // 266px — the popover
       },
       height: {
         tile: 'var(--role-tile)', tool: 'var(--size-tool)', avatar: 'var(--size-avatar)',
@@ -644,6 +646,8 @@ export default {
         // reason. Both shells draw it; neither draws it at 21.
         'count-chrome': 'var(--size-count-chrome)',
         'count-sheet': 'var(--size-count-sheet)',
+        // Task 11 — the calendar's day cell, Panel L2374–2397.
+        'cal-cell': 'var(--height-cal-cell)',           // 30px
       },
       // §5.2 — the search field's icon sits `--inset-search-icon` from the edge.
       // It is an inset, not spacing: naming it here keeps `start-search-icon`

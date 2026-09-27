@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toFa, jalali, deriveTag, formatConflictValue } from './format'
+import { toFa, jalali, deriveTag, formatConflictValue, dayOf, durationFa, jalaliDay, whenFa } from './format'
 
 describe('formatConflictValue', () => {
   it('returns a string value unchanged', () => {
@@ -59,5 +59,23 @@ describe('deriveTag', () => {
   it('labels a tombstoned process باطل‌شده, outranking sub and conflict', () => {
     const p = { ...base, tombstoned: true, parent: { process: 'a', node: 'n' }, kpis: [{ name: 'k' }] }
     expect(deriveTag(p as never)).toEqual({ label: 'باطل‌شده', kind: 'tombstone' })
+  })
+})
+
+describe('activity time formatting (Iran, UTC+03:30)', () => {
+  const at = Date.UTC(2026, 8, 27, 6, 0) / 1000          // 09:30 in Tehran, 5 Mehr 1405
+  it('names the Jalali day of a unix time', () => {
+    expect(jalaliDay(dayOf(at))).toBe('۱۴۰۵/۰۷/۰۵')
+  })
+  it('says today and yesterday with a clock, older days as a date', () => {
+    expect(whenFa(at, at + 3600)).toBe('امروز، ۰۹:۳۰')
+    expect(whenFa(at, at + 86400)).toBe('دیروز، ۰۹:۳۰')
+    expect(whenFa(at, at + 3 * 86400)).toBe('۱۴۰۵/۰۷/۰۵')
+    expect(whenFa(null)).toBe('—')
+  })
+  it('writes a duration the way the design does', () => {
+    expect(durationFa(11520)).toBe('۳ ساعت و ۱۲ دقیقه')
+    expect(durationFa(720)).toBe('۱۲ دقیقه')
+    expect(durationFa(0)).toBe('—')
   })
 })

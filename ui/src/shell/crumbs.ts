@@ -39,6 +39,7 @@ const FLAT: Record<string, string> = {
   profile: 'پروفایل و گذرواژه',
   facts: 'داده‌های کمّی',
   comments: 'صندوق کامنت‌ها',
+  activity: 'گزارش فعالیت کاربران',
 }
 
 /**
@@ -95,6 +96,22 @@ export function panelCrumbs(pathname: string, deptName: (code: string) => string
 
   if (parts[0] === 'users' && parts[1] !== undefined) {
     return [{ label: 'کاربران', to: '/users' }, { label: 'دسترسی' }]
+  }
+
+  /*
+   * «گزارش فعالیت کاربران» is a root screen of its own — reached from
+   * `adminItems` beside «دپارتمان‌ها» rather than nested under it (D83) — so its
+   * own list carries a single crumb with no way back, exactly as `/departments`
+   * does, and only its one-user detail gets a trail. Handled here, ahead of the
+   * generic FLAT fallback, because that fallback always seeds «دپارتمان‌ها» —
+   * right for `/users`, `/visibility` and `/facts`, wrong for a screen that is
+   * not one of their children.
+   */
+  if (parts[0] === 'activity') {
+    if (parts[1] === 'users' && parts[2] !== undefined) {
+      return [{ label: FLAT.activity, to: '/activity' }, { label: 'تاریخچهٔ فعالیت' }]
+    }
+    return [{ label: FLAT.activity }]
   }
 
   /*

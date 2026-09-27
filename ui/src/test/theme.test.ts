@@ -719,6 +719,10 @@ const EXPECTED: Record<string, string | string[]> = {
   // own comment; borrowing it would paint identically and move a menu the day
   // that row changes, which is the pairing this whole table exists to catch.
   'gap-confirm': 'var(--gap-confirm)',
+  // Task 11 — the activity record's Jalali calendar (Panel L2374–2397): its
+  // 266px popover width and 30px day cell, neither held by an existing token.
+  'w-cal': 'var(--width-cal)',
+  'h-cal-cell': 'var(--height-cal-cell)',
   // Media query, not token — asserted by the breakpoint tests below.
   'max1080:hidden': 'display: none',
   'max760:hidden': 'display: none',

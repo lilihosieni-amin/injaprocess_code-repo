@@ -13,7 +13,7 @@ export function pad2(n: number | string): string {
 }
 
 // Gregorian → Jalali (proleptic). Adapted from the standard jalaali algorithm.
-function toJalali(gy: number, gm: number, gd: number): [number, number, number] {
+export function toJalali(gy: number, gm: number, gd: number): [number, number, number] {
   const gdm = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
   let jy = gy <= 1600 ? 0 : 979
   gy -= gy <= 1600 ? 621 : 1600
@@ -92,4 +92,50 @@ export function deriveTag(p: Process): { label: string; kind: TagKind } | null {
   if (p.parent) return { label: 'زیرفرآیند', kind: 'sub' }
   if (p.pending && p.pending.length) return { label: `${toFa(p.pending.length)} تعارض`, kind: 'conflict' }
   return null
+}
+
+/** Iran's fixed UTC+03:30 — the server's `store/activity.TEHRAN_OFFSET_S`.
+ *  ponytail: no DST since 2022; a zone change means both sides change. */
+export const TEHRAN_OFFSET_S = 12600
+
+/** The server's day number for a unix time — what `/api/activity` keys days by. */
+export const dayOf = (at: number): number => Math.floor((at + TEHRAN_OFFSET_S) / 86400)
+
+export function jalaliParts(day: number): [number, number, number] {
+  const d = new Date(day * 86400000)
+  return toJalali(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate())
+}
+
+export function jalaliDay(day: number): string {
+  const [y, m, d] = jalaliParts(day)
+  return `${toFa(y)}/${pad2(m)}/${pad2(d)}`
+}
+
+export function clockFa(at: number): string {
+  const d = new Date((at + TEHRAN_OFFSET_S) * 1000)
+  return `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`
+}
+
+/** «امروز، ۱۰:۲۴» · «دیروز، ۲۰:۰۵» · «۱۴۰۵/۰۴/۲۹» — the design's "last seen". */
+export function whenFa(at: number | null, now: number = Date.now() / 1000): string {
+  if (at === null) return '—'
+  const gap = dayOf(now) - dayOf(at)
+  if (gap === 0) return `امروز، ${clockFa(at)}`
+  if (gap === 1) return `دیروز، ${clockFa(at)}`
+  return jalaliDay(dayOf(at))
+}
+
+/** «۳ ساعت و ۱۲ دقیقه» · «۵۲ دقیقه» — active time. */
+export function durationFa(seconds: number): string {
+  if (seconds <= 0) return '—'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes === 0) return 'کمتر از یک دقیقه'
+  const h = Math.floor(minutes / 60), m = minutes % 60
+  if (h === 0) return `${toFa(m)} دقیقه`
+  return m === 0 ? `${toFa(h)} ساعت` : `${toFa(h)} ساعت و ${toFa(m)} دقیقه`
+}
+
+/** «۶ روز» — how long a comment has sat where it is. */
+export function daysSinceFa(at: number | null, now: number = Date.now() / 1000): string {
+  return at === null ? '—' : `${toFa(Math.max(0, dayOf(now) - dayOf(at)))} روز`
 }

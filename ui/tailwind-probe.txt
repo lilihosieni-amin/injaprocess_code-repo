@@ -170,3 +170,6 @@ py-flowback-y px-flowback-x min-w-menu-flow text-crumb-sep w-flowback-mobile
 # Owner ruling R48 draws the confirm box those nine left named and unbuilt, and
 # the one value it needed that nothing owned: the tick-to-label gap inside it.
 gap-confirm
+# Task 11 — the activity record's Jalali calendar popover (Panel L2374–2397):
+# its 266px width and 30px day cell, neither held by an existing token.
+w-cal h-cal-cell

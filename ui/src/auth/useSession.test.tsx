@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { act, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query'
 import { RequireAuth } from './RequireAuth'
 import { useSession } from './useSession'
 import { useLogin } from '../api/hooks'
@@ -212,5 +212,26 @@ describe('useSession', () => {
     )
     expect(await screen.findByText('صفحهٔ ورود')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the heartbeat (D43, addendum D81; §11 test 27, client half)', () => {
+  it('re-asks every 60 seconds while visible and stops while hidden', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const fetch = vi.fn(async () => new Response(JSON.stringify(DESCRIPTOR),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetch)
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    renderHook(() => useSession(), {
+      wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    })
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1))
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    focusManager.setFocused(false)
+    await act(async () => { await vi.advanceTimersByTimeAsync(180_000) })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    focusManager.setFocused(undefined)
+    vi.useRealTimers()
   })
 })

@@ -960,4 +960,10 @@
   /* The reader inbox card's anchor pill, `line-height:1.5` (Inja Reader.dc.html
      L750, 4528a04). No leading token holds 1.5. */
   --lh-cmt-pill: 1.5;
+
+  /* Task 11 — the activity record's Jalali calendar popover, `Inja
+     Panel.dc.html` L2374–2397: 266px wide, 30px day cells. Minted rather than
+     borrowed: no width or height token in this file holds either number. */
+  --width-cal: 266px;
+  --height-cal-cell: 30px;
 }

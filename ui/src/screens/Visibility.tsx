@@ -50,6 +50,10 @@ const ROWS: { field: PolicyField; label: string; hint: string }[] = [
     hint: 'استناد هر داده به فایل، جدول یا جلسه‌ای که از آن آمده است.' },
 ]
 
+/** The switch names, for the activity record's permission history. */
+export const POLICY_LABEL: Record<string, string> =
+  Object.fromEntries(ROWS.map((r) => [r.field, r.label]))
+
 /** The hint for a switch the server declared and this file has no wording for.
  *  Deliberately alarmed rather than neutral: an unlabelled row is a field that
  *  can be published by someone who cannot read what it is. */

@@ -493,6 +493,34 @@ describe('PanelShell chrome', () => {
     expect(screen.getByText('نشست‌های باز و تغییر گذرواژه')).toBeInTheDocument()
   })
 
+  it('offers a `view_audit` holder «گزارش فعالیت کاربران», between «کاربران» and «سیاست نمایش محتوا»', async () => {
+    // P3/D83 — the entry is drawn on `view_audit` alone, whatever the caller's
+    // scope: a department- or comment-scoped holder still has somewhere to go
+    // (the screen gates its own tabs). `renderPanel`'s `session()` fixture is
+    // scoped to `dept:dining`, which is what makes this non-vacuous against
+    // «کاربران» — a caller who holds `view_audit` but neither administration
+    // capability sees the one entry among the three.
+    renderPanel(['view', 'view_audit'], '/departments')
+    await userEvent.click(screen.getByRole('button', { name: /مدیریت/ }))
+    expect(screen.getByRole('menuitem', { name: /گزارش فعالیت کاربران/ }))
+      .toHaveAttribute('href', '/activity')
+    // `/^کاربران/`, not `/کاربران/` — «گزارش فعالیت کاربران» itself ENDS in the
+    // word «کاربران», so an unanchored regex would pass whether or not the
+    // plain user-administration entry were drawn beside it.
+    expect(screen.queryByRole('menuitem', { name: /^کاربران/ })).toBeNull()
+    const items = screen.getAllByRole('menuitem').map((i) => i.getAttribute('href'))
+    expect(items.indexOf('/activity')).toBeLessThan(items.indexOf('/profile'))
+  })
+
+  it('leaves out «گزارش فعالیت کاربران» for a caller without `view_audit`', async () => {
+    // The Reader-shaped negative: a panel caller who holds no `view_audit` at
+    // all — every other test in this block does, so without this one a gate
+    // spelled `true` would pass every assertion above.
+    renderPanel(['view', 'edit'], '/departments')
+    await userEvent.click(screen.getByRole('button', { name: /مدیریت/ }))
+    expect(screen.queryByRole('menuitem', { name: /گزارش فعالیت کاربران/ })).toBeNull()
+  })
+
   it('says whether its menu is open, and shuts it on a click outside', async () => {
     const { container } = renderPanel(['view', 'edit'], '/departments')
     const trigger = screen.getByRole('button', { name: /مدیریت/ })

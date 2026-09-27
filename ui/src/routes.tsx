@@ -14,6 +14,8 @@ import { Profile } from './screens/Profile'
 import { FactsList } from './facts/FactsList'
 import { FactDetail } from './facts/FactDetail'
 import { CommentsScreen } from './comments/CommentsScreen'
+import { Activity } from './screens/Activity'
+import { UserActivity } from './screens/UserActivity'
 
 export const appRoutes: RouteObject[] = [
   { path: '/login', element: <SignIn /> },
@@ -55,6 +57,11 @@ export const appRoutes: RouteObject[] = [
       // silent redirect rather than a blank page, which looks exactly like a
       // working app.
       { path: '/users/:id', element: <UserDetail /> },
+      // P3 — the activity record (D76-D85). A sibling of `/users` for the same
+      // reason: the catch-all below sends every unknown path to /departments,
+      // so a missing route is a silent redirect and not a blank page.
+      { path: '/activity', element: <Activity /> },
+      { path: '/activity/users/:id', element: <UserActivity /> },
       // Under RequireAuth with every other screen and gated by nothing else:
       // the one act it offers changes the caller's own row and can change
       // nobody else's, so there is no capability that could be checked here.

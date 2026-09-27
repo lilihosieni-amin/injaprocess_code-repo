@@ -82,6 +82,12 @@ describe('panelCrumbs', () => {
     ])
   })
 
+  it('names the activity screens', () => {
+    expect(panelCrumbs('/activity', name)).toEqual([{ label: 'گزارش فعالیت کاربران' }])
+    expect(panelCrumbs('/activity/users/7', name)).toEqual([
+      { label: 'گزارش فعالیت کاربران', to: '/activity' }, { label: 'تاریخچهٔ فعالیت' }])
+  })
+
   it('gives every route but the home screen a crumb to go back to', () => {
     // The rule the three rows above are three instances of, stated once and
     // over the whole route table — `src/routes.tsx`'s panel list, minus the two
@@ -97,6 +103,7 @@ describe('panelCrumbs', () => {
       '/departments/dining', '/departments/dining/overview',
       '/processes/dining-003', '/processes/dining-003/flow',
       '/users', '/users/09120000000', '/visibility', '/profile', '/facts', '/comments',
+      '/activity/users/7',
     ]) {
       const trail = panelCrumbs(path, name)
       expect(trail.length, path).toBeGreaterThan(1)
@@ -173,6 +180,7 @@ describe('panelCrumbs', () => {
       '/departments', '/departments/dining', '/departments/dining/overview',
       '/processes/dining-003', '/processes/dining-003/flow', '/processes/abc',
       '/users', '/users/09120000000', '/visibility', '/profile', '/facts', '/nowhere', '/',
+      '/activity', '/activity/users/7',
     ]) {
       const trail = panelCrumbs(path, name)
       expect(trail.length, path).toBeGreaterThan(0)

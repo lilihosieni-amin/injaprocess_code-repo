@@ -208,10 +208,15 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
   //   a gate on the only screen in the app whose endpoint cannot be pointed at
   //   anybody else's row.
   //
-  // §6.0's «گزارش فعالیت کاربران» is absent under the same rule: no such screen.
+  // «گزارش فعالیت کاربران» — any `view_audit` holder, whatever its scope: a
+  //   scoped holder is served the department and comment tabs (addendum D83),
+  //   so the entry leads somewhere for them too. The screen gates each tab on
+  //   the same rule the endpoints apply (D48 — cosmetic; the server refuses).
   const adminItems = [
     ...(administrationRefusal(session) === undefined
       ? [{ to: '/users', label: 'کاربران', hint: 'نقش، دپارتمان، سرپرست و غیرفعال‌سازی' }] : []),
+    ...(can(session, 'view_audit')
+      ? [{ to: '/activity', label: 'گزارش فعالیت کاربران', hint: 'ورود، خواندن، تغییر دسترسی' }] : []),
     ...(mayReach('set_visibility', '*')
       ? [{ to: '/visibility', label: 'سیاست نمایش محتوا', hint: 'یک تصمیم برای همهٔ غیرادیتورها' }] : []),
     { to: '/profile', label: 'پروفایل و گذرواژه', hint: 'نشست‌های باز و تغییر گذرواژه' },
