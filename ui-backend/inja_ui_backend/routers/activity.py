@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Literal
+from typing import Callable, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 
-from .. import comment_jobs, projection
+from .. import comment_jobs, projection, storage
 from ..access import NOT_FOUND, reachable_departments, requires
 from ..auth import require_session
+from ..disclosure import Disclosure
 from ..store import activity
 
 router = APIRouter(prefix="/api/activity")
@@ -83,10 +84,39 @@ def list_permissions(request: Request, _=Depends(star)):
     return activity.permissions(request.app.state.db)
 
 
+def _servable(request: Request, user) -> Callable[[str | None], bool]:
+    """The department report's own disclosure gate (review round 1): a
+    `process.viewed` row naming a process this caller may not be told exists —
+    unconfirmed or tombstoned, D22/D17 — must not surface its id, its name, or
+    even its count through the activity record. `Disclosure.may_serve` is the
+    same question `GET /api/processes/{pid}` answers for the document itself;
+    memoised per pid so a report with many rows for one process reads its file
+    once. A missing, unreadable or invalid document is never servable — the
+    activity record's own dubious row must not raise, only be excluded."""
+    cfg = request.app.state.cfg
+    shown = Disclosure(request.app.state.db, user)
+    cache: dict[str, bool] = {}
+
+    def servable(pid: str | None) -> bool:
+        if not pid:
+            return False
+        if pid not in cache:
+            try:
+                doc = storage.read_json(storage.proc_path(cfg.data_root, pid))
+                cache[pid] = shown.may_serve(doc, storage.dept_of(pid), pid)
+            except (OSError, ValueError):
+                cache[pid] = False
+        return cache[pid]
+
+    return servable
+
+
 @router.get("/departments")
-def list_departments(request: Request, codes=Depends(reach)):
+def list_departments(request: Request, codes=Depends(reach),
+                     user=Depends(require_session)):
     return activity.departments(request.app.state.db,
-                                request.app.state.cfg.data_root, codes)
+                                request.app.state.cfg.data_root, codes,
+                                _servable(request, user))
 
 
 @router.get("/comments")
@@ -95,6 +125,8 @@ def list_comments(request: Request, codes=Depends(reach)):
 
 
 @router.get("/summary")
-def get_summary(request: Request, codes=Depends(reach)):
+def get_summary(request: Request, codes=Depends(reach),
+                user=Depends(require_session)):
     return activity.summary(request.app.state.db, request.app.state.comments_db,
-                            request.app.state.cfg.data_root, codes)
+                            request.app.state.cfg.data_root, codes,
+                            _servable(request, user))

@@ -200,10 +200,21 @@ def _target_department(action: str, target: str | None) -> str | None:
     return storage.dept_of(target) if action == "process.viewed" else target
 
 
-def departments(conn: sqlite3.Connection, root: Path,
-                codes: set[str] | None) -> list[dict]:
+def departments(conn: sqlite3.Connection, root: Path, codes: set[str] | None,
+                servable) -> list[dict]:
     """The board's activity report (D83): one row per department the caller
-    reaches, registry order, with its readership and its most-viewed process."""
+    reaches, registry order, with its readership and its most-viewed process.
+
+    `servable(pid) -> bool` is the caller's own disclosure gate (`Disclosure.
+    may_serve`, built by the router from the request's user) — a `process.
+    viewed` row that names a process this caller may not be told exists is
+    excluded entirely, from the view/reader counts and from `topProcess`
+    alike (D56, review round 1): an Editor's view of an unconfirmed or
+    tombstoned process is recorded exactly like any other view, and an Admin's
+    activity report is not a back door onto its id or its name. `department.
+    viewed` and `report.downloaded` rows name no single process and are
+    unaffected.
+    """
     reg = storage.read_json(storage.registry_path(root))["departments"]
     stats = {d["code"]: {"code": d["code"], "name": d.get("name", d["code"]),
                          "readers": set(), "views": 0, "downloads": 0,
@@ -218,6 +229,8 @@ def departments(conn: sqlite3.Connection, root: Path,
             continue
         if r["action"] == "report.downloaded":
             s["downloads"] += r["n"]
+            continue
+        if r["action"] == "process.viewed" and not servable(r["target"]):
             continue
         s["views"] += r["n"]
         s["readers"].add(r["actor"])
@@ -253,17 +266,22 @@ def comments(conn: sqlite3.Connection, cc: sqlite3.Connection,
 
 
 def summary(conn: sqlite3.Connection, cc: sqlite3.Connection, root: Path,
-            codes: set[str] | None) -> dict:
+            codes: set[str] | None, servable) -> dict:
     """The report's headline numbers (D83). `activeUsers` and `failedSignIns`
     name no department, so — like the access/governance tabs — they show only
     to a `*` holder; a scoped caller gets `None` rather than a number that
-    would silently answer a question about accounts outside their scope."""
+    would silently answer a question about accounts outside their scope.
+
+    `servable` is the same disclosure gate `departments()` takes, and is passed
+    straight through: `views` is derived from `departments()`'s own counts, so
+    it must exclude a process this caller may not be told exists exactly as
+    that report does (review round 1)."""
     star = codes is None
     return {
         "activeUsers": (conn.execute("SELECT COUNT(*) FROM users"
                                      " WHERE disabled_at IS NULL").fetchone()[0]
                         if star else None),
-        "views": sum(d["views"] for d in departments(conn, root, codes)),
+        "views": sum(d["views"] for d in departments(conn, root, codes, servable)),
         "failedSignIns": (conn.execute(
             f"SELECT COUNT(*) FROM audit_events WHERE action IN ({_in(_SIGN_IN_FAILURES)})",
             _SIGN_IN_FAILURES).fetchone()[0] if star else None),
