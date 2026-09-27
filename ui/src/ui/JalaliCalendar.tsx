@@ -99,9 +99,12 @@ export function CalendarFilter({ days, value, onPick }: {
         className={`w-full flex items-center gap-s5 px-s7 py-s5 rounded-button bg-card text-ink text-start cursor-pointer border-hairline ${open ? 'border-coral' : 'border-line'} text-fs-menu`}>
         {value === null ? 'همهٔ تاریخ‌ها' : jalaliDay(value)}
       </button>
+      {/* No `end-0`, unlike Dropdown's popover: a filter-bar trigger is only as
+          wide as its label, and the calendar is a fixed `w-cal`, so the popover
+          takes the calendar's width from the trigger's start edge (L2375). */}
       {open && (
         <div role="dialog" aria-label="انتخاب روز"
-          className="absolute top-full mt-s3 start-0 end-0 z-dropdown max-h-popover overflow-auto flex flex-col gap-half p-popover bg-card border border-border-card rounded-card shadow-pop">
+          className="absolute top-full mt-s3 start-0 z-dropdown max-h-popover overflow-auto flex flex-col gap-half p-popover bg-card border border-border-card rounded-card shadow-pop">
           <JalaliCalendar days={days} value={value} onPick={pick} />
           <button type="button" onClick={() => pick(null)}>همهٔ تاریخ‌ها</button>
         </div>

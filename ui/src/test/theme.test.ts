@@ -1607,10 +1607,9 @@ const UNPAINTED: string[] = [
   // view menu and Dropdown's multi-select option both draw it now that a tick
   // takes the rung its site calls for. CEILING below follows them down by five.
   'max-w-doc',
-    'max-w-audit', 'duration-fast',
+    'duration-fast',
   'py-tick-nested-y', 'py-dropdown-y-dialog',
   'py-dropdown-y-filter', 'px-dropdown-x-filter',
-  'my-stat-grid',
   // `gap-tab-flow` came off here with owner ruling R47, and it is the sharpest
   // of the four. Its token comment reads "the flow nav group, `gap:3px;
   // padding:5px`" — it was minted FOR that element in the §5.2 pass and had
@@ -1889,7 +1888,10 @@ const UNPAINTED: string[] = [
 // which is `w-fab-reader`/`h-fab-reader`. CEILING follows them down by two.
 // P4 fixes (2026-09-22): `bg-danger` is the panel tray's red comments dot.
 // CEILING follows it down by one.
-const CEILING = 100
+// P3 Task 12: the activity screen consumed two — `max-w-audit`, its 980px column
+// (Panel L2346), and `my-stat-grid`, the 4-up grid's `margin:20px 0` (L2350).
+// CEILING follows them down by two.
+const CEILING = 98
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
@@ -2123,8 +2125,8 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
           '|^(font-regular|leading-snug|leading-looser)$',
           '|^shadow-(sheet|drawer|card-dark|stat-dark|guide-hover|ring-flash)$',
           '|^(p|gap)-topbar$|^p-s(3|14|16)$|^(w|h)-(avatar|logo-bar)$',
-          '|^max-w-(doc|steps|audit)$|^duration-(fast|row)$|^p-compose$',
-          '|^p[xy]?-dropdown-|^my-stat-grid$',
+          '|^max-w-(doc|steps)$|^duration-(fast|row)$|^p-compose$',
+          '|^p[xy]?-dropdown-',
           // The nested OPTION's own `padding:11px 12px`. Owner ruling R36 gave
           // the nested tick BOX consumers, and this is not that: ScopePicker's
           // nested view menu draws `Checkbox`, whose row carries
@@ -2238,8 +2240,11 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
     //   spelling half — the panel inbox's 56×56 tile (Panel L1939). Spelling −2.
     // **41 / 59 after the P4 fixes**: `bg-danger` left the spelling half — the
     //   panel tray's red comments dot paints it. Spelling −1.
+    // **41 / 57 after P3 Task 12**: `max-w-audit` and `my-stat-grid` left the
+    //   painted-nowhere half — the activity screen's column and its 4-up grid.
+    //   Painted-nowhere −2.
     expect(buckets.filter((b) => b.spelling).length).toBe(41)
-    expect(buckets.filter((b) => !b.spelling).length).toBe(59)
+    expect(buckets.filter((b) => !b.spelling).length).toBe(57)
 
     // A family that stops covering anything is an argument nobody is paying
     // for, and the next name added beside it inherits the same absence of
