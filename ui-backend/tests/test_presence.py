@@ -1,5 +1,9 @@
 """Presence is active time, not time since sign-in (spec D43, addendum D81,
 §11 test 27 — the server half; the client half is ui/src/auth/useSession.test.tsx)."""
+import sqlite3
+
+import pytest
+
 from inja_ui_backend import db
 from inja_ui_backend.store import sessions
 
@@ -51,4 +55,16 @@ def test_migration_4_adds_the_p3_storage(tmp_path):
     assert "emitted_for_sha" in cols
     tables = {r["name"] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type IN ('table', 'index')")}
-    assert {"activity_intervals", "projection_state", "audit_session"} <= tables
+    assert {"activity_intervals", "projection_state", "audit_session",
+            "ui_commits"} <= tables
+
+
+def test_the_record_is_append_only_in_the_database_itself(tmp_path):
+    """D45 (final review T): migration 4's triggers refuse UPDATE and DELETE
+    on `audit_events` whoever asks; INSERT still works."""
+    conn = _conn(tmp_path)
+    conn.execute("INSERT INTO audit_events (at, actor, action) VALUES (1, 'a', 'logout')")
+    for sql in ("UPDATE audit_events SET actor = 'b'", "DELETE FROM audit_events"):
+        with pytest.raises(sqlite3.DatabaseError, match="append-only"):
+            conn.execute(sql)
+    assert conn.execute("SELECT actor FROM audit_events").fetchall()[0][0] == "a"

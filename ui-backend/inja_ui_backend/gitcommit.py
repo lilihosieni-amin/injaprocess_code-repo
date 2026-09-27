@@ -2,11 +2,22 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import threading
+import time
 from pathlib import Path
 
+from . import db
 from .config import Settings
 
 logger = logging.getLogger(__name__)
+
+#: Serialises "commit + record it in `ui_commits`" with a projection pass
+#: (`projection.run` takes this same lock): a pass that read `HEAD` between
+#: the two would find a `ui-edit` commit with no record yet, and project it as
+#: a stranger's commit — permanently, the record being append-only (D45).
+# ponytail: process-local — one uvicorn worker (D6); a commit waits for a pass
+# already running (seconds at most). A second worker needs a claim in app.db.
+LOCK = threading.Lock()
 
 
 def _git(cfg: Settings, *args: str) -> subprocess.CompletedProcess:
@@ -30,7 +41,12 @@ def head(cfg: Settings) -> str:
 
 
 def commit(cfg: Settings, paths: list[Path], pid: str, action: str, *,
-          actor: str) -> None:
+          actor: str) -> bool:
+    """Stage `paths` and commit them as `ui-edit({pid}): {action}`, then record
+    the commit in `ui_commits` — True when a commit was made, False for the
+    no-op of nothing staged. A caller writes its edit event only on True: a
+    save that changed nothing is a decision nobody made (D78).
+    """
     # A path git can't stage — absent from disk *and* never tracked — has no
     # pathspec `git add` can match, and would abort the whole add, failing a
     # commit for the paths that *do* have something to record. It happens on a
@@ -51,13 +67,27 @@ def commit(cfg: Settings, paths: list[Path], pid: str, action: str, *,
             raise RuntimeError(f"git add failed: {(r.stderr or r.stdout).strip()}")
     # nothing staged -> genuine no-op (not an error)
     if _git(cfg, "diff", "--cached", "--quiet").returncode == 0:
-        return
-    # D48: the commit says who acted. A trailer, so `git log
-    # --format=%(trailers:key=Acted-By)` reads it back — the git projection
-    # credits a confirmation's going stale to it (addendum D80).
-    r = _git(cfg, "-c", f"user.name={cfg.git_author_name}",
-             "-c", f"user.email={cfg.git_author_email}",
-             "commit", "-q", "-m", f"ui-edit({pid}): {action}",
-             "-m", f"Acted-By: {actor}")
-    if r.returncode != 0:
-        raise RuntimeError(f"git commit failed: {(r.stderr or r.stdout).strip()}")
+        return False
+    with LOCK:
+        # D48: the commit says who acted, in an `Acted-By` trailer a person
+        # reading `git log` can see. Informational only: anything that can
+        # commit to the data-repo can write that trailer too, so the git
+        # projection trusts the `ui_commits` row below instead (addendum D80).
+        r = _git(cfg, "-c", f"user.name={cfg.git_author_name}",
+                 "-c", f"user.email={cfg.git_author_email}",
+                 "commit", "-q", "-m", f"ui-edit({pid}): {action}",
+                 "-m", f"Acted-By: {actor}")
+        if r.returncode != 0:
+            raise RuntimeError(f"git commit failed: {(r.stderr or r.stdout).strip()}")
+        # ponytail: `HEAD` read right after the commit — a commit another
+        # container lands in the milliseconds between would be recorded here
+        # instead of ours (ours then projects as a stranger's). Upgrade path:
+        # `write-tree` + `commit-tree` + `update-ref HEAD new old`, which names
+        # its own sha and fails on a moved HEAD.
+        conn = db.connect(cfg.app_db)
+        try:
+            conn.execute("INSERT INTO ui_commits (sha, actor, at) VALUES (?, ?, ?)",
+                         (head(cfg), actor, int(time.time())))
+        finally:
+            conn.close()
+    return True

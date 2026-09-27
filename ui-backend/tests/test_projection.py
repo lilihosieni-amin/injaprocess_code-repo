@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from inja_ui_backend import db, projection
+from inja_ui_backend import db, gitcommit, projection
 from inja_ui_backend.tests_helpers import cfg_for
 
 
@@ -33,8 +33,12 @@ def _commit(root, subject, author="deploy", body=None):
     return _git(root, "rev-parse", "HEAD")
 
 
+def _proc(root, pid):
+    return root / "departments" / pid.rsplit("-", 1)[0] / "processes" / f"{pid}.json"
+
+
 def _rename(root, pid, name):
-    p = root / "departments" / pid.rsplit("-", 1)[0] / "processes" / f"{pid}.json"
+    p = _proc(root, pid)
     doc = json.loads(p.read_text(encoding="utf-8"))
     doc["name"] = name
     p.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -102,13 +106,54 @@ def test_a_quantify_commit_names_exactly_the_facts_it_changed(cfg, data_root):
         ("run:facts/cooking/20260927-101500", "F-00001", "updated", "cooking")]
 
 
-def test_a_ui_edit_commit_writes_no_edit_event(cfg, data_root):
+def test_the_apps_own_commit_writes_no_edit_event(cfg, data_root):
+    """D80 (final review I2): made through `gitcommit.commit`, so recorded in
+    `ui_commits` — its endpoint wrote the edit event, the projection writes
+    none."""
     projection.run(cfg)
     _rename(data_root, "cooking-001", "از پنل")
-    _commit(data_root, "ui-edit(cooking-001): save", author="ui-edit",
-            body="Acted-By: 09120000000")
+    assert gitcommit.commit(cfg, [_proc(data_root, "cooking-001")], "cooking-001",
+                            "save", actor="09120000000")
     projection.run(cfg)
     assert _rows(cfg, "process.edited") == []
+
+
+def test_an_unrecorded_ui_edit_commit_is_an_ordinary_commit(cfg, data_root):
+    """Final review I2: subject, author and `Acted-By` trailer are all
+    forgeable by anything that can commit to the data-repo. Not made by
+    `gitcommit.commit`, so not in `ui_commits` — its author's, like any
+    stranger's commit, and the trailer is never read."""
+    projection.run(cfg)
+    _rename(data_root, "cooking-001", "جعلی")
+    sha = _commit(data_root, "ui-edit(cooking-001): save", author="ui-edit",
+                  body="Acted-By: 09121112222")
+    projection.run(cfg)
+    assert _rows(cfg, "process.edited") == [
+        ("git:ui-edit", "cooking-001", {"change": "updated", "commit": sha})]
+
+
+def test_a_consolidate_commit_is_the_agents(cfg, data_root):
+    """Final review I1: Gate C's commits (`consolidate({dept}): item {n} —
+    {merge|attach}`) are the pipeline agent's, whoever authored them."""
+    projection.run(cfg)
+    _rename(data_root, "cooking-001", "ادغام")
+    _commit(data_root, "consolidate(cooking): item 1 — merge", author="deploy")
+    projection.run(cfg)
+    assert _rows(cfg, "process.edited")[0][0] == "agent:control-bot"
+
+
+def test_a_revert_takes_the_kind_it_reverts(cfg, data_root):
+    """Final review I1: `Revert "X"` is the agent's when X is an agent kind,
+    and otherwise its author's — never trusted as the app's or a run's."""
+    projection.run(cfg)
+    _rename(data_root, "cooking-001", "یک")
+    _commit(data_root, 'Revert "chat-edit(cooking-001): x"', author="deploy")
+    _rename(data_root, "cooking-001", "دو")
+    sha = _commit(data_root, 'Revert "ui-edit(cooking-001): save"', author="lili")
+    projection.run(cfg)
+    rows = _rows(cfg, "process.edited")
+    assert [a for a, _, _ in rows] == ["agent:control-bot", "git:lili"]
+    assert rows[1] == ("git:lili", "cooking-001", {"change": "updated", "commit": sha})
 
 
 def test_a_persons_commit_is_theirs(cfg, data_root):
@@ -187,6 +232,17 @@ def test_a_pipeline_commit_names_the_newest_matching_run_not_leftovers(cfg, data
     _commit(data_root, "pipeline(cooking): 1 processes from 1 transcripts")
     projection.run(cfg)
     assert _rows(cfg, "process.edited")[0][0] == "run:cooking/20260927-111500"
+
+
+def test_an_unreadable_head_in_a_repository_is_said_not_swallowed(
+        cfg, data_root, monkeypatch, caplog):
+    """Final review M7: `.git` is there but git reads no HEAD — git failing in
+    the container (e.g. `safe.directory`), which would otherwise stop every
+    content event silently."""
+    monkeypatch.setattr(projection.gitcommit, "head", lambda cfg: "")
+    with caplog.at_level("WARNING", logger="inja_ui_backend.projection"):
+        assert projection.run(cfg) == 0
+    assert "cannot read HEAD" in caplog.text
 
 
 def test_a_rewritten_history_is_recorded_and_reseeded(cfg, data_root):

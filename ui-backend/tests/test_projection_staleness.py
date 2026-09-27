@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from inja_ui_backend import db, projection
+from inja_ui_backend import db, gitcommit, projection
 from inja_ui_backend.fingerprint import fact_fingerprint, fingerprint
 from inja_ui_backend.store import confirmations
 from inja_ui_backend.tests_helpers import cfg_for
@@ -31,14 +31,7 @@ def _commit(root, subject, author="deploy", body=None):
                           capture_output=True, text=True).stdout.strip()
 
 
-def _commit_only(root, paths, subject, author="deploy", body=None):
-    """Like `_commit`, but stages only `paths` — for a commit that must leave
-    some other, already-modified file uncommitted."""
-    subprocess.run(["git", "-C", str(root), "add", "--"] + [str(p) for p in paths],
-                   check=True)
-    args = ["git", "-C", str(root), "-c", f"user.name={author}", "-c", "user.email=x@x",
-            "commit", "-q", "-m", subject] + (["-m", body] if body else [])
-    subprocess.run(args, check=True)
+def _head(root):
     return subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], check=True,
                           capture_output=True, text=True).stdout.strip()
 
@@ -105,13 +98,57 @@ def test_one_event_per_transition_and_none_on_later_passes(cfg, data_root):
 
 
 def test_a_save_in_the_app_announces_the_confirmation_it_broke(cfg, data_root):
+    """Made through `gitcommit.commit`, so recorded in `ui_commits`: credited
+    to the user recorded there (D80, final review I2)."""
     _confirm_current(cfg, data_root)
     projection.run(cfg)
     _set_name(data_root, "از پنل")
+    assert gitcommit.commit(cfg, [_path(data_root)], PID, "save", actor="09121112222")
+    projection.run(cfg)
+    assert _invalidated(cfg) == [("09121112222", PID)]
+
+
+def test_a_forged_ui_edit_commit_is_credited_to_its_author_never_its_trailer(
+        cfg, data_root):
+    """Final review I2: a hand-made commit with the app's subject and an
+    `Acted-By` naming a real user is not in `ui_commits` — the staleness it
+    causes is its author's, and the named user is never blamed."""
+    _confirm_current(cfg, data_root)
+    projection.run(cfg)
+    _set_name(data_root, "جعلی")
     _commit(data_root, "ui-edit(cooking-001): save", author="ui-edit",
             body="Acted-By: 09121112222")
     projection.run(cfg)
-    assert _invalidated(cfg) == [("09121112222", PID)]
+    assert _invalidated(cfg) == [("git:ui-edit", PID)]
+    conn = db.connect(cfg.app_db)
+    try:
+        edited = [r["actor"] for r in conn.execute(
+            "SELECT actor FROM audit_events WHERE action = 'process.edited'")]
+    finally:
+        conn.close()
+    assert edited == ["git:ui-edit"]
+
+
+def test_a_reconfirm_mid_pass_is_not_judged_against_the_old_map(
+        cfg, data_root, monkeypatch):
+    """Final review M3: a confirmation replaced between the pass building its
+    fingerprint map and opening its transaction — possibly for content newer
+    than `head` — is left untouched that pass: no announcement, no mark."""
+    _confirm_current(cfg, data_root)
+    projection.run(cfg)                                          # seeds
+    _overview_path(data_root).write_text(
+        _overview_path(data_root).read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    _commit(data_root, "chat-edit(cooking): unrelated")          # HEAD moves
+    real = projection._judgeable
+
+    def judgeable_then_reconfirm(*args):
+        out = real(*args)
+        _confirm(cfg, PID, "a-newer-fingerprint")               # the race
+        return out
+
+    monkeypatch.setattr(projection, "_judgeable", judgeable_then_reconfirm)
+    projection.run(cfg)
+    assert _invalidated(cfg) == [] and _emitted(cfg, PID) is None
 
 
 def test_seeding_marks_what_is_already_stale_without_announcing_it(cfg, data_root):
@@ -138,18 +175,19 @@ def test_an_uncommitted_write_is_not_judged_until_it_lands(cfg, data_root):
     ov["name"] = ov.get("name", "") + " ویرایش نامرتبط"
     _overview_path(data_root).write_text(json.dumps(ov, ensure_ascii=False, indent=2),
                                          encoding="utf-8")
-    # A "ui-edit" commit writes no edit event of its own (D78) — only the
-    # `Acted-By` trailer credits a staleness event, which is exactly what
-    # lets this reproduce the reviewer's misattribution without the noise of
-    # an unrelated `process.edited`/`department.edited` row in the way.
-    unrelated_sha = _commit_only(data_root, [_overview_path(data_root)],
-                                 "ui-edit(cooking): save", author="ui-edit",
-                                 body="Acted-By: AAAA")
+    # The app's own commits (`gitcommit.commit`, recorded in `ui_commits`)
+    # write no edit event of their own (D78) — only the recorded user is
+    # credited with a staleness event, which is exactly what lets this
+    # reproduce the reviewer's misattribution without the noise of an
+    # unrelated `process.edited`/`department.edited` row in the way.
+    assert gitcommit.commit(cfg, [_overview_path(data_root)], "cooking", "save",
+                            actor="AAAA")                         # stages only the overview
+    unrelated_sha = _head(data_root)
     projection.run(cfg)
     assert _invalidated(cfg) == []                                # not judged yet
 
-    bbbb_sha = _commit(data_root, "ui-edit(cooking-001): save", author="ui-edit",
-                       body="Acted-By: BBBB")                     # now stages cooking-001 too
+    assert gitcommit.commit(cfg, [_path(data_root)], PID, "save", actor="BBBB")
+    bbbb_sha = _head(data_root)
     projection.run(cfg)
 
     rows = _invalidated(cfg)

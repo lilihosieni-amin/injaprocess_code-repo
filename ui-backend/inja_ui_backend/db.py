@@ -129,6 +129,28 @@ MIGRATIONS: list[tuple[int, str]] = [
             id  INTEGER PRIMARY KEY CHECK (id = 1),
             sha TEXT NOT NULL
         );
+        -- D80: the commits ui-backend itself made (`gitcommit.commit`), with
+        -- the user each was made for. Recorded in app.db, which control-bot
+        -- cannot reach (D5) — the only proof a `ui-edit` commit is the app's.
+        -- Its subject, its author and its `Acted-By` trailer can all be
+        -- written by anything that can run `git commit` in the data-repo.
+        CREATE TABLE ui_commits (
+            sha   TEXT PRIMARY KEY NOT NULL,   -- see confirmations.target on NOT NULL
+            actor TEXT NOT NULL,               -- username
+            at    INTEGER NOT NULL             -- unix seconds
+        );
+        -- D45: the activity record is append-only, and the database says so
+        -- rather than every code path promising it. A retention purge (D45,
+        -- not built — addendum D85) needs a migration of its own that lifts
+        -- these two triggers.
+        CREATE TRIGGER audit_events_no_update BEFORE UPDATE ON audit_events
+        BEGIN
+            SELECT RAISE(ABORT, 'audit_events is append-only (D45)');
+        END;
+        CREATE TRIGGER audit_events_no_delete BEFORE DELETE ON audit_events
+        BEGIN
+            SELECT RAISE(ABORT, 'audit_events is append-only (D45)');
+        END;
     """),
 ]
 

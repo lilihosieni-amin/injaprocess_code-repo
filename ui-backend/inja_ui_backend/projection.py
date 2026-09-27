@@ -13,8 +13,8 @@ from __future__ import annotations
 import json
 import logging
 import re
-import threading
 import time
+from collections.abc import Iterable
 
 from . import db, facts_store, gitcommit, storage
 from .fingerprint import fact_fingerprint, fingerprint
@@ -30,15 +30,17 @@ _FACTS = re.compile(r"^facts/(?:records|measurements|rules|notes)\.json$")
 _RUN = re.compile(r"^runs/(facts/)?([a-z]+)/([0-9]{8}-[0-9]{6})/")
 _FACT_ID = re.compile(r"^F-[0-9]{5}$")
 #: Commit kinds the Telegram runtime makes (ARD §15 and the data-repo's own
-#: history since): each is the agent's, whoever the git author is — the server
-#: authors `chat-edit` and `ui-edit` under the same identity.
-_AGENT_KINDS = {"chat-edit", "restructure", "audit-fix", "edit-fact"}
+#: history since): each is the agent's, whoever the git author is. The subject
+#: decides, not the author, because an author is as forgeable as a subject.
+#: `consolidate` is Gate C's `consolidate({dept}): item {n} — {merge|attach}`
+#: (the data-repo's `.claude/skills/process-voice/SKILL.md`).
+_AGENT_KINDS = {"chat-edit", "restructure", "audit-fix", "edit-fact", "consolidate"}
 _CHANGE = {"A": "created", "M": "updated", "D": "deleted"}
-#: One record per commit: sha, commit time, author, subject, Acted-By trailer.
-_FMT = "%x1e%H%x1f%ct%x1f%an%x1f%s%x1f%(trailers:key=Acted-By,valueonly,separator=)"
-# ponytail: process-local lock — the loop thread and a report request may both
-# call run(). One uvicorn worker (D6); a second worker needs a claim in app.db.
-_LOCK = threading.Lock()
+#: One record per commit: sha, commit time, author, subject. No `Acted-By`
+#: trailer: anything that can commit can write one, so trust in a `ui-edit`
+#: commit comes from `ui_commits` alone (D80).
+_FMT = "%x1e%H%x1f%ct%x1f%an%x1f%s"
+_REVERT = 'Revert "'
 
 
 def _marker(conn) -> str | None:
@@ -69,11 +71,11 @@ def _commits(cfg, since: str, head: str) -> list[dict]:
     out = []
     for block in r.stdout.split("\x1e")[1:]:
         head, _, body = block.partition("\n")
-        sha, at, author, subject, acted = head.split("\x1f")
+        sha, at, author, subject = head.split("\x1f")
         files = [(line.split("\t", 1)[0][:1], line.split("\t", 1)[1])
                  for line in body.splitlines() if "\t" in line]
         out.append({"sha": sha, "at": int(at), "author": author, "subject": subject,
-                    "acted_by": acted.strip(), "files": files})
+                    "files": files})
     return out
 
 
@@ -95,12 +97,34 @@ def _kind(subject: str) -> str:
 _SUBJECT_DEPT = re.compile(r"^\w+\(([a-z]+)\)")
 
 
-def _actor(c: dict) -> str | None:
-    """Who the edit events of commit `c` name — `None` for a `ui-edit` commit,
-    whose endpoint already recorded the edit with the real user (D78)."""
-    kind = _kind(c["subject"])
-    if kind == "ui-edit":
+def _recorded_actor(conn, c: dict) -> str | None:
+    """The user a `ui-edit` commit was made for, when ui-backend made it —
+    `gitcommit.commit` records every commit of its own in `ui_commits`, which
+    only ui-backend can write (D5, D80). `None` for any other commit, and for a
+    `ui-edit` subject nobody recorded: that one is an ordinary commit someone
+    else made to look like the app's."""
+    if _kind(c["subject"]) != "ui-edit":
         return None
+    row = conn.execute("SELECT actor FROM ui_commits WHERE sha = ?",
+                       (c["sha"],)).fetchone()
+    return row["actor"] if row is not None else None
+
+
+def _actor(c: dict) -> str:
+    """Who the edit events of commit `c` name. Never asked about a recorded
+    `ui-edit` commit — its endpoint already wrote the edit with the real user
+    (D78); an unrecorded one falls through to `git:{author}` like any
+    stranger's commit.
+
+    A `Revert "X"` takes X's kind (D79): the agent's when X is an agent kind,
+    otherwise the author's — a revert is never trusted as a run's or the
+    app's, since it is neither's own output."""
+    subject = c["subject"]
+    if subject.startswith(_REVERT):
+        while subject.startswith(_REVERT):
+            subject = subject[len(_REVERT):]
+        return audit.AGENT if _kind(subject) in _AGENT_KINDS else f"git:{c['author']}"
+    kind = _kind(subject)
     if kind in ("pipeline", "quantify"):
         dept_m = _SUBJECT_DEPT.match(c["subject"])
         dept = dept_m.group(1) if dept_m else None
@@ -201,7 +225,7 @@ def _head_fact_entries(cfg, head: str) -> dict[str, dict]:
     each read once per pass, not once per confirmed fact (fix review: 236
     confirmed facts at today's size, 1,798 at nine departments, each
     re-parsing all four aggregate files, made a single pass with HEAD moved
-    take 0.42s-24s under `_LOCK`)."""
+    take 0.42s-24s under the pass's lock)."""
     out: dict[str, dict] = {}
     for name in _FACT_FILES:
         out.update(_entries_at(cfg, head, f"facts/{name}.json"))
@@ -259,7 +283,7 @@ def _working_fingerprint(cfg, target: str, *, facts: dict[str, dict]):
         return _UNREADABLE
 
 
-def _judgeable(cfg, head: str, targets: list[str]) -> dict[str, str | None]:
+def _judgeable(cfg, head: str, targets: Iterable[str]) -> dict[str, str | None]:
     """Each of `targets` this pass may judge for staleness: its fingerprint at
     `head`, but only when the working tree already agrees with `head` — a
     target still mid-write (saved but not yet committed, or committed but not
@@ -279,11 +303,17 @@ def _judgeable(cfg, head: str, targets: list[str]) -> dict[str, str | None]:
             if head_fp[t] is not _UNREADABLE and head_fp[t] == work_fp[t]}
 
 
-def _staleness(cfg, conn, head: str, now_fp: dict[str, str | None], credit: dict,
-               fallback: tuple, *, announce: bool) -> int:
+def _staleness(cfg, conn, head: str, now_fp: dict[str, str | None], seen: dict,
+               credit: dict, fallback: tuple, *, announce: bool) -> int:
     """Compare every confirmation with its target's `now_fp` (D80) — the
     caller's map of judgeable targets, computed once at `head` before this
     pass's transaction opened.
+
+    `seen` is each row's stored `(fingerprint, confirmed_at)` as `_targets`
+    read it when that map was built. A row that differs now was reconfirmed in
+    between — possibly against content newer than `head` — so it is left
+    untouched this pass rather than judged against a mark `now_fp` was never
+    computed for (final review M3).
 
     A new mismatch writes `confirmation.invalidated` once — credited to the
     newest commit in the batch that touched the target, or to `fallback` when
@@ -305,11 +335,13 @@ def _staleness(cfg, conn, head: str, now_fp: dict[str, str | None], credit: dict
     HEAD in the meantime. Per-commit fingerprints would mean reading every
     confirmed document out of every commit instead of once per pass.
     """
-    rows = conn.execute(
-        "SELECT target, fingerprint, emitted_for_sha FROM confirmations").fetchall()
+    rows = conn.execute("SELECT target, fingerprint, confirmed_at, emitted_for_sha"
+                        " FROM confirmations").fetchall()
     n = 0
     for r in rows:
         if r["target"] not in now_fp:
+            continue
+        if seen.get(r["target"]) != (r["fingerprint"], r["confirmed_at"]):
             continue
         stale = now_fp[r["target"]] != r["fingerprint"]
         if stale and r["emitted_for_sha"] is None:
@@ -326,15 +358,21 @@ def _staleness(cfg, conn, head: str, now_fp: dict[str, str | None], credit: dict
     return n
 
 
-def _targets(conn) -> list[str]:
-    return [r["target"] for r in conn.execute("SELECT target FROM confirmations")]
+def _targets(conn) -> dict[str, tuple[str, int]]:
+    """Every confirmation's target -> its stored `(fingerprint, confirmed_at)`,
+    read before the pass's transaction opens — iterated as the target list
+    `_judgeable` takes, and handed to `_staleness` as `seen`."""
+    return {r["target"]: (r["fingerprint"], r["confirmed_at"]) for r in conn.execute(
+        "SELECT target, fingerprint, confirmed_at FROM confirmations")}
 
 
 def _seed(cfg, conn, head: str) -> None:
-    now_fp = _judgeable(cfg, head, _targets(conn))
+    seen = _targets(conn)
+    now_fp = _judgeable(cfg, head, seen)
     conn.execute("BEGIN IMMEDIATE")
     try:
-        _staleness(cfg, conn, head, now_fp, {}, (head, 0, SYSTEM), announce=False)
+        _staleness(cfg, conn, head, now_fp, seen, {}, (head, 0, SYSTEM),
+                   announce=False)
         _set_marker(conn, head)
         conn.execute("COMMIT")
     except BaseException:
@@ -344,10 +382,23 @@ def _seed(cfg, conn, head: str) -> None:
 
 
 def run(cfg) -> int:
-    """Project every commit since the marker; return how many events were written."""
-    with _LOCK:
+    """Project every commit since the marker; return how many events were written.
+
+    Under `gitcommit.LOCK`, the lock ui-backend's own commits take around
+    "commit + record in `ui_commits`": the loop thread and a report request
+    may both call this, and neither may read `HEAD` between the app's commit
+    and its record (D80)."""
+    with gitcommit.LOCK:
         head = gitcommit.head(cfg)
         if not head:
+            if (cfg.data_root / ".git").exists():
+                # A repository whose HEAD git will not read: git failing in
+                # the container (a `safe.directory` refusal after an ownership
+                # change, say), not a repository without commits. Said, not
+                # swallowed — silence here means no content event is ever
+                # projected again (final review M7).
+                log.warning("git projection: cannot read HEAD in %s — is git"
+                            " refusing the repository?", cfg.data_root)
             return 0
         conn = db.connect(cfg.app_db)
         try:
@@ -370,12 +421,13 @@ def run(cfg) -> int:
             commits = _commits(cfg, marker, head)
             rows, credit = [], {}
             for c in commits:
-                actor = _actor(c)
-                # ui-edit commits write no edit event, but ARE checked for
-                # staleness — credited to the person in their Acted-By trailer.
-                credited = actor or c["acted_by"] or f"git:{c['author']}"
+                # The app's own commits write no edit event (its endpoint did),
+                # but ARE checked for staleness — credited to the user
+                # `ui_commits` recorded, never to a trailer (D80).
+                recorded = _recorded_actor(conn, c)
+                actor = None if recorded else _actor(c)
                 for action, target, change, extra in _touched(cfg, c):
-                    credit[target] = (c["sha"], c["at"], credited)
+                    credit[target] = (c["sha"], c["at"], recorded or actor)
                     if actor is not None:
                         rows.append((c["at"], actor, action, target,
                                      {"change": change, "commit": c["sha"], **extra}))
@@ -385,14 +437,15 @@ def run(cfg) -> int:
             # edit, and crediting it here would misattribute a permanent,
             # append-only record entry to the wrong person.
             fallback = (head, _head_time(cfg, head), SYSTEM)
-            now_fp = _judgeable(cfg, head, _targets(conn))
+            seen = _targets(conn)
+            now_fp = _judgeable(cfg, head, seen)
             conn.execute("BEGIN IMMEDIATE")
             try:
                 for at, actor, action, target, detail in rows:
                     audit.record(conn, actor=actor, action=action, now=at,
                                  target=target, detail=detail)
-                n = len(rows) + _staleness(cfg, conn, head, now_fp, credit, fallback,
-                                           announce=True)
+                n = len(rows) + _staleness(cfg, conn, head, now_fp, seen, credit,
+                                           fallback, announce=True)
                 _set_marker(conn, head)
                 conn.execute("COMMIT")
             except BaseException:
