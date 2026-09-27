@@ -64,7 +64,7 @@ from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
 from inja_ui_backend.disclosure import Disclosure
 from inja_ui_backend.fingerprint import fingerprint
-from inja_ui_backend.store import confirmations, policy, users
+from inja_ui_backend.store import audit, confirmations, policy, users
 from inja_ui_backend.tests_helpers import cfg_for
 
 PW = "test-password"
@@ -568,6 +568,21 @@ def _client_as(data_root, tmp_path, role, *scopes):
             confirmations.set_confirmation(conn, target=target,
                                            fingerprint=fingerprint(doc),
                                            by="09190000000", at=1770000000)
+        # The record, as a department's record really is: somebody else's
+        # too. Each caller here has an `app.db` of their own, so without this
+        # the activity reports in `RECORD_READS` would hold only the caller's
+        # own events — and a non-editor is refused the tombstone, so no
+        # `topProcess` of theirs could ever name it and the scan would pass on
+        # a report that ignored the disclosure gate altogether (D83, review
+        # round 1; deleting `servable` from `activity.departments` passed every
+        # scan in this file before these rows). The seeded Editor has read it
+        # more often than the sweep reads anything, so whoever may not be told
+        # it exists must not be handed it as their department's most-read
+        # process. Straight to the store, like the tombstone's confirmation
+        # above: the seeded Editor never signs in here, so no route could.
+        for _ in range(3):
+            audit.record(conn, actor="09190000000", action="process.viewed",
+                         target=TOMBSTONED, now=1770000000)
     finally:
         conn.close()
     client = TestClient(create_app(cfg), base_url=BASE)
@@ -816,6 +831,35 @@ DEPT_WRITES = (
     Route("DELETE", "/api/processes/{d}-001", None, "/api/processes/{pid}", 200),
 )
 
+#: The activity reports (D83), swept **after every write** and before the
+#: session routes, so the record they read back holds everything the sweep has
+#: just done — the processes and the tombstone it read, the confirmation it set
+#: and revoked, the process it created and the one it deleted — and not one
+#: sign-in.
+#: Swept first, as the other reads are, they would walk a record with nothing in
+#: it to leak.
+#:
+#: The four access-and-governance reports are gated on `view_audit` at `*`
+#: (D44), so every department-scoped caller in the leak scans is answered the
+#: uniform 404 and the `*` holders are who produce their real bodies. The three
+#: department-keyed ones are served to every holder of `view_audit` — the Admin
+#: and the Editor here — cut to the departments it reaches; that cut, and
+#: `topProcess` counting only processes the caller may be served, is what the
+#: scoped scans walk. **Id 2 is the caller**: `seed.seed` writes row 1 and
+#: `_client_as` row 2, so the one-user timeline scanned is the sweep's own.
+RECORD_READS = (
+    Route("GET", "/api/activity/users", None, "/api/activity/users", 200),
+    Route("GET", "/api/activity/users/2", None, "/api/activity/users/{user_id}",
+          200),
+    Route("GET", "/api/activity/failures", None, "/api/activity/failures", 200),
+    Route("GET", "/api/activity/permissions", None, "/api/activity/permissions",
+          200),
+    Route("GET", "/api/activity/departments", None, "/api/activity/departments",
+          200),
+    Route("GET", "/api/activity/comments", None, "/api/activity/comments", 200),
+    Route("GET", "/api/activity/summary", None, "/api/activity/summary", 200),
+)
+
 #: A password long enough to be accepted (`validate_password`'s six-character
 #: floor). A one-character `next` answered 400 to every caller, so the sweep
 #: never once reached this endpoint's real answer.
@@ -837,7 +881,7 @@ GLOBAL_WRITES = (
     Route("POST", "/api/auth/logout", None, "/api/auth/logout", 200),
 )
 
-EVERY_ROUTE = GLOBAL_READS + DEPT_READS + DEPT_WRITES + GLOBAL_WRITES
+EVERY_ROUTE = GLOBAL_READS + DEPT_READS + DEPT_WRITES + RECORD_READS + GLOBAL_WRITES
 
 
 def _fill_value(value, **kw):
@@ -863,6 +907,7 @@ def _sweep(client, departments=(MINE, THEIRS)):
         seq += [_fill(r, d=d, u=client.username) for r in DEPT_READS]
     for d in departments:
         seq += [_fill(r, d=d, u=client.username) for r in DEPT_WRITES]
+    seq += [_fill(r, u=client.username) for r in RECORD_READS]
     seq += [_fill(r, u=client.username) for r in GLOBAL_WRITES]
     return seq
 

@@ -111,6 +111,7 @@ def test_reject_needs_a_reason_and_closes(people):
     assert r.status_code == 422
     r = people["head"].post(f"/api/comments/{cid}/reject", json={"reason": "تکراری"})
     assert (r.json()["state"], r.json()["rejectReason"]) == ("rejected", "تکراری")
+    assert [e["target"] for e in _events(people["head"], "comment.rejected")] == [cid]
     assert people["viewer"].put(f"/api/comments/{cid}", json={"text": "y"}).status_code == 403
     assert people["viewer"].post(f"/api/comments/{cid}/withdraw").status_code == 403
 
@@ -121,6 +122,7 @@ def test_edit_restarts_and_is_barred_after_an_approval(people):
     assert (r.json()["text"], r.json()["waitingWith"]["name"]) == ("تازه", "head")
     people["head"].post(f"/api/comments/{cid}/approve", json={})
     assert people["viewer"].put(f"/api/comments/{cid}", json={"text": "z"}).status_code == 403
+    assert [e["target"] for e in _events(people["viewer"], "comment.edited")] == [cid]
 
 
 def test_withdraw(people):

@@ -61,8 +61,8 @@ def test_the_change_is_recorded(data_root, tmp_path):
     client, cfg = signed_in_client(data_root, tmp_path / "app.db")
     client.post("/api/auth/password", json={"current": PW, "next": "brandnew"})
     conn = db.connect(cfg.app_db)
-    n = conn.execute(
-        "SELECT COUNT(*) FROM audit_events WHERE action='password.changed'").fetchone()[0]
+    n = conn.execute("SELECT COUNT(*) FROM audit_events WHERE action = ?",
+                     ("password.changed",)).fetchone()[0]
     assert n == 1
 
 

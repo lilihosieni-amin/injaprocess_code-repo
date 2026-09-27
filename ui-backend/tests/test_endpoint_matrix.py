@@ -1,21 +1,23 @@
 """Every endpoint, read through the permission gate (spec D56, §11 tests 6 and 10).
 
-Thirty-seven routes. Thirty-one are gated on one capability at one target; six
+Forty-four routes. Thirty-five are gated on one capability at one target; nine
 are not — three span departments and are filtered per row rather than gated,
 because a list that refuses outright would take a two-department head's whole
 screen away over one department they cannot reach, one reads the estate's
-workbook roll, which belongs to no department, and two list comments, filtered
-per row by D66.
+workbook roll, which belongs to no department, two list comments, filtered
+per row by D66, and three are the department-keyed activity reports, filtered
+to the departments the caller's `view_audit` reaches (D44, D83).
 
-Twenty-one of the thirty-one name a department. The other ten name `*`: the two
-visibility routes, because there is one global policy (D16) and so no department
-to gate them on, and the eight of the user-administration surface, because all
-user administration is at `*` scope (D11) and a department-scoped Admin is meant
-to learn nothing about it at all (D54). `_in_scope_for` is what keeps the
-in-scope half of every pair below honest about that: a `dept:cooking` caller is
-404'd out of a `*` target before their capability is ever looked at, and a 404
-arriving where a 403 was expected would read as a mis-gated capability rather
-than as the wrong scope.
+Twenty-one of the thirty-five name a department. The other fourteen name `*`:
+the two visibility routes, because there is one global policy (D16) and so no
+department to gate them on, the eight of the user-administration surface,
+because all user administration is at `*` scope (D11) and a department-scoped
+Admin is meant to learn nothing about it at all (D54), and the four activity
+reports whose events — sign-ins, permission changes — name no department (D44).
+`_in_scope_for` is what keeps the in-scope half of every pair below honest about
+that: a `dept:cooking` caller is 404'd out of a `*` target before their
+capability is ever looked at, and a 404 arriving where a 403 was expected would
+read as a mis-gated capability rather than as the wrong scope.
 
 The tests come in pairs on purpose. One capability test alone pins nothing: a
 route gated on `view` that should be `edit` passes "an editor is not refused",
@@ -110,7 +112,7 @@ def _a_render_that_writes_a_pdf(monkeypatch):
                         lambda _chromium, _html, out: out.write_bytes(b"%PDF-1.4\n"))
 
 
-#: The thirty-one gated routes: (method, path, body, the capability each needs).
+#: The thirty-five gated routes: (method, path, body, the capability each needs).
 #: `body` is what a well-formed request carries — a malformed one would be
 #: refused by validation on some routes and by the gate on others, and this
 #: table exists to compare gates, not validators.
@@ -212,6 +214,16 @@ GATED = [
     ("PATCH", f"/api/users/{VICTIM}", {"displayName": "دستکاری"}, "manage_users"),
     ("POST", f"/api/users/{VICTIM}/password", {"password": PW}, "manage_users"),
     ("POST", f"/api/users/{VICTIM}/disabled", {"disabled": True}, "manage_users"),
+    #: The activity reports over access and governance events (D44, D83). Those
+    #: events name no department, so the target is `*` for the D54 reason the
+    #: user rows give: a department-scoped holder of `view_audit` is 404'd, and
+    #: a `*` Reader — who holds no `view_audit` — is 403'd. User 1 is the
+    #: seeded Editor, who exists in every `_client_as` store, so the in-scope
+    #: Admin's 200 is the handler answering and not a missing-user 404.
+    ("GET", "/api/activity/users", None, "view_audit"),
+    ("GET", "/api/activity/users/1", None, "view_audit"),
+    ("GET", "/api/activity/failures", None, "view_audit"),
+    ("GET", "/api/activity/permissions", None, "view_audit"),
 ]
 
 #: The routes above whose target is not a department, so an in-scope caller for
@@ -222,7 +234,9 @@ GATED = [
 GLOBAL_TARGET = ("/api/visibility", "/api/visibility/node_actor",
                  "/api/users", f"/api/users/{VICTIM}",
                  "/api/users/supervisor-candidates", "/api/roles",
-                 f"/api/users/{VICTIM}/password", f"/api/users/{VICTIM}/disabled")
+                 f"/api/users/{VICTIM}/password", f"/api/users/{VICTIM}/disabled",
+                 "/api/activity/users", "/api/activity/users/1",
+                 "/api/activity/failures", "/api/activity/permissions")
 
 #: The routes that filter instead of gating. The first three span every
 #: department, so there is no single target to gate them on; `/api/facts/branches`
@@ -234,7 +248,15 @@ FILTERED = ["/api/departments", "/api/pending", "/api/facts",
             #: comment), never refused — an author keeps their own comments
             #: after losing the department. Their rules are pinned in
             #: test_comments_api.py and test_comment_rules.py.
-            "/api/comments/inbox?tab=all", "/api/comments?department=cooking"]
+            "/api/comments/inbox?tab=all", "/api/comments?department=cooking",
+            #: The department-keyed activity reports (D83): every row is cut to
+            #: the departments the caller's `view_audit` reaches, so there is no
+            #: one target to gate them on. Unlike the lists above they do
+            #: refuse — a caller holding `view_audit` nowhere is 404'd, the
+            #: surface does not exist for them — which is pinned, with the
+            #: per-department cut, in test_activity_scope.py.
+            "/api/activity/departments", "/api/activity/comments",
+            "/api/activity/summary"]
 
 #: The facts routes, whose capability arm is an **OR over `PANEL_CAPABILITIES`**
 #: answering the uniform **404** — not a single capability answering 403.
@@ -323,7 +345,10 @@ WITHOUT = {"view": (), "edit": ("reader", "admin"),
            #: Both Reader roles, because D54 is a promise about *Readers* and a
            #: department head is one — the deployment's heads carry the
            #: supervisor tag and no `manage_users` (D11).
-           "manage_users": ("reader", "reader_no_download")}
+           "manage_users": ("reader", "reader_no_download"),
+           #: Both Readers again: who signed in and who changed which grant is
+           #: governance, and D44 keeps it from every Reader.
+           "view_audit": ("reader", "reader_no_download")}
 
 #: The seeded role used for the non-refusal direction — the *narrowest* one that
 #: holds the capability, so that the pair says as much as four roles can.
@@ -335,18 +360,20 @@ WITH = {"view": "reader_no_download", "export_pdf": "reader", "edit": "editor",
         #: The Admin rather than the Editor: it is the narrowest seeded role
         #: holding `manage_users`, and it is also the one that must be able to
         #: act on `VICTIM` — a Reader — under D13's subset rule.
-        "manage_users": "admin"}
+        "manage_users": "admin",
+        #: The Admin: the narrowest seeded role holding `view_audit`.
+        "view_audit": "admin"}
 
 
 def _in_scope_for(path: str) -> str:
     """The scope a caller must hold to be *inside* this route's target.
 
     `dept:cooking` for the twenty-one that name a department in their path, and `*`
-    for the two that name the global policy: `contains("dept:cooking", "*")` is
-    False, so a department-scoped caller is 404'd out of `/api/visibility` by
-    scope before their capability is consulted at all. Every in-scope test below
-    would then read that 404 as a statement about `set_visibility`, which it is
-    not.
+    for the fourteen in `GLOBAL_TARGET` — take the global policy's two:
+    `contains("dept:cooking", "*")` is False, so a department-scoped caller is
+    404'd out of `/api/visibility` by scope before their capability is consulted
+    at all. Every in-scope test below would then read that 404 as a statement
+    about `set_visibility`, which it is not.
     """
     return "*" if path in GLOBAL_TARGET else "dept:cooking"
 

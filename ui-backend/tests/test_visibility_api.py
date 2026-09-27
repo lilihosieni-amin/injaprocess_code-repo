@@ -61,7 +61,7 @@ def _events(client):
         return [dict(r) for r in conn.execute(
             "SELECT actor, action, target, detail, outcome, session_id"
             " FROM audit_events"
-            " WHERE action = 'visibility.policy.changed' ORDER BY id")]
+            " WHERE action = ? ORDER BY id", ("visibility.policy.changed",))]
     finally:
         conn.close()
 
