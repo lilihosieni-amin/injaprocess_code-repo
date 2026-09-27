@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from .. import engine, gitcommit, storage
 from .. import save as save_mod
 from ..access import NOT_FOUND, requires
-from ..auth import require_session
+from ..auth import record_view, require_session
 from ..disclosure import Disclosure
 from ..models import CreateProcessBody, PendingDecision
 
@@ -188,6 +188,7 @@ def get_process(pid: str, request: Request,
     # reader enumerate which ids are processes nobody has confirmed yet.
     if not shown.may_serve(doc, dept, pid):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
+    record_view(request, user, "process.viewed", pid)
     return shown.redact(doc, dept)
 
 

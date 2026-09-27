@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .. import engine, gitcommit, storage
 from ..access import NOT_FOUND, permits, reachable_departments, requires
-from ..auth import require_session
+from ..auth import record_view, require_session
 from ..disclosure import Disclosure
 
 router = APIRouter(prefix="/api/departments")
@@ -192,6 +192,7 @@ def get_overview(code: str, request: Request,
     # department code (D20).
     if not shown.may_serve(doc, code, code):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
+    record_view(request, user, "department.viewed", code)
     return shown.redact_overview(doc, code)
 
 
@@ -303,6 +304,7 @@ def list_processes(code: str, request: Request,
     cfg = request.app.state.cfg
     shown = Disclosure(request.app.state.db, user)
     docs = shown.servable(storage.ordered_processes(cfg.data_root, code), code)
+    record_view(request, user, "department.viewed", code)
     return [shown.redact(d, code) for d in docs]
 
 

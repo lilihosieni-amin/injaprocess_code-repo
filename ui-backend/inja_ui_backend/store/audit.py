@@ -38,6 +38,16 @@ def record(conn: sqlite3.Connection, *, actor: str, action: str, now: int,
     )
 
 
+def seen_since(conn: sqlite3.Connection, *, session_id: str, action: str,
+              target: str, since: int) -> bool:
+    """Whether this session already has `action` on `target` after `since` —
+    D77's window, served by the `audit_session (session_id, at)` index."""
+    return conn.execute(
+        "SELECT 1 FROM audit_events WHERE session_id = ? AND at > ?"
+        " AND action = ? AND target = ? LIMIT 1",
+        (session_id, since, action, target)).fetchone() is not None
+
+
 def recent_failures(conn: sqlite3.Connection, *, actor: str,
                     since: int) -> tuple[int, int | None]:
     """How many sign-ins `actor` has failed since `since`, and when the first was.

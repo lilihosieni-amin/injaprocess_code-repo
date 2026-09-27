@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import time
 
 import anyio
@@ -391,3 +392,25 @@ def record_revoked(request: Request, *, actor: str, user_id: int, username: str,
         record(request, "session.revoked", actor=actor,
                session_id=getattr(request.state, "session_id", None),
                target=username, detail={"session": audit.session_tag(sid)})
+
+
+#: D77: one view event per session per target inside this window. TanStack
+#: Query refetches on focus and remount, so an event per fetch would make
+#: "how often" a measure of tab-switching.
+VIEW_WINDOW_S = 1800
+# ponytail: process-local lock, so the overview and process-list requests a
+# department page fires together cannot both pass the check. One uvicorn
+# worker (D6); a second worker needs a unique index instead.
+_VIEW_LOCK = threading.Lock()
+
+
+def record_view(request: Request, user: sqlite3.Row, action: str, target: str) -> None:
+    """`department.viewed` / `process.viewed`, written when the server answers
+    the request a screen makes — never reported by the browser (D77)."""
+    sid = request.state.session_id
+    now = int(time.time())
+    with _VIEW_LOCK:
+        if audit.seen_since(get_conn(request), session_id=sid, action=action,
+                            target=target, since=now - VIEW_WINDOW_S):
+            return
+        record(request, action, actor=user["username"], session_id=sid, target=target)
