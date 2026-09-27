@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Date** | 2026-09-27 |
-| **Status** | Design approved by lili section by section, 2026-09-27; this text awaits her review |
+| **Status** | Approved by lili, 2026-09-27 — design section by section, then the written text |
 | **Amends** | `2026-08-04-multi-user-rbac-design.md` — adjusts **D8**, **D42**, **D43**, **D44**, **D60**; resolves D42's *"emitted on navigation"*; leaves D45's purge unbuilt |
 | **Unchanged** | D41, D45's append-only rule, D59 (the outbox — already built in P4), and the whole of §3–§7 |
 | **Builds on** | `2026-09-21-comments-routing-addendum.md` (D62–D75) and `2026-09-26-reports-reading-withdrawn-addendum.md` |
