@@ -72,7 +72,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from .. import comment_rules, db
 from ..access import NOT_FOUND, requires, scopes_of
-from ..auth import VERIFY_LIMITER, hash_password, record, validate_password
+from ..auth import (
+    VERIFY_LIMITER,
+    hash_password,
+    record,
+    record_revoked,
+    validate_password,
+)
 from ..delegation import (
     CYCLE,
     LAST_EDITOR,
@@ -771,6 +777,9 @@ def set_user_disabled(user_id: int, body: DisabledBody, request: Request,
         record(request, "user.disabled" if body.disabled else "user.enabled",
                actor=user["username"], session_id=request.state.session_id,
                target=target["username"], detail={"at": now})
+        if body.disabled:
+            record_revoked(request, actor=user["username"], user_id=target["id"],
+                           username=target["username"], now=now)
     if changed:
         _reconcile_comments(request)
     return _user(conn, users.by_id(conn, user_id))
@@ -870,4 +879,6 @@ async def set_user_password(user_id: int, body: SetPasswordBody, request: Reques
     record(request, "password.set_by_admin", actor=user["username"],
            session_id=request.state.session_id, target=target["username"],
            detail={"sessions_revoked": True})
+    record_revoked(request, actor=user["username"], user_id=target["id"],
+                   username=target["username"], now=now)
     return Response(status_code=204)

@@ -5,8 +5,25 @@ endpoint anywhere exposes one. A record the top user can rewrite records nothing
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
+
+
+#: The Telegram runtime's actor — stamped by the outbox drain (D59) and by the
+#: git projection for chat edits (D60), never read from anything it wrote.
+AGENT = "agent:control-bot"
+
+
+def session_tag(session_id: str | None) -> str | None:
+    """A session as the record may show it: 6 hex chars of its SHA-256.
+
+    A live session id is a bearer credential, so no report ever returns one;
+    the tag still lets a reader see which rows came from the same session.
+    """
+    if not session_id:
+        return None
+    return hashlib.sha256(session_id.encode()).hexdigest()[:6]
 
 
 def record(conn: sqlite3.Connection, *, actor: str, action: str, now: int,

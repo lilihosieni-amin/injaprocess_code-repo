@@ -16,6 +16,7 @@ from ..auth import (
     get_conn,
     login_retry_after,
     record,
+    record_revoked,
     request_origin,
     require_session,
 )
@@ -152,9 +153,10 @@ async def change_password(body: PasswordBody, request: Request,
     message or None), and what travels with it is two `UPDATE`s against a local
     sqlite file — microseconds beside the ~122 ms the slot is held for anyway.
     """
+    now = int(time.time())
     problem = await anyio.to_thread.run_sync(
         functools.partial(apply_password_change, get_conn(request), user,
-                          body.current, body.next, now=int(time.time()),
+                          body.current, body.next, now=now,
                           keep_session=request.state.session_id),
         limiter=_VERIFY_LIMITER)
     if problem:
@@ -164,4 +166,6 @@ async def change_password(body: PasswordBody, request: Request,
         raise HTTPException(status_code=400, detail=problem)
     record(request, "password.changed", actor=user["username"],
            session_id=request.state.session_id)
+    record_revoked(request, actor=user["username"], user_id=user["id"],
+                   username=user["username"], now=now)
     return Response(status_code=204)

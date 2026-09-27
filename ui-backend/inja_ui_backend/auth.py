@@ -381,3 +381,13 @@ def record(request: Request, action: str, **kw) -> None:
     ip, user_agent = request_origin(request)
     audit.record(get_conn(request), action=action, now=int(time.time()),
                  ip=ip, user_agent=user_agent, **kw)
+
+
+def record_revoked(request: Request, *, actor: str, user_id: int, username: str,
+                   now: int) -> None:
+    """`session.revoked` for each of `username`'s sessions the act at `now`
+    ended (D42, addendum D78) — tagged, never the id itself."""
+    for sid in sessions.revoked_at(get_conn(request), user_id, now):
+        record(request, "session.revoked", actor=actor,
+               session_id=getattr(request.state, "session_id", None),
+               target=username, detail={"session": audit.session_tag(sid)})

@@ -18,7 +18,7 @@ from . import comment_rules, comments_db, db
 from .store import audit
 
 log = logging.getLogger(__name__)
-AGENT = "agent:control-bot"
+AGENT = audit.AGENT
 INTERVAL = 30
 #: The only outbox kind the CLI is known to emit. A kind outside this set is
 #: marked drained and logged, never turned into an audit row — an outbox

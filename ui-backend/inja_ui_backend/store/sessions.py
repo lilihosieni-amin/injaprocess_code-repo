@@ -88,3 +88,16 @@ def revoke_all_for_user(conn: sqlite3.Connection, user_id: int, now: int, *,
         sql += " AND id != ?"
         args.append(except_session)
     return int(conn.execute(sql, args).rowcount)
+
+
+def revoked_at(conn: sqlite3.Connection, user_id: int, now: int) -> list[str]:
+    """`user_id`'s sessions revoked at exactly `now` — the ones the act that
+    just ran with this `now` ended, for their `session.revoked` rows (D78).
+
+    ponytail: keyed on the second, so two acts on one account inside the same
+    second would each record both; return ids from the UPDATE (`RETURNING`)
+    if that ever matters.
+    """
+    return [r["id"] for r in conn.execute(
+        "SELECT id FROM sessions WHERE user_id = ? AND revoked_at = ? ORDER BY id",
+        (user_id, now))]
