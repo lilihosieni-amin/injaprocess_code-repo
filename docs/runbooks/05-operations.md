@@ -120,7 +120,8 @@ snapshot of their own.
   review record (every `confirmations` row); `comments.db` lives on
   `ui-comments` and holds every comment and its resolution. `git-push` sees
   neither. `ui-backend` takes a SQLite `.backup` of both at **11:00** and
-  **23:00** into `/opt/inja/backups/` (`app-YYYYmmdd-HH00.db`,
+  **23:00** UTC (container time — **14:30** and **02:30** in Tehran; the
+  stamp in the file name is UTC too) into `/opt/inja/backups/` (`app-YYYYmmdd-HH00.db`,
   `comments-YYYYmmdd-HH00.db`), keeps the newest **14** of each, mode `0600`
   (ARD §16, spec addendum D82). They are secrets — a file of password hashes
   and live session ids; read them as root (`sudo` if you are not). They are

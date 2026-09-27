@@ -119,7 +119,8 @@ including every process nobody has confirmed.
 before the new image goes up:
 
 1. Create the backup folder, owner-only — `ui-backend` writes a copy of
-   `app.db` (every password hash) there twice a day, and without this Docker
+   `app.db` (every password hash) there twice a day (11:00 and 23:00 UTC —
+   14:30 and 02:30 in Tehran), and without this Docker
    creates the bind-mount source itself, mode `0755`:
 
    ```bash
@@ -139,7 +140,7 @@ before the new image goes up:
    print('schema_version', c.execute('SELECT version FROM schema_version').fetchone()[0])
    for (t,) in c.execute(\"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name\").fetchall():
        print(t, c.execute(f'SELECT COUNT(*) FROM \"{t}\"').fetchone()[0])
-   print('objects', [r[0] for r in c.execute(\"SELECT name FROM sqlite_master WHERE name IN ('activity_intervals', 'audit_session', 'projection_state') ORDER BY name\")])
+   print('objects', [r[0] for r in c.execute(\"SELECT name FROM sqlite_master WHERE name IN ('activity_intervals', 'audit_session', 'projection_state', 'ui_commits', 'audit_events_no_update', 'audit_events_no_delete') ORDER BY name\")])
    print('emitted_for_sha', any(r[1] == 'emitted_for_sha' for r in c.execute('PRAGMA table_info(confirmations)')))
    "
    ```
@@ -147,8 +148,11 @@ before the new image goes up:
 Only `ui-backend` changes in this release (its image, plus the `/backups` mount
 and `BACKUP_DIR` in its compose entry), so the one-line update below recreates
 only it. **Migration 4 runs on start.** Run the same command again and check:
-`schema_version` is `4`; `objects` lists `activity_intervals`, `audit_session`
-and `projection_state` and `emitted_for_sha` is `True`; every earlier table's
+`schema_version` is `4`; `objects` lists `activity_intervals`,
+`audit_events_no_delete`, `audit_events_no_update`, `audit_session`,
+`projection_state` and `ui_commits` (the two `audit_events_no_*` are the
+triggers that make the record append-only in the database itself) and
+`emitted_for_sha` is `True`; every earlier table's
 count is unchanged (`audit_events` and `sessions` may only have grown, if
 someone signed in meanwhile). Within a minute of the start the first backup
 pair is in `/opt/inja/backups/` (`sudo ls -l` — mode `-rw-------`), and

@@ -177,7 +177,8 @@ comment) live on Docker volumes outside it, so `ui-backend` backs them up itself
 - **Where:** `/opt/inja/backups/app-YYYYmmdd-HH00.db` and
   `/opt/inja/backups/comments-YYYYmmdd-HH00.db` — one pair per slot, the same
   stamp on both. Inside the container the folder is `/backups`.
-- **How often:** at **11:00** and **23:00**, the `git-push` times. A restart
+- **How often:** at **11:00** and **23:00** container time, which is UTC —
+  **14:30** and **02:30** in Tehran — the `git-push` times. A restart
   neither skips nor repeats a slot: whether one is due is read from the files'
   names, so the latest slot missed while the service was down is taken as soon
   as it starts again (and the very first start takes one at once).

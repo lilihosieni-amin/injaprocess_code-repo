@@ -9,7 +9,7 @@
 | **Builds on** | `2026-09-21-comments-routing-addendum.md` (D62–D75) and `2026-09-26-reports-reading-withdrawn-addendum.md` |
 | **Architecture** | `ARD.md` §13.2, §16 and §19.7 are updated to match in the P3 plan |
 
-**Amended during implementation, 2026-09-27:** D78, D79, D80, D83 and D84 now say what was built — each correction sits in its decision, marked *As built*.
+**Amended during implementation, 2026-09-27:** D78, D79, D80, D83 and D84 now say what was built — each correction sits in its decision, marked *As built*. The final whole-branch review amended D76, D78, D79, D80, D82, D83, D85 and §6 the same way (marked *As built — final review*): `consolidate` and `Revert` commits, a `ui-edit` commit trusted only by the sha the app recorded, the record made append-only by the database itself, fact ids gated on the one-user timeline, and the backup hours stated in UTC.
 
 ---
 
@@ -49,8 +49,9 @@ on the server.
 `detail.change` ∈ `created` · `updated` · `deleted`, so creation and deletion need
 no events of their own.
 
-A `fact.edited` event's department is the first department its `scope` names; a
-universal fact names none and is therefore a `*`-only event under D44.
+A `fact.edited` event's department is the first department, alphabetically, its
+`scope` names; a universal fact names none and is therefore a `*`-only event
+under D44.
 
 **Still not written, deliberately:** `session.expired` (D42 derives it) and
 `role.created/changed/deleted` (D50).
@@ -88,6 +89,12 @@ client then saves — so it records nothing.
 says every write is attributed *"in the activity record and in the commit
 trailer"*; neither was true for content writes until now.
 
+*As built — final review:* the trailer is for a person reading `git log`; the
+projection never reads it (D80). An endpoint writes its edit event only when
+its commit was made — a save or reorder that changed nothing records nothing,
+the users router's own rule: a decision nobody made must not appear in the
+record.
+
 **`session.revoked`** is written once per session ended by a password change, an
 administrator setting a password, or disabling a user. D42 lists it; nothing
 wrote it.
@@ -113,19 +120,31 @@ now and again on the next pass, and the record is append-only.
 | `departments/{d}/overview.json`, `departments/{d}/order.json` | `department.edited` |
 | `facts/{measurements,records,rules,notes}.json` | `fact.edited` — the file is compared before and after the commit, entry by entry, because facts share aggregate files |
 
-**Who the actor is** — the subject prefix decides, since the server authors
-`chat-edit` and `ui-edit` commits under the same git identity:
+**Who the actor is** — the subject prefix decides, not the author: a commit's
+author is as easy to forge as its subject (`ui-edit` commits are authored
+`ui-edit`, chat edits `deploy`, and anything that can commit can write either):
 
 | Commit | Actor |
 |---|---|
 | `pipeline(…)` | `run:{dept}/{stamp}` — the department from the subject's parentheses, the stamp from the **newest** `runs/{dept}/{stamp}/` directory the commit touches: the subject carries no stamp, and a run commit sweeps up leftover run directories, other departments' included |
 | `quantify(…)` | `run:facts/{dept}/{stamp}`, the same way from `runs/facts/{dept}/{stamp}/` |
-| `chat-edit`, `restructure`, `audit-fix`, `edit-fact` | `agent:control-bot` |
+| `chat-edit`, `restructure`, `audit-fix`, `edit-fact`, `consolidate` | `agent:control-bot` |
 | `ui-edit` | **no edit event** — the endpoint already wrote one with the real user (D78) |
 | anything else | `git:{author name}` — a person's commit, e.g. a `reset` |
 
 *As built:* a `pipeline(…)` or `quantify(…)` commit touching no run directory of
 its department is credited `run:pipeline` / `run:quantify` — no stamp invented.
+
+*As built — final review:*
+
+- `consolidate` is Gate C's commit, `consolidate({dept}): item {n} — {merge|attach}`.
+- **A `Revert "X"` takes X's kind:** `agent:control-bot` when X is one of the
+  agent kinds above, otherwise `git:{author name}` — a revert of a pipeline,
+  quantify or `ui-edit` commit is never trusted as a run's or the app's.
+- **A `ui-edit` subject alone proves nothing.** The row above applies only to a
+  commit whose sha `ui-backend` recorded in `ui_commits` when it made it
+  (`gitcommit.commit`, D80); an unrecorded `ui-edit` commit is an ordinary
+  commit — `git:{author name}`, with edit events.
 
 `--no-merges` walks the commits a merge brings in, each once, and never the merge
 itself, whose diff against its first parent would count them twice.
@@ -161,12 +180,27 @@ stored one.
 - A target whose working copy disagrees with `head` — saved but not yet
   committed, mid-edit — is skipped that pass and judged again on a later pass,
   once `HEAD` has moved and the two agree.
-- A `ui-edit` commit's event is credited to the user in its `Acted-By` trailer.
+- *(Final review.)* A `ui-edit` commit's event is credited to the user
+  **`ui_commits` recorded** for its sha — a table in `app.db`, which
+  control-bot cannot reach (D5), written by `gitcommit.commit` right after its
+  own commit. The `Acted-By` trailer stays in the message (D48) but is
+  informational: anything that can commit can write one. An unrecorded
+  `ui-edit` commit is credited `git:{author name}`, like any other. One
+  process-local lock covers "commit + record" and the projection pass, so a
+  pass never reads `HEAD` between the two.
 - A stale target no commit in the batch touched is credited
   `(head, head's commit time, system:projection)` — never the batch's last
   commit, which may be another department's edit.
 - An unreadable target is skipped, never raised on; the facts files are loaded
-  once per pass, not once per fact.
+  once per pass, not once per fact. *(Final review:)* one exception, known and
+  accepted: a facts aggregate file that is corrupt **at `HEAD`** (and so in
+  the working tree) reads as holding no entries, so its confirmed facts look
+  deleted and go stale — the
+  engine writes those files atomically, so a torn one is not a state it
+  produces.
+- *(Final review.)* A confirmation replaced between the pass reading the
+  confirmations and opening its transaction is left untouched that pass: it
+  may vouch for content newer than `head`.
 
 **Ceiling, accepted:** staleness is measured against the content at `HEAD`, not
 at each commit, so when two commits land within one 30-second pass the event is
@@ -191,7 +225,8 @@ while the tab is hidden, which is the whole of D43's honesty rule. Active time i
 
 **Owner decision: a server folder only.** `ui-backend`'s background loop takes a
 SQLite `.backup` of `app.db` and `comments.db` at the `git-push` times (11:00 and
-23:00) into `/backups`, bind-mounted from `/opt/inja/backups` on the host. The
+23:00 container time, which is UTC — 14:30 and 02:30 in Tehran) into
+`/backups`, bind-mounted from `/opt/inja/backups` on the host. The
 newest **14** of each are kept, mode `0600` — `app.db` is a file of password
 hashes. Whether a slot is due is read from the newest file's name, so a restart
 neither skips nor repeats one.
@@ -244,6 +279,12 @@ user's events, filtered by day, kind (access · content · governance) and outco
   name of an unconfirmed or tombstoned process. The one-user timeline shows
   such a target as `null` («—»); a caller holding `edit` on the process's
   department still sees a deleted process's id.
+- *(Final review.)* **Fact ids are gated the same way** on the one-user
+  timeline: a `fact.edited` row names its `F-` id only to a caller
+  `GET /api/facts/{id}` would serve (the facts routes' own predicate — reach,
+  D22's record gate, the kind switch), and shows `null` otherwise. A fact gone
+  from the store has no scope left to read, so its id stays only for a caller
+  holding `edit` at `*`.
 - **The one-user page carries the design's sessions card** (L2581–2597) beside
   its four stat cards.
 - `day`, `offset` and the user id are bounded: out of range is a 422, never a
@@ -281,6 +322,10 @@ user's events, filtered by day, kind (access · content · governance) and outco
 
 - **D45's purge job.** Retention is indefinite (D45, §13); a purge is a
   scheduled job to add when that decision is made, never a button.
+  *As built — final review:* D45's append-only rule is enforced by the
+  database itself — two triggers refuse every `UPDATE` and `DELETE` on
+  `audit_events`, whoever issues it — so that purge needs a migration of its
+  own that lifts them.
 - **The content-and-confirmation-history report** (§13). The events it needs
   now exist; the report does not.
 
@@ -292,7 +337,11 @@ One `app.db` migration:
   `session_id`;
 - index `audit_session ON audit_events (session_id, at)`;
 - `confirmations.emitted_for_sha TEXT` (nullable);
-- `projection_state` — one row holding the marker sha.
+- `projection_state` — one row holding the marker sha;
+- *(final review)* `ui_commits (sha, actor, at)` — every commit `ui-backend`
+  made, with the user it was made for (D80);
+- *(final review)* triggers `audit_events_no_update` and
+  `audit_events_no_delete` — the record is append-only in the database (D45).
 
 `comments.db` is unchanged.
 
@@ -315,4 +364,8 @@ The P3 items of spec §11, as they apply after this addendum:
 Added by this addendum: the D77 window (one event per session per target per 30
 minutes, a second session counts separately); the `Acted-By` trailer; `fact.edited`
 from a commit names exactly the changed entries; and §11 test 9's body scan
-extended to every `/api/activity` endpoint.
+extended to every `/api/activity` endpoint. *(Final review:)* a `ui-edit`
+commit not recorded in `ui_commits` is an ordinary commit and its trailer is
+never credited; `consolidate` and `Revert` commits; `UPDATE`/`DELETE` on
+`audit_events` refused by the database; a withheld fact's id absent from an
+Admin's timeline; a write that changed nothing records nothing.
