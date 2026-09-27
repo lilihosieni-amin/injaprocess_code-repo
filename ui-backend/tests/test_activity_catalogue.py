@@ -77,7 +77,13 @@ def test_every_write_route_is_accounted_for(data_root, tmp_path):
 def test_every_catalogued_event_has_a_writer():
     """§11 test 16c: an event named in the catalogue that no code emits — every
     name must appear as a string literal outside the catalogue itself — and the
-    reverse: every name the code records is catalogued."""
+    catalogue equals the routes' table plus `ELSEWHERE`.
+
+    The reverse — every name the code *records* is catalogued — cannot be read
+    off literals: `audit.record` guards nothing and two writers pass the action
+    through a variable (`comment_jobs.drain`, `projection`). It is asserted
+    against the rows themselves, after the `*` Editor's full sweep in
+    `test_body_scan.py::test_the_scan_finds_every_token_when_the_caller_is_in_scope`."""
     catalogue_file = PACKAGE / "store" / "activity.py"
     literals = set()
     for path in PACKAGE.rglob("*.py"):
@@ -123,5 +129,8 @@ def test_the_spa_mount_does_not_swallow_the_activity_routes(data_root, tmp_path)
                    base_url="https://testserver")
     assert c.post("/api/auth/login",
                   json={"username": _USERNAME, "password": _PW}).status_code == 200
+    # The positive control: the mount really is live, so the JSON below is the
+    # route winning over it and not `static_dir` having quietly stopped mounting.
+    assert "shell" in c.get("/some-client-route").text
     r = c.get("/api/activity/summary")
     assert r.status_code == 200 and r.headers["content-type"].startswith("application/json")

@@ -115,3 +115,24 @@ def test_an_unconfirmed_processs_id_never_surfaces_on_an_admins_timeline(
 
     own = people["editor"].get(f"/api/activity/users/{eid}")
     assert "cooking-002" in [r["target"] for r in own.json()["rows"]]
+
+
+def test_a_deleted_processs_id_stays_on_the_timeline_only_for_its_editors(
+        people, data_root):
+    """Task 10 review round 1 (controller ruling): a process deleted outright
+    leaves no file, so there is no document — and no tombstone — to ask. Whoever
+    may edit its department keeps its id in the history, as they would keep a
+    tombstone (D17); an Admin, who holds no `edit` there, still learns nothing."""
+    _add_unconfirmed_process(data_root, "cooking-002", "SECRET-DELETED")
+    assert people["editor"].get("/api/processes/cooking-002").status_code == 200
+    (data_root / "departments" / "cooking" / "processes" / "cooking-002.json").unlink()
+    eid = _uid(people, "editor")
+
+    own = people["editor"].get(f"/api/activity/users/{eid}").json()["rows"]
+    row = next((r["id"] for r in own if r["target"] == "cooking-002"), None)
+    assert row is not None, own
+
+    res = people["admin"].get(f"/api/activity/users/{eid}")
+    assert res.status_code == 200
+    assert next(r for r in res.json()["rows"] if r["id"] == row)["target"] is None
+    assert "cooking-002" not in res.text

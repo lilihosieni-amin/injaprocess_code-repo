@@ -1,6 +1,6 @@
 """Every endpoint, read through the permission gate (spec D56, §11 tests 6 and 10).
 
-Forty-four routes. Thirty-five are gated on one capability at one target; nine
+Forty-two routes. Thirty-three are gated on one capability at one target; nine
 are not — three span departments and are filtered per row rather than gated,
 because a list that refuses outright would take a two-department head's whole
 screen away over one department they cannot reach, one reads the estate's
@@ -8,7 +8,7 @@ workbook roll, which belongs to no department, two list comments, filtered
 per row by D66, and three are the department-keyed activity reports, filtered
 to the departments the caller's `view_audit` reaches (D44, D83).
 
-Twenty-one of the thirty-five name a department. The other fourteen name `*`:
+Nineteen of the thirty-three name a department. The other fourteen name `*`:
 the two visibility routes, because there is one global policy (D16) and so no
 department to gate them on, the eight of the user-administration surface,
 because all user administration is at `*` scope (D11) and a department-scoped
@@ -112,7 +112,7 @@ def _a_render_that_writes_a_pdf(monkeypatch):
                         lambda _chromium, _html, out: out.write_bytes(b"%PDF-1.4\n"))
 
 
-#: The thirty-five gated routes: (method, path, body, the capability each needs).
+#: The thirty-three gated routes: (method, path, body, the capability each needs).
 #: `body` is what a well-formed request carries — a malformed one would be
 #: refused by validation on some routes and by the gate on others, and this
 #: table exists to compare gates, not validators.
@@ -131,7 +131,7 @@ GATED = [
     #: loads the entry and requires reach in **every** department its
     #: `scope.departments` names (QF-27), so `F-00001` — the `conftest`
     #: fixture's cooking-scoped rule — is a `dept:cooking` target like the
-    #: other fifteen, arrived at by a callable rather than by `dept_of`.
+    #: other eighteen, arrived at by a callable rather than by `dept_of`.
     #:
     #: **The capability column does not name this route's gate**, which is an
     #: OR over `PANEL_CAPABILITIES` and cannot be written in one word — the row
@@ -158,7 +158,7 @@ GATED = [
     #: The download's target *is* a department, read out of the requested path
     #: (`departments/{code}/attachments/**`, §15) rather than out of a path
     #: parameter — which is why it belongs on this side of `GLOBAL_TARGET`
-    #: with the other sixteen. `_a_source_to_download` plants the file, so the
+    #: with the other eighteen. `_a_source_to_download` plants the file, so the
     #: in-scope half is a real 200 and not a missing-file 404.
     ("GET", SOURCE, None, "export_pdf"),
     ("GET", "/api/departments/cooking/overview", None, "view"),
@@ -241,7 +241,7 @@ GLOBAL_TARGET = ("/api/visibility", "/api/visibility/node_actor",
 #: The routes that filter instead of gating. The first three span every
 #: department, so there is no single target to gate them on; `/api/facts/branches`
 #: reads the estate's workbook roll, which belongs to no department at all
-#: (QF-4). All four still refuse a stranger, which is what this list is for.
+#: (QF-4). All nine still refuse a stranger, which is what this list is for.
 FILTERED = ["/api/departments", "/api/pending", "/api/facts",
             "/api/facts/branches",
             #: The comment listings: filtered per row by D66 (who sees which
@@ -368,12 +368,13 @@ WITH = {"view": "reader_no_download", "export_pdf": "reader", "edit": "editor",
 def _in_scope_for(path: str) -> str:
     """The scope a caller must hold to be *inside* this route's target.
 
-    `dept:cooking` for the twenty-one that name a department in their path, and `*`
-    for the fourteen in `GLOBAL_TARGET` — take the global policy's two:
+    `dept:cooking` for the nineteen rows that name a department, and `*` for the
+    fourteen whose path is in `GLOBAL_TARGET` (twelve paths: `/api/users` and
+    `/api/users/{VICTIM}` each carry two methods). Take `/api/visibility`:
     `contains("dept:cooking", "*")` is False, so a department-scoped caller is
-    404'd out of `/api/visibility` by scope before their capability is consulted
-    at all. Every in-scope test below would then read that 404 as a statement
-    about `set_visibility`, which it is not.
+    404'd out of it by scope before their capability is consulted at all. Every
+    in-scope test below would then read that 404 as a statement about
+    `set_visibility`, which it is not.
     """
     return "*" if path in GLOBAL_TARGET else "dept:cooking"
 

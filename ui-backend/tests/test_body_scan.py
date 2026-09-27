@@ -65,6 +65,7 @@ from inja_ui_backend.auth import hash_password
 from inja_ui_backend.disclosure import Disclosure
 from inja_ui_backend.fingerprint import fingerprint
 from inja_ui_backend.store import audit, confirmations, policy, users
+from inja_ui_backend.store.activity import CATALOGUE
 from inja_ui_backend.tests_helpers import cfg_for
 
 PW = "test-password"
@@ -1020,6 +1021,14 @@ def test_the_scan_finds_every_token_when_the_caller_is_in_scope(corpus, tmp_path
     The server paths are checked here in the other direction, and this is the
     strongest place to check them: a `*` holder is the only caller who reaches
     every route's success body, and a host path is forbidden to them too.
+
+    And the record, afterwards: §11 test 16c's reverse half — every action the
+    service recorded is catalogued — asked of the rows themselves, because no
+    static check can. `audit.record` guards nothing, and two writers pass the
+    action through a variable (`comment_jobs.drain`'s `row["kind"]`,
+    `projection`'s `action`), so `test_activity_catalogue.py`'s literal scan is
+    blind to them. This sweep is the one that drives the most writers — every
+    route, as the caller every route serves — which is why the check is here.
     """
     paths = _server_paths(corpus)
     client = _client_as(corpus, tmp_path, "editor", "*")
@@ -1035,6 +1044,16 @@ def test_the_scan_finds_every_token_when_the_caller_is_in_scope(corpus, tmp_path
     on_host = [leak for leak in leaks if leak.token in {t for t, _ in paths}]
     assert on_host == [], "\n".join(
         f"  as a wildcard holder: {leak}" for leak in on_host)
+
+    conn = db.connect(client.cfg.app_db)
+    try:
+        recorded = {a for (a,) in conn.execute("SELECT DISTINCT action FROM audit_events")}
+    finally:
+        conn.close()
+    uncatalogued = sorted(recorded - set(CATALOGUE))
+    assert not uncatalogued, (
+        f"the sweep recorded actions store/activity.CATALOGUE does not name:"
+        f" {uncatalogued} — catalogue them (and D76's table) or stop writing them")
 
 
 def test_the_sweep_reaches_the_body_each_route_really_serves(corpus, tmp_path):

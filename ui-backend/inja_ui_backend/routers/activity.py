@@ -92,9 +92,16 @@ def _servable(request: Request, user) -> Callable[[str | None], bool]:
     must not surface its id, its name, or even its count through any activity
     report. `Disclosure.may_serve` is the same question `GET /api/processes/
     {pid}` answers for the document itself; memoised per pid so a report with
-    many rows for one process reads its file once. A missing, unreadable,
-    non-JSON or non-object document is never servable — the activity record's
-    own dubious row must not raise, only be excluded."""
+    many rows for one process reads its file once.
+
+    A **missing** document — a process deleted outright, which leaves no file
+    and so no tombstone to ask — is servable exactly to whoever may `edit` its
+    department (Task 10 review round 1, controller ruling): the Editor keeps
+    the id in the history, as they would keep a tombstone (D17 retains one for
+    them), and nobody else learns it. `Disclosure.edits` is that question —
+    `access.allows(conn, user, "edit", f"dept:{dept}")`, hoisted. An
+    unreadable, non-JSON or non-object document is never servable — the
+    activity record's own dubious row must not raise, only be excluded."""
     cfg = request.app.state.cfg
     shown = Disclosure(request.app.state.db, user)
     cache: dict[str, bool] = {}
@@ -105,14 +112,17 @@ def _servable(request: Request, user) -> Callable[[str | None], bool]:
         if pid not in cache:
             try:
                 doc = storage.read_json(storage.proc_path(cfg.data_root, pid))
+            except FileNotFoundError:
+                cache[pid] = shown.edits(storage.dept_of(pid))
+            except (OSError, ValueError):
+                cache[pid] = False
+            else:
                 # `may_serve` calls `.get`/`.get` on `doc`, so anything valid
                 # JSON but not an object (`[]`, `null`, a bare string) would
                 # otherwise raise AttributeError instead of answering False
                 # (review round 2).
                 cache[pid] = isinstance(doc, dict) and shown.may_serve(
                     doc, storage.dept_of(pid), pid)
-            except (OSError, ValueError):
-                cache[pid] = False
         return cache[pid]
 
     return servable
