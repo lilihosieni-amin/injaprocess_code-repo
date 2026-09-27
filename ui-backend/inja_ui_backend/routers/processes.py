@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from .. import engine, gitcommit, storage
 from .. import save as save_mod
 from ..access import NOT_FOUND, requires
-from ..auth import record_view, require_session
+from ..auth import record_edit, record_view, require_session
 from ..disclosure import Disclosure
 from ..models import CreateProcessBody, PendingDecision
 
@@ -266,7 +266,11 @@ async def create_process(request: Request, response: Response,
         _sync_order(cfg, body.department, written)
         action = (f"create sub-process of {body.parent['process']}"
                   if body.parent else "create process")
-        gitcommit.commit(cfg, written, pid, action)
+        gitcommit.commit(cfg, written, pid, action, actor=user["username"])
+        record_edit(request, user, "process.edited", pid, "created")
+        if body.parent:
+            record_edit(request, user, "process.edited",
+                        body.parent["process"], "updated")
     # Redacted like every other body that carries a process document, though
     # this is the one route where it can change nothing: the caller named the
     # parent themselves and was gated on `edit` at its department, and every
@@ -278,7 +282,7 @@ async def create_process(request: Request, response: Response,
 
 @router.delete("/{pid}")
 async def delete_process(pid: str, request: Request,
-                         _=Depends(requires("edit", _pid_target))):
+                         user=Depends(requires("edit", _pid_target))):
     cfg = request.app.state.cfg
     path = storage.proc_path(cfg.data_root, pid)
     if not path.is_file():
@@ -328,7 +332,11 @@ async def delete_process(pid: str, request: Request,
                 written.append(fp)
     # a permanently deleted process leaves the order (ARD §4.6)
     _sync_order(cfg, storage.dept_of(pid), written)
-    gitcommit.commit(cfg, written, pid, "delete process")
+    gitcommit.commit(cfg, written, pid, "delete process", actor=user["username"])
+    for p in written:
+        if p.parent.name == "processes" and p.stem != pid:
+            record_edit(request, user, "process.edited", p.stem, "updated")
+    record_edit(request, user, "process.edited", pid, "deleted")
     return {"deleted": pid}
 
 
@@ -408,7 +416,8 @@ async def save_process(pid: str, body: dict, request: Request,
         except engine.EngineError as e:
             raise HTTPException(status_code=422, detail=e.message)
         storage.write_json_atomic(path, doc)
-        gitcommit.commit(cfg, [path], pid, "save")
+        gitcommit.commit(cfg, [path], pid, "save", actor=user["username"])
+        record_edit(request, user, "process.edited", pid, "updated")
     return shown.redact(doc, storage.dept_of(pid))
 
 
@@ -426,7 +435,9 @@ async def resolve(pid: str, index: int, body: PendingDecision, request: Request,
             engine.resolve_pending(cfg, pid, index, body.decision)
         except engine.EngineError as e:
             raise HTTPException(status_code=409, detail=e.message)
-        gitcommit.commit(cfg, [path], pid, f"{body.decision} pending #{index}")
+        gitcommit.commit(cfg, [path], pid, f"{body.decision} pending #{index}",
+                        actor=user["username"])
+        record_edit(request, user, "process.edited", pid, "updated")
         # The whole stored document, so it carries the same cross-department
         # links `GET /api/processes/{pid}` does — an Editor of this department
         # is not thereby an Editor of the one its parent lives in.

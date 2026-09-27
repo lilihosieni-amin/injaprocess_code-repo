@@ -26,7 +26,7 @@ def test_commit_makes_one_ui_edit_commit(data_root):
     doc = storage.read_json(p)
     doc["name"] = "نام تازه"
     storage.write_json_atomic(p, doc)
-    gitcommit.commit(cfg, [p], "cooking-001", "save")
+    gitcommit.commit(cfg, [p], "cooking-001", "save", actor="09120000000")
     top = _log(data_root).splitlines()[0]
     assert "ui-edit(cooking-001): save" in top
 
@@ -34,7 +34,7 @@ def test_commit_makes_one_ui_edit_commit(data_root):
 def test_commit_noop_when_no_change(data_root):
     cfg = cfg_for(data_root)
     before = len(_log(data_root).splitlines())
-    gitcommit.commit(cfg, [], "cooking-001", "save")
+    gitcommit.commit(cfg, [], "cooking-001", "save", actor="09120000000")
     assert len(_log(data_root).splitlines()) == before
 
 
@@ -44,7 +44,7 @@ def test_commit_noop_when_paths_unchanged(data_root):
     before = len(_log(data_root).splitlines())
     # re-write byte-identical content, then commit the path: no real change → no-op
     storage.write_json_atomic(p, storage.read_json(p))
-    gitcommit.commit(cfg, [p], "cooking-001", "save")
+    gitcommit.commit(cfg, [p], "cooking-001", "save", actor="09120000000")
     assert len(_log(data_root).splitlines()) == before
 
 
@@ -61,7 +61,7 @@ def test_commit_skips_an_absent_untracked_path(data_root):
     storage.write_json_atomic(p, doc)
     ghost = storage.order_path(data_root, "cooking")   # never written, never tracked
     assert not ghost.exists()
-    gitcommit.commit(cfg, [p, ghost], "cooking-001", "save")
+    gitcommit.commit(cfg, [p, ghost], "cooking-001", "save", actor="09120000000")
     assert "ui-edit(cooking-001): save" in _log(data_root).splitlines()[0]
     assert _names(data_root) == ["departments/cooking/processes/cooking-001.json"]
     assert not ghost.exists()
@@ -72,7 +72,7 @@ def test_commit_stages_the_deletion_of_a_tracked_path(data_root):
     cfg = cfg_for(data_root)
     p = storage.proc_path(data_root, "cooking-001")
     p.unlink()
-    gitcommit.commit(cfg, [p], "cooking-001", "delete process")
+    gitcommit.commit(cfg, [p], "cooking-001", "delete process", actor="09120000000")
     assert "ui-edit(cooking-001): delete process" in _log(data_root).splitlines()[0]
     assert _status(data_root) == ["D\tdepartments/cooking/processes/cooking-001.json"]
 
@@ -83,4 +83,15 @@ def test_commit_raises_on_git_failure(tmp_path):
     p = tmp_path / "x.json"
     p.write_text("{}", encoding="utf-8")
     with pytest.raises(RuntimeError):
-        gitcommit.commit(cfg, [p], "x-001", "save")
+        gitcommit.commit(cfg, [p], "x-001", "save", actor="09120000000")
+
+
+def test_the_commit_carries_an_acted_by_trailer(data_root, tmp_path):
+    cfg = cfg_for(data_root, tmp_path / "app.db")
+    p = data_root / "departments" / "cooking" / "processes" / "cooking-001.json"
+    p.write_text(p.read_text(encoding="utf-8") + " ", encoding="utf-8")
+    gitcommit.commit(cfg, [p], "cooking-001", "save", actor="09121234567")
+    body = subprocess.run(["git", "-C", str(data_root), "log", "-1", "--format=%B"],
+                          capture_output=True, text=True, check=True).stdout
+    assert body.splitlines()[0] == "ui-edit(cooking-001): save"
+    assert "Acted-By: 09121234567" in body

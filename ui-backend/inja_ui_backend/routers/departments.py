@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .. import engine, gitcommit, storage
 from ..access import NOT_FOUND, permits, reachable_departments, requires
-from ..auth import record_view, require_session
+from ..auth import record_edit, record_view, require_session
 from ..disclosure import Disclosure
 
 router = APIRouter(prefix="/api/departments")
@@ -198,7 +198,7 @@ def get_overview(code: str, request: Request,
 
 @router.put("/{code}/overview")
 async def put_overview(code: str, body: dict, request: Request,
-                       _=Depends(requires("edit", _dept_target))):
+                       user=Depends(requires("edit", _dept_target))):
     cfg = request.app.state.cfg
     body["department"] = code
     body["updated_at"] = _now()
@@ -209,13 +209,14 @@ async def put_overview(code: str, body: dict, request: Request,
     path = storage.overview_path(cfg.data_root, code)
     async with storage.file_lock(path):
         storage.write_json_atomic(path, body)
-        gitcommit.commit(cfg, [path], code, "update overview")
+        gitcommit.commit(cfg, [path], code, "update overview", actor=user["username"])
+        record_edit(request, user, "department.edited", code, "updated")
     return body
 
 
 @router.put("/{code}/order")
 async def put_order(code: str, body: dict, request: Request,
-                    _=Depends(requires("edit", _dept_target))):
+                    user=Depends(requires("edit", _dept_target))):
     cfg = request.app.state.cfg
     reg = storage.read_json(storage.registry_path(cfg.data_root))
     if code not in {d["code"] for d in reg["departments"]}:
@@ -246,7 +247,9 @@ async def put_order(code: str, body: dict, request: Request,
                 logger.warning("%s: could not run the order CLI: %s", code, e)
                 status, detail = 500, f"the order CLI could not be run: {e}"
             raise HTTPException(status_code=status, detail=detail)
-        gitcommit.commit(cfg, [path], code, "update process order")
+        gitcommit.commit(cfg, [path], code, "update process order",
+                         actor=user["username"])
+        record_edit(request, user, "department.edited", code, "updated")
     return {"order": sequence}
 
 

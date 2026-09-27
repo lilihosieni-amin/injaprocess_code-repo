@@ -68,7 +68,7 @@ from ..access import (
     requires_every,
     scopes_of,
 )
-from ..auth import record, require_session
+from ..auth import record, record_edit, require_session
 from ..disclosure import Disclosure
 from ..fingerprint import fact_fingerprint
 from ..models import ResolveFactBody
@@ -1029,9 +1029,9 @@ async def resolve_fact(fid: str, body: ResolveFactBody, request: Request,
     store and the record of why it moved land in one commit, which is what a
     confirmation's `data_repo_commit` column is later reconciled against.
 
-    No activity-record event of its own. The run directory *is* the record
-    QF-39 asks for — "the run record and the audit trail are the same as from
-    chat" — and D42's catalogue is not something a route invents a row in.
+    `fact.edited` is recorded here with the real user (addendum D78). The run
+    directory stays the record of *why* the store moved; the activity row is
+    the record *that* it moved, by whom.
     """
     cfg = request.app.state.cfg
     # Loaded again rather than carried out of the gate: `requires_every` hands
@@ -1060,5 +1060,7 @@ async def resolve_fact(fid: str, body: ResolveFactBody, request: Request,
             raise HTTPException(status_code=422, detail=e.message)
         engine.finish_facts_run(run)
         gitcommit.commit(cfg, [cfg.data_root / "facts", run], fid,
-                         f"facts resolve {body.field}")
+                         f"facts resolve {body.field}", actor=user["username"])
+        record_edit(request, user, "fact.edited", fid, "updated",
+                    department=facts_store.first_department(entry))
     return _bundle(request, user, fid)

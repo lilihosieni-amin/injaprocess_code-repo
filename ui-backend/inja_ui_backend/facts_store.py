@@ -219,6 +219,17 @@ def load_all(root: Path) -> list[dict]:
     return out
 
 
+def first_department(entry: dict | None) -> str | None:
+    """The department a fact's activity-record events are filed under (addendum
+    D76): the first, alphabetically, its `scope` names — `None` for a universal
+    entry, which makes its events `*`-only under D44. Tolerates the same
+    malformed shapes `routers/facts._targets` does."""
+    scope = entry.get("scope") if isinstance(entry, dict) else None
+    depts = scope.get("departments") if isinstance(scope, dict) else None
+    named = sorted(d for d in depts or [] if isinstance(d, str) and d)
+    return named[0] if named else None
+
+
 def iter_ref_objects(obj):
     """Every nested dict whose keys are a subset of `{ref, field, row}` with
     `ref` (QF-37's shape test), in document order.

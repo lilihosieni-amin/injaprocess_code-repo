@@ -414,3 +414,12 @@ def record_view(request: Request, user: sqlite3.Row, action: str, target: str) -
                             target=target, since=now - VIEW_WINDOW_S):
             return
         record(request, action, actor=user["username"], session_id=sid, target=target)
+
+
+def record_edit(request: Request, user: sqlite3.Row, action: str, target: str,
+                change: str, **detail) -> None:
+    """`process.edited` / `department.edited` / `fact.edited` for a write made
+    in the app (addendum D78). `change` is created, updated or deleted."""
+    record(request, action, actor=user["username"],
+           session_id=request.state.session_id, target=target,
+           detail={"change": change, **detail})

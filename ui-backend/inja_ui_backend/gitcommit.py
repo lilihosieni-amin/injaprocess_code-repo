@@ -29,7 +29,8 @@ def head(cfg: Settings) -> str:
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
-def commit(cfg: Settings, paths: list[Path], pid: str, action: str) -> None:
+def commit(cfg: Settings, paths: list[Path], pid: str, action: str, *,
+          actor: str) -> None:
     # A path git can't stage — absent from disk *and* never tracked — has no
     # pathspec `git add` can match, and would abort the whole add, failing a
     # commit for the paths that *do* have something to record. It happens on a
@@ -51,9 +52,12 @@ def commit(cfg: Settings, paths: list[Path], pid: str, action: str) -> None:
     # nothing staged -> genuine no-op (not an error)
     if _git(cfg, "diff", "--cached", "--quiet").returncode == 0:
         return
-    msg = f"ui-edit({pid}): {action}"
+    # D48: the commit says who acted. A trailer, so `git log
+    # --format=%(trailers:key=Acted-By)` reads it back — the git projection
+    # credits a confirmation's going stale to it (addendum D80).
     r = _git(cfg, "-c", f"user.name={cfg.git_author_name}",
              "-c", f"user.email={cfg.git_author_email}",
-             "commit", "-q", "-m", msg)
+             "commit", "-q", "-m", f"ui-edit({pid}): {action}",
+             "-m", f"Acted-By: {actor}")
     if r.returncode != 0:
         raise RuntimeError(f"git commit failed: {(r.stderr or r.stdout).strip()}")

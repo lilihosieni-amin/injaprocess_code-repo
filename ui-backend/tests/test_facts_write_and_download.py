@@ -41,7 +41,7 @@ from inja_ui_backend.auth import hash_password
 from inja_ui_backend.fingerprint import fact_fingerprint
 from inja_ui_backend.routers import facts as facts_router
 from inja_ui_backend.store import confirmations, policy, users
-from inja_ui_backend.tests_helpers import cfg_for
+from inja_ui_backend.tests_helpers import audit_events, cfg_for
 
 PW = "test-password"
 BASE = "https://testserver"
@@ -298,6 +298,11 @@ def test_a_resolve_runs_the_engine_and_serves_the_settled_entry(data_root,
     dirty = subprocess.run(["git", "-C", str(data_root), "status", "--porcelain"],
                            capture_output=True, text=True).stdout
     assert dirty == "", f"left uncommitted:\n{dirty}"
+    if not hasattr(client, "app_db"):
+        client.app_db = client.cfg.app_db
+    rows = audit_events(client, "fact.edited")
+    assert [(r["target"], json.loads(r["detail"])["change"]) for r in rows] \
+        == [(COOKING, "updated")]
 
 
 def test_the_run_directory_records_a_ui_run(data_root, tmp_path):
