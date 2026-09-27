@@ -650,7 +650,7 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 - **Tombstoned processes** (`tombstoned:true`) are shown labelled **«باطل‌شده»** and are **view-only everywhere** (list, summary, flowchart) — never editable — with links to their heirs (`superseded_by`). The UI offers a user-initiated **permanent delete**: this is the **only** place a process is truly deleted (the single allowed exception to INV-4's "never delete"; automatic deletion never happens). The durable id ledger (§4.1) guarantees a deleted process's id is still never reused.
 - Auth (NFR-3): the plaintext password is not stored; hashes, sessions and grants live in `app.db` and the signing key stays in env, all **outside `data-repo`** (§19). Basic Auth on the reverse proxy is no longer an alternative — it cannot express per-person permissions.
 - **Every response is permission-filtered (FR-V5, FR-V6, NFR-12).** The content-visibility strip that used to live in `exports.py` and apply only to exports is now a single filter over every response the API sends, driven by the global policy plus the caller's capabilities (§19.4). One implementation, one place to be wrong, one place tests pin.
-- **Writes are attributed.** Every handler that mutates records the acting user, in the activity record and in the commit trailer. Previously the session user was bound and discarded, and every commit was authored `ui-edit` regardless of who acted (§15).
+- **Writes are attributed.** Every handler that mutates records the acting user, in the activity record and in the commit trailer: each content write writes its `process.edited` / `department.edited` / `fact.edited` event, and every `ui-edit` commit carries an **`Acted-By: {username}`** trailer (spec addendum D78). Previously the session user was bound and discarded, and every commit was authored `ui-edit` regardless of who acted (§15).
 - The edit loop is independent of both bots, working directly from the JSON on disk.
 - **Reports (FR-I8):** the department header keeps ترتیب فرآیندها as its own button. A report is a file a user holding `export_pdf` downloads; a pending state is shown only when the artifact must actually be produced rather than served from the fingerprint cache (§13.4). **Reading a report in the application was built and withdrawn** — the process screens already show that content, so there is no in-app report view and no route that serves one (§13.4).
 - **Two shells over one component set.** `docs/superpowers/specs/2026-08-05-frontend-system-design.md` is authoritative for the frontend system — tokens, the shell split, shared components, responsiveness, RTL, the accessibility baseline and the loading/empty/error/denied states. One Vite build; the shell is selected at runtime **by capability** (F2): holders of `edit`, `confirm`, `set_visibility`, `manage_users` or `view_audit` get the Panel, everyone else the Reader. Individual screens belong to whichever sub-project owns their feature. This section fixes only that there is one application, that affordances derive from the session descriptor, and that the server decides independently of what was drawn (§19.5).
@@ -758,7 +758,7 @@ Note: in the UI, saving is manual (not autosave on each click), so each "Save" =
 ### When it pushes — scheduled (NFR-7)
 
 - Commits are always **local and immediate** (full history on the VPS).
-- Push to GitHub **twice a day**, at **11:00** and **23:00**, and **only if there are unpushed commits** (otherwise no push). This serves as an off-site backup. Editing is still the editor's alone, so the remote does not need to be up to date to the minute even though the system now has many users — nobody else's work is at risk between pushes. The same schedule carries the `state-backup` job for `app.db` and `comments.db` (§16, NFR-16), which is where a lag *would* cost other people's work.
+- Push to GitHub **twice a day**, at **11:00** and **23:00**, and **only if there are unpushed commits** (otherwise no push). This serves as an off-site backup. Editing is still the editor's alone, so the remote does not need to be up to date to the minute even though the system now has many users — nobody else's work is at risk between pushes. The same schedule carries the backups of `app.db` and `comments.db` (§16, NFR-16), which is where a lag *would* cost other people's work — taken by `ui-backend` itself, and kept on the host, not off-site.
 - Implementation: a scheduled job (cron inside a container or a separate service in the stack) that runs `git push` conditional on new commits existing. Optional: a "Push now" button in the UI for an immediate manual push.
 
 ---
@@ -774,10 +774,10 @@ Stack services:
 | `telegram-bot-api` | local Bot API server (2 GB cap) | `tdlib/telegram-bot-api` image |
 | `upload-bot` | Bot 1 (Python) | mounts `data-repo` |
 | `control-bot` | Bot 2 (claude-code-telegram) | custom image: Python + **Node/Claude Code CLI** + engine CLIs + git; mounts `data-repo` (as `APPROVED_DIRECTORY`) **and `ui-comments` read-write**, for the `comments` CLI (§19.8). It does **not** mount `ui-state` |
-| `ui-backend` | FastAPI backend + serving the built frontend + the department reports | mounts `data-repo`, `ui-state` (`app.db`), `ui-comments` (`comments.db`) and the `ui-exports` cache; calls engine CLIs + git; image carries **chromium** for the PDF (§13.4) |
+| `ui-backend` | FastAPI backend + serving the built frontend + the department reports + the backups of `app.db` and `comments.db` | mounts `data-repo`, `ui-state` (`app.db`), `ui-comments` (`comments.db`), the `ui-exports` cache and `/opt/inja/backups` (bind mount, `/backups`); calls engine CLIs + git; image carries **chromium** for the PDF (§13.4) |
 | `proxy` | reverse proxy + TLS for the UI | `nginx`/`Caddy` |
 | `git-push` | scheduled push to GitHub | cron at 11:00 and 23:00, conditional on new commits (Section 15); mounts `data-repo` + deploy key |
-| `state-backup` | scheduled backup of `app.db` and `comments.db` (NFR-16) | same schedule as `git-push`; `sqlite3 .backup` off-site. `git-push` covers `data-repo` only, so without this NFR-7's promise is simply false for users, permissions, comments and the activity record |
+| *(backups — no container)* | backups of `app.db` and `comments.db` (NFR-16, spec addendum D82) | **inside `ui-backend`'s background loop**, not a container: a container would have to mount `app.db`, which D5 forbids. A SQLite `.backup` of each file at 11:00 and 23:00 (the `git-push` times) to `/opt/inja/backups` on the host, as `app-YYYYmmdd-HH00.db` / `comments-YYYYmmdd-HH00.db`; the newest 14 of each kept, mode `0600`. On the host, **not off-site** — NFR-16 remains unmet for host loss; `docs/runbooks/05-operations.md` has the by-hand copy off the server |
 
 Key Docker notes:
 
@@ -789,6 +789,7 @@ Key Docker notes:
   - `EXPORT_DIR=/exports`, backed by the named volume `ui-exports` — deliberately **not** under `data-repo`, so built artifacts never enter the working tree or Git (§13.4, INV-6). It is now a **cache**, and may be emptied at any time.
   - `ui-state` holds `app.db` (users, roles, grants, sessions, confirmations, visibility policy, activity record) and is mounted **only** on `ui-backend` (§14, §19.1). `config.load_settings` **refuses to start** when `APP_DB` resolves inside `DATA_ROOT`, so the boundary is enforced by the app and not only by the compose file: inside, the store would enter the pushed working tree *and* become readable by `control-bot`, whose hooks block writes and not reads — and a live `sessions.id` is a bearer credential.
   - `ui-comments` holds `comments.db` and is mounted on `ui-backend` **and** on `control-bot` read-write, so the `comments` CLI can read an approved comment and mark it addressed (§19.8). SQLite runs in WAL mode with a busy timeout; the file sees a handful of writes a day.
+  - `BACKUP_DIR=/backups`, bind-mounted from `/opt/inja/backups` (created `0700` by hand before the first `up`), and mounted **only** on `ui-backend` — a copy of `app.db` is `app.db`. `config.load_settings` refuses a `BACKUP_DIR` inside `DATA_ROOT`, as it does `APP_DB`. Unset means no backups.
   - `CHROMIUM_PATH` is baked into the `ui-backend` image. **Unset means "no PDF"**, and the report is still readable (D21, NFR-13) — a deployment without the browser keeps working.
   - `UI_USERS_FILE` and the `ui-users.json` read-only secret mount are **retired**: users live in `app.db` and must be writable, since every user changes their own password (FR-A1). The file is **not** migrated and is read by nothing — delete it (§19.9).
   - `EXPORT_USERNAME` / `EXPORT_PASSWORD_HASH` are **removed** (§13.5).
@@ -834,11 +835,11 @@ Key Docker notes:
 | FR-V1…V4 / AC-18 (confirmation bound to a version) | §19.6 — content fingerprint, not a boolean field |
 | FR-V5, FR-V6 / AC-21 (content visibility) | §19.4 — one global policy guarded by `set_visibility`, one filter |
 | FR-V7 (department page shown in full) | §19.4 — policy governs `process.json` only; spec D55 |
-| NFR-16 (people-data backup) | §16 `state-backup` service |
+| NFR-16 (people-data backup) | §16 — backups inside `ui-backend`'s loop, on the host; the off-site half is unmet (§18) |
 | FR-K1…K11 / AC-19, AC-20 (comments and the chain) | §19.8 |
 | FR-L1…L6 / NFR-14 / AC-22 (activity record) | §19.7 + §14 (mount boundary) |
 | NFR-15 (usable on a phone) | §13.2 + `2026-08-05-frontend-system-design.md` F9 (mobile-first), F11 (touch targets) |
-| NFR-16 (people-data backup) | §16 `state-backup` service |
+| NFR-16 (people-data backup) | §16 — backups inside `ui-backend`'s loop, on the host; the off-site half is unmet (§18) |
 
 ---
 
@@ -847,6 +848,7 @@ Key Docker notes:
 - The exact Gemini-on-Vertex model and how large files are passed (inline vs. GCS) — to be finalized during implementation.
 - The audio format produced by Telegram and any conversions needed before Vertex.
 - The backup strategy for the data repository on the VPS.
+- **`app.db` and `comments.db` have no off-site copy** (NFR-16's off-site half). The twice-daily backups (§16) live on the same host, so they cover a corrupted database or a bad deploy, not losing the host; until something ships them off it, the runbooks' by-hand copy is the only off-site one.
 - ~~**Export session lifetime vs. password rotation.**~~ — **resolved in v0.3.** Sessions are server-side rows (§19.3); revoking one, or all of a user's, is immediate and independent of the signing key. The shared export password it concerned no longer exists.
 - **Rate limiting on `POST /api/auth/login`.** The concurrency ceiling bounds the *cost* of guessing, not the *rate*. There is still no lockout and no attempt throttle, and the endpoint is now the single door to the whole system rather than to a set of read-only documents — so the gap matters more than it did. Failed attempts are recorded per username and per IP (§19.7), which makes guessing *visible*; stopping it is a throttle at the proxy or a lockout policy, neither specified. Related open item: the password policy itself (PRD §12).
 - **Comment anchors and restructuring.** `merge restructure` mints new process **and** node ids and tombstones the originals with no node-level mapping, so a comment's anchor can be orphaned by a legitimate pipeline run. Snapshots (§19.8) keep an orphaned comment readable and it is surfaced as such, but nothing re-points it. Automatic re-anchoring would require the restructure path to emit an old-node → new-node mapping, which it does not today.
@@ -1019,6 +1021,26 @@ The reports are `GROUP BY` queries filtered by `view_audit` scope. Note that `vi
 **There is no endpoint to delete or alter a row, for any role including Editor** (NFR-14, AC-22). Retention is indefinite by default with a configurable purge, since "who read what" is information about people.
 
 Note who does *not* hold `view_audit`: it is an Admin and Editor capability, so a department head — a Reader (§19.2) — sees no activity report, not even for their own branch.
+
+**As built in P3** (`docs/superpowers/specs/2026-09-27-activity-record-addendum.md`, D76–D85; it adjusts the spec's D8, D42–D44 and D60 and is authoritative where this section is older):
+
+- **Views are written by the server** (D77), when it answers the request a screen makes — `process.viewed` for `GET /api/processes/{pid}`, `department.viewed` for a department's process list or overview — never reported by the browser. **Once per session per target per 30 minutes**, checked against `audit_events` itself (index `audit_session (session_id, at)`), so the window survives a restart and absorbs refetches that are not navigation. Facts screens write no views.
+- **Edits made in the app are written by their endpoints** (D78): `process.edited`, `department.edited`, `fact.edited`, each with `detail.change` ∈ `created` · `updated` · `deleted`; `ui-edit` commits carry `Acted-By: {username}` (§13.2). Relayout writes nothing and records nothing. `session.revoked` is written once per session ended by a password change, an admin-set password or disabling a user.
+- **Every other content change is projected from git** (D79). Every 30 seconds in the loop that drains the outbox, and before every activity report, `ui-backend` walks `git log --no-merges {marker}..{head}` — `head` read once at the start of the pass, so a commit landing mid-pass is projected exactly once — and writes one event per id per commit, at the commit's time: `process.edited` for `departments/{d}/processes/{pid}.json`, `department.edited` for `overview.json` / `order.json`, `fact.edited` for the entries of `facts/*.json` that changed (compared entry by entry, since facts share files). The actor comes from the subject prefix, since the server authors `chat-edit` and `ui-edit` under one git identity:
+
+  | Commit | Actor |
+  |---|---|
+  | `pipeline(…)` | `run:{dept}/{stamp}` — department from the subject, stamp from the newest `runs/{dept}/{stamp}/` the commit touches |
+  | `quantify(…)` | `run:facts/{dept}/{stamp}`, likewise from `runs/facts/{dept}/{stamp}/` |
+  | `chat-edit`, `restructure`, `audit-fix`, `edit-fact` | `agent:control-bot` |
+  | `ui-edit` | no edit event — the endpoint already wrote one with the real user |
+  | anything else | `git:{author name}` |
+
+  A marker that is not an ancestor of `HEAD` (a revert, rebase or force-push) writes one **`projection.discontinuity`**, re-seeds at `HEAD` and emits nothing for the gap. The first start seeds the marker (`projection_state`) at `HEAD`, so no history is back-filled.
+- **A confirmation going stale is judged at `HEAD`** (D80). Whenever `HEAD` moves, the same pass fingerprints every confirmation's target **as committed at `head`** — never the working tree; a target whose working copy disagrees (mid-edit) waits for a later pass — and a new mismatch writes one `confirmation.invalidated`, credited to the newest commit in the batch that touched the target (a `ui-edit` commit to its `Acted-By` user; none: `system:projection` at `head`). `confirmations.emitted_for_sha` marks the transition as announced, so it is never announced twice; a match clears it silently. `ui-edit` commits are included here. Ceiling: two commits within one pass credit the later.
+- **Presence is intervals of requests** (D81). `activity_intervals (session_id, started_at, ended_at)`: every signed-in request extends its session's open interval when that ended at most 5 minutes ago and opens a new one otherwise, so an interval ends at its last request. The heartbeat is `GET /api/auth/me` every **60 seconds**, which TanStack Query pauses while the tab is hidden — a closed lid or a background tab accumulates nothing.
+- **Five reports** (D83, D84), all `GET /api/activity/…`, gated on `view_audit`, each draining the outbox and running the projection first: «فعالیت هر کاربر» (opening a one-user page with its stat cards, sessions and filterable events), «مشاهده دپارتمان», «تاریخچهٔ مجوزها», «مسیر کامنت‌ها» and «ورود ناموفق», plus four count cards. **D44's scope rule:** the users, permissions and failed-sign-in tabs and the one-user page are access and governance events and need `view_audit` at `*`; the department and comment tabs show only the departments the caller's `view_audit` scope covers. Readership counts a process view only when the caller may be served that process (§19.4a). No response carries a raw session id — sessions appear as a 6-hex tag — or comment text.
+- **Not built** (D85): the purge — retention is indefinite until that decision is made, and a purge would be a scheduled job, never a button — and the content-and-confirmation-history report.
 
 ### 19.8 Comments
 

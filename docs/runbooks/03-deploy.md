@@ -115,6 +115,47 @@ same `{kind}-{hex}` shape as the new content-keyed cache, so a stale one would
 never be told apart from a fresh one and would simply keep being served —
 including every process nobody has confirmed.
 
+**P3 cutover — once, at the deploy that ships the activity record.** Three things
+before the new image goes up:
+
+1. Create the backup folder, owner-only — `ui-backend` writes a copy of
+   `app.db` (every password hash) there twice a day, and without this Docker
+   creates the bind-mount source itself, mode `0755`:
+
+   ```bash
+   sudo mkdir -p /opt/inja/backups && sudo chmod 700 /opt/inja/backups
+   ```
+
+2. Optionally take a copy by hand first — the image going down takes no
+   backups ([`02-secrets-and-auth.md`](02-secrets-and-auth.md) § 5, "a copy of
+   this very minute").
+
+3. Record every table's row count, to compare after the start (the P2
+   practice):
+
+   ```bash
+   docker compose exec ui-backend python -c "
+   import sqlite3; c = sqlite3.connect('/state/app.db')
+   print('schema_version', c.execute('SELECT version FROM schema_version').fetchone()[0])
+   for (t,) in c.execute(\"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name\").fetchall():
+       print(t, c.execute(f'SELECT COUNT(*) FROM \"{t}\"').fetchone()[0])
+   print('objects', [r[0] for r in c.execute(\"SELECT name FROM sqlite_master WHERE name IN ('activity_intervals', 'audit_session', 'projection_state') ORDER BY name\")])
+   print('emitted_for_sha', any(r[1] == 'emitted_for_sha' for r in c.execute('PRAGMA table_info(confirmations)')))
+   "
+   ```
+
+Only `ui-backend` changes in this release (its image, plus the `/backups` mount
+and `BACKUP_DIR` in its compose entry), so the one-line update below recreates
+only it. **Migration 4 runs on start.** Run the same command again and check:
+`schema_version` is `4`; `objects` lists `activity_intervals`, `audit_session`
+and `projection_state` and `emitted_for_sha` is `True`; every earlier table's
+count is unchanged (`audit_events` and `sessions` may only have grown, if
+someone signed in meanwhile). Within a minute of the start the first backup
+pair is in `/opt/inja/backups/` (`sudo ls -l` — mode `-rw-------`), and
+`projection_state` holds one row: the projection seeds itself at the
+data-repo's `HEAD` on its first pass, so no history is back-filled — the record
+of content edits starts at this deploy.
+
 Then pull the latest code-repo, rebuild, and re-up in one line:
 
 ```bash

@@ -167,18 +167,49 @@ path when every Editor is lost are all in
 [`06-changing-users.md`](06-changing-users.md) — read that one before running it
 a second time.
 
-### `app.db` needs its own backup job — `git-push` does not cover it
+### Backups of `app.db` and `comments.db` — on this host, not off-site
 
-`git-push` backs up the **data-repo** and nothing else. `app.db` lives on a
-Docker volume outside it, so as things stand **nothing off-site holds the
-accounts, the sessions or the activity record**: lose the host and NFR-7's
-promise is simply false for all three, however healthy the GitHub mirror looks.
+`git-push` backs up the **data-repo** and nothing else. `app.db` (every account,
+password hash, session and the whole activity record) and `comments.db` (every
+comment) live on Docker volumes outside it, so `ui-backend` backs them up itself
+(ARD §16, spec addendum D82):
 
-The `state-backup` service that closes this (ARD §16, NFR-16 — `sqlite3 .backup`
-off-site on the same 11:00/23:00 schedule as `git-push`) is **not built yet**.
-Until it is, take the backup by hand and keep it off the host. `.backup` rather
-than `cp`, because the file is in WAL mode and a copy taken while the service is
-writing can be torn:
+- **Where:** `/opt/inja/backups/app-YYYYmmdd-HH00.db` and
+  `/opt/inja/backups/comments-YYYYmmdd-HH00.db` — one pair per slot, the same
+  stamp on both. Inside the container the folder is `/backups`.
+- **How often:** at **11:00** and **23:00**, the `git-push` times. A restart
+  neither skips nor repeats a slot: whether one is due is read from the files'
+  names, so the latest slot missed while the service was down is taken as soon
+  as it starts again (and the very first start takes one at once).
+- **How many:** the newest **14** of each — seven days.
+- **They are secrets.** Each `app-….db` is a file of password hashes and live
+  session ids. The files are root-owned, mode `0600`, in a `0700` folder: read
+  them as root (`sudo` if you are not), never into either git repo.
+- **They are on the same host.** They cover a corrupted database or a bad
+  deploy, **not losing the server** — NFR-16's off-site half is still unmet for
+  both files. The only off-site copy is one you take by hand, below.
+
+The folder must exist before the first `up` that ships backups
+([`03-deploy.md`](03-deploy.md) creates it). Restoring from a pair is in
+[`05-operations.md`](05-operations.md) § Backup & restore.
+
+#### Getting a copy off the server
+
+From your own machine, fetch the newest pair (`ssh inja` logs in as root, which
+can read them):
+
+```bash
+stamp=$(ssh inja 'ls -1 /opt/inja/backups/app-*.db | tail -1 | sed "s/.*app-//; s/\.db$//"')
+scp "inja:/opt/inja/backups/app-$stamp.db" "inja:/opt/inja/backups/comments-$stamp.db" .
+chmod 600 "app-$stamp.db" "comments-$stamp.db"
+```
+
+Keep them off the host and out of both git repos — `app-….db` holds every
+password hash.
+
+For a copy of **this very minute** — before a risky deploy, or on an image older
+than the backups — take one by hand with `.backup` (not `cp`: both files are in
+WAL mode and a copy taken mid-write can be torn), then fetch it the same way:
 
 ```bash
 cd /opt/inja/code-repo/deploy
@@ -186,22 +217,13 @@ docker compose exec ui-backend python -c \
   "import sqlite3; s=sqlite3.connect('/state/app.db'); d=sqlite3.connect('/state/app-backup.db'); s.backup(d); d.close(); s.close()"
 docker compose cp ui-backend:/state/app-backup.db "./app-$(date +%F).db"
 docker compose exec ui-backend rm -f /state/app-backup.db
-```
 
-`comments.db` lives on its own volume (`ui-comments`) outside the data-repo too,
-and the same gap applies: `git-push` doesn't cover it, and `state-backup` isn't
-built yet. Back it up the same way:
-
-```bash
-cd /opt/inja/code-repo/deploy
 docker compose exec ui-backend python -c \
   "import sqlite3; s=sqlite3.connect('/comments/comments.db'); d=sqlite3.connect('/comments/comments-backup.db'); s.backup(d); d.close(); s.close()"
 docker compose cp ui-backend:/comments/comments-backup.db "./comments-$(date +%F).db"
 docker compose exec ui-backend rm -f /comments/comments-backup.db
+chmod 600 app-*.db comments-*.db
 ```
-
-Then move `app-<date>.db` off the server — it holds every password hash, so treat
-it as a secret: `chmod 600`, never into either git repo.
 
 ## Next
 

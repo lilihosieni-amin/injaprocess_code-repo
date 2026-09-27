@@ -9,6 +9,8 @@
 | **Builds on** | `2026-09-21-comments-routing-addendum.md` (D62–D75) and `2026-09-26-reports-reading-withdrawn-addendum.md` |
 | **Architecture** | `ARD.md` §13.2, §16 and §19.7 are updated to match in the P3 plan |
 
+**Amended during implementation, 2026-09-27:** D78, D79, D80, D83 and D84 now say what was built — each correction sits in its decision, marked *As built*.
+
 ---
 
 ## 1. Why
@@ -75,9 +77,12 @@ events: they are Panel-only, and readership is a question about readers.
 
 | Endpoint | Event |
 |---|---|
-| `POST /api/processes`, `PUT /{pid}`, `DELETE /{pid}`, `POST /{pid}/relayout`, `POST /{pid}/pending/{i}` | `process.edited` |
+| `POST /api/processes`, `PUT /{pid}`, `DELETE /{pid}`, `POST /{pid}/pending/{i}` | `process.edited` |
 | `PUT /api/departments/{code}/overview`, `PUT /{code}/order` | `department.edited` |
 | `POST /api/facts/{fid}/resolve` | `fact.edited` |
+
+*As built:* relayout writes nothing to disk — it returns a laid-out document the
+client then saves — so it records nothing.
 
 `ui-edit` commits gain an **`Acted-By: {username}`** trailer. ARD §13.2 already
 says every write is attributed *"in the activity record and in the commit
@@ -91,9 +96,14 @@ wrote it.
 
 ### D79 — The projection as built (adjusts D60)
 
-`ui-backend` walks `git log --no-merges {marker}..HEAD` in the data-repo, every
+`ui-backend` walks `git log --no-merges {marker}..{head}` in the data-repo, every
 30 seconds in the loop that already drains the outbox, and before every
 activity-report query. The event's time is the commit's.
+
+*As built:* the range ends at `{head}`, the `HEAD` read at the start of the pass
+and the sha the marker is then set to — never the live `HEAD`. Other containers
+commit to the data-repo; a commit landing mid-pass would otherwise be projected
+now and again on the next pass, and the record is append-only.
 
 **What a commit touched:**
 
@@ -108,11 +118,14 @@ activity-report query. The event's time is the commit's.
 
 | Commit | Actor |
 |---|---|
-| `pipeline(…)` | `run:{dept}/{stamp}`, from the `runs/{dept}/{stamp}/` directory the commit touches — the subject carries no stamp |
-| `quantify(…)` | `run:facts/{dept}/{stamp}`, from `runs/facts/{dept}/{stamp}/` |
+| `pipeline(…)` | `run:{dept}/{stamp}` — the department from the subject's parentheses, the stamp from the **newest** `runs/{dept}/{stamp}/` directory the commit touches: the subject carries no stamp, and a run commit sweeps up leftover run directories, other departments' included |
+| `quantify(…)` | `run:facts/{dept}/{stamp}`, the same way from `runs/facts/{dept}/{stamp}/` |
 | `chat-edit`, `restructure`, `audit-fix`, `edit-fact` | `agent:control-bot` |
 | `ui-edit` | **no edit event** — the endpoint already wrote one with the real user (D78) |
 | anything else | `git:{author name}` — a person's commit, e.g. a `reset` |
+
+*As built:* a `pipeline(…)` or `quantify(…)` commit touching no run directory of
+its department is credited `run:pipeline` / `run:quantify` — no stamp invented.
 
 `--no-merges` walks the commits a merge brings in, each once, and never the merge
 itself, whose diff against its first parent would count them twice.
@@ -140,6 +153,20 @@ stored one.
   broke.
 - **Seeding marks rows that are already stale** with the seed's `HEAD`, so the
   first pass does not announce old invalidations as new ones.
+
+*As built:*
+
+- Staleness is judged against each target's content **at `head`** (`git show`),
+  never the working tree.
+- A target whose working copy disagrees with `head` — saved but not yet
+  committed, mid-edit — is skipped that pass and judged again on a later pass,
+  once `HEAD` has moved and the two agree.
+- A `ui-edit` commit's event is credited to the user in its `Acted-By` trailer.
+- A stale target no commit in the batch touched is credited
+  `(head, head's commit time, system:projection)` — never the batch's last
+  commit, which may be another department's edit.
+- An unreadable target is skipped, never raised on; the facts files are loaded
+  once per pass, not once per fact.
 
 **Ceiling, accepted:** staleness is measured against the content at `HEAD`, not
 at each commit, so when two commits land within one 30-second pass the event is
@@ -209,6 +236,24 @@ user's events, filtered by day, kind (access · content · governance) and outco
   `view_audit` scope covers. Moot today — every holder is `*` — and right for a
   scoped Admin.
 
+*As built:*
+
+- **Readership honours disclosure.** A process view counts toward views, readers,
+  the summary's views card and the most-viewed process only when the **caller**
+  may be served that process (ARD §19.4a): an Admin never receives the id or
+  name of an unconfirmed or tombstoned process. The one-user timeline shows
+  such a target as `null` («—»); a caller holding `edit` on the process's
+  department still sees a deleted process's id.
+- **The one-user page carries the design's sessions card** (L2581–2597) beside
+  its four stat cards.
+- `day`, `offset` and the user id are bounded: out of range is a 422, never a
+  500.
+- **Open item for lili:** the one-user history is keyed on the **current**
+  username. A changed number splits the history (sign-ins and failures restart
+  from zero; sessions, active time and last seen follow the account), and a
+  number later handed to another account would show its previous holder's
+  events.
+
 ### D84 — Design resolutions
 
 1. **«ورود ناموفق» is a fifth tab.** The design defines its columns and filters
@@ -223,8 +268,14 @@ user's events, filtered by day, kind (access · content · governance) and outco
 4. **Placement:** «گزارش فعالیت کاربران» joins the admin menu between «کاربران»
    and «سیاست نمایش محتوا», as the design places it, for any `view_audit`
    holder. Nothing already in the menu moves.
-5. **Phone width:** the tables scroll horizontally inside their own container;
-   the page never does.
+5. **Phone width:** the tables use `DataTable`'s existing ≤760px collapse (each
+   row becomes a stacked line); the page never scrolls sideways. *(As built.)*
+6. **Breadcrumbs** on `/activity` follow owner ruling R41: two crumbs,
+   «دپارتمان‌ها» first, so «بازگشت» shows. *(As built.)*
+7. **A filter bar's popovers are not clipped.** `DataTable`'s card clipped its
+   content, which cut off a filter dropdown on a short table; with a filter bar
+   the clip moves below the bar. *(As built.)*
+8. **IPs render with Persian digits** on both screens. *(As built.)*
 
 ### D85 — Not built
 

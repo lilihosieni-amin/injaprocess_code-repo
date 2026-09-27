@@ -98,7 +98,9 @@ subscription, so rule it out now rather than on the invoice.
 
 ## Backup & restore
 
-Five separate things need backing up, and `git-push` covers only the first.
+Five separate things need backing up. `git-push` covers the first, off-site;
+`ui-backend` covers the last two, on this host only; the other two need a
+snapshot of their own.
 
 - **Off-site baseline:** `git-push` is the off-site baseline — it backs up
   data-repo **minus audio** (raw audio under `meetings/audio/` is gitignored and
@@ -112,29 +114,45 @@ Five separate things need backing up, and `git-push` covers only the first.
   `.gs` files and `dump-workbook`'s structure dump. Add `/opt/inja/data-repo/attachments/sheets/`
   to the same rsync/snapshot as the audio if the `.xlsx` files themselves need
   to survive a full data-repo loss.
-- **`app.db` — not covered by anything yet.** It lives on the `ui-state` Docker
-  volume, outside the data-repo, and holds every account, every password hash,
-  every session, the whole activity record, and — since facts confirmation
-  landed — the whole fact review record (every `confirmations` row). `git-push`
-  never sees it, so today **nothing off-site holds any of it** and NFR-7 is
-  simply false for users, sessions, the activity record and fact confirmations
-  until this is set up. The
-  `state-backup` service that closes the gap (ARD §16, NFR-16 — `sqlite3 .backup`
-  off-site on the same 11:00/23:00 schedule) is not built yet; take the backup by
-  hand meanwhile, with the `.backup` recipe in
-  [`02-secrets-and-auth.md`](02-secrets-and-auth.md) § 5. Use `.backup`, not
-  `cp`: the file is in WAL mode and a plain copy taken mid-write can be torn.
-  Treat the result as a secret — it is a file of password hashes.
-- **`comments.db` — not covered by anything yet either.** It lives on the
-  `ui-comments` Docker volume, outside the data-repo, and holds every comment
-  and its resolution. Same gap as `app.db`: `git-push` never sees it, the same
-  not-yet-built `state-backup` service is what closes it, and until then take
-  the backup by hand with the second `.backup` recipe in
+- **`app.db` and `comments.db` — backed up on this host, not off-site.**
+  `app.db` lives on the `ui-state` volume and holds every account, every
+  password hash, every session, the whole activity record and the whole fact
+  review record (every `confirmations` row); `comments.db` lives on
+  `ui-comments` and holds every comment and its resolution. `git-push` sees
+  neither. `ui-backend` takes a SQLite `.backup` of both at **11:00** and
+  **23:00** into `/opt/inja/backups/` (`app-YYYYmmdd-HH00.db`,
+  `comments-YYYYmmdd-HH00.db`), keeps the newest **14** of each, mode `0600`
+  (ARD §16, spec addendum D82). They are secrets — a file of password hashes
+  and live session ids; read them as root (`sudo` if you are not). They are
+  **on the same host**: they cover a corrupted database or a bad deploy, not
+  losing the server, so NFR-16's off-site half is still unmet. Copy the newest
+  pair off the host by hand with the `scp` recipe in
   [`02-secrets-and-auth.md`](02-secrets-and-auth.md) § 5.
-- **Restore:** re-clone data-repo from GitHub, then restore `meetings/audio/`
-  and `attachments/sheets/` from their snapshots, and copy the newest `app.db` backup onto the
-  `ui-state` volume with the service stopped. With no `app.db` backup to restore,
-  the accounts are gone and the way back in is `inja-seed`
+- **Restore — the data-repo:** re-clone data-repo from GitHub, then restore
+  `meetings/audio/` and `attachments/sheets/` from their snapshots.
+- **Restore — `app.db` and `comments.db`** from a pair in `/opt/inja/backups/`
+  (or one you copied back onto the host). Pick one stamp and restore **both**
+  files from it, so comments and the accounts they name agree. Stop
+  `control-bot` too: its `comments` CLI opens `comments.db`.
+
+  ```bash
+  cd /opt/inja/code-repo/deploy
+  ls -1 /opt/inja/backups/                          # choose a stamp
+  stamp=20260927-1100
+  docker compose stop ui-backend control-bot
+  docker compose run --rm --no-deps --entrypoint sh ui-backend -c "
+    rm -f /state/app.db-wal /state/app.db-shm /comments/comments.db-wal /comments/comments.db-shm &&
+    cp /backups/app-$stamp.db /state/app.db &&
+    cp /backups/comments-$stamp.db /comments/comments.db"
+  docker compose start ui-backend control-bot
+  ```
+
+  The `-wal`/`-shm` files beside the target belong to the database being
+  replaced; left in place, SQLite could replay them onto the restored copy and
+  corrupt it.
+  Everyone signed in after the chosen slot is signed out (their sessions are
+  not in it), and activity after it is gone from the record. With no backup to
+  restore, the accounts are gone and the way back in is `inja-seed`
   ([`06-changing-users.md`](06-changing-users.md)) — a new first Editor, and
   everyone else re-created by hand.
 

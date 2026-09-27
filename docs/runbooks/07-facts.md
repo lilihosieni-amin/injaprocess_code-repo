@@ -366,10 +366,10 @@ git -C /opt/inja/data-repo tag -a facts-handover-<scope>-$(date -u +%Y%m%d) -m \
 
 The `.xlsx` files themselves are never in the tag — they are gitignored
 (§1) and server-local. Copy them alongside the tagged checkout by hand from
-the live `attachments/sheets/` tree, or from its off-site snapshot once the
-`state-backup` service covers it (`05-operations.md`'s Backup & restore
-section already lists `attachments/sheets/` as a server-snapshot item for
-exactly this reason).
+the live `attachments/sheets/` tree, or from its own snapshot — the
+server-side backups cover only `app.db` and `comments.db`, and
+`05-operations.md`'s Backup & restore section lists `attachments/sheets/` as a
+snapshot item of its own for exactly this reason.
 
 ## 8. Comments review — cell-comment authorship
 
