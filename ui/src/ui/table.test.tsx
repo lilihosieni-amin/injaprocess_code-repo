@@ -181,6 +181,30 @@ describe('DataTable', () => {
     }
   })
 
+  it('clips below the filter bar, never the card, so a filter popover is not cut off', () => {
+    // Task 12 — the card's `overflow-hidden` cut a Dropdown or calendar popover
+    // off at its bottom edge whenever the table under the bar was short. With a
+    // bar the clip belongs to the part holding the rows; without one, the card.
+    const bare = render(
+      <DataTable label="کاربران" columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="خالی" />,
+    )
+    expect(bare.container.querySelector('[data-r-tshell]')).toHaveClass('overflow-hidden')
+    expect(bare.container.querySelector('[data-r-tclip]')).toBeNull()
+    bare.unmount()
+
+    const { container } = render(
+      <DataTable
+        label="کاربران" columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="خالی"
+        filters={<button type="button">فیلتر</button>}
+      />,
+    )
+    expect(container.querySelector('[data-r-tshell]')).not.toHaveClass('overflow-hidden')
+    const clip = screen.getByRole('table', { name: 'کاربران' }).parentElement
+    expect(clip).toHaveClass('overflow-hidden', 'rounded-b-doc')
+    expect(clip?.contains(container.querySelector('[data-r-tfilters]'))).toBe(false)
+    expect(container.querySelector('[data-r-tfilters]')).toHaveClass('rounded-t-doc')
+  })
+
   it('hides the head and drops the two wide columns at 760px', () => {
     // §6.7 — at ≤760px the head goes, the row becomes a flex line, and the
     // department and supervisor columns are dropped rather than squeezed.
@@ -655,6 +679,18 @@ describe('what the table’s two SLOTS compile to', () => {
     // §6.16 — `[data-r-afilters]` becomes a stretched column at ≤760px.
     expect(winner(f, 'flex-direction', '', R760)).toBe('column')
     expect(winner(f, 'align-items', '', R760)).toBe('stretch')
+  })
+
+  it('moves the 18px clip from the card to the bar’s top corners and the rows’ bottom ones', async () => {
+    const s = slots()
+    expect(winner(await paint(s.card), 'overflow')).toBe('')
+    const f = await paint(s.filters())
+    expect(winner(f, 'border-top-left-radius')).toBe('var(--radius-doc)')
+    expect(winner(f, 'border-bottom-left-radius')).toBe('')
+    const clip = await paint((s.container.querySelector('[data-r-tclip]') as HTMLElement).className)
+    expect(winner(clip, 'overflow')).toBe('hidden')
+    expect(winner(clip, 'border-bottom-right-radius')).toBe('var(--radius-doc)')
+    expect(winner(clip, 'border-top-left-radius')).toBe('')
   })
 
   it('draws the pager bar, and stacks it on a phone like every other data-r-stack', async () => {

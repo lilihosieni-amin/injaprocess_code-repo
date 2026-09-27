@@ -184,33 +184,8 @@ export function DataTable<Row>({
     : undefined
   const tracks = template === undefined ? '' : TEMPLATE[template]
   const openable = onOpen !== undefined
-  return (
-    // §5.2 — the shell is the card, at the 18px radius: the white surface, the
-    // near-invisible violet hairline and the two-layer neutral shadow that does
-    // the work on the violet field. `overflow-hidden` is what makes the head
-    // fill and the row rules stop at that radius.
-    <Card data-r-tshell radius="doc" className="overflow-hidden">
-      {/* The filter bar, the empty line and the pager are siblings of the
-          table, not children of it. A `role="table"`/`grid` may hold rows and
-          rowgroups; a filter bar full of comboboxes and a pager full of buttons
-          are neither, and `role="presentation"` does not launder them because
-          it is dropped from anything focusable. Nesting them changed nothing
-          visible and left every interactive control in this component sitting
-          in a table structure that cannot describe it. */}
-      {filters !== undefined && (
-        <div
-          data-r-tfilters
-          // The design's filter bar exactly (`:1516`, `:1635`): a wrapping flex
-          // line, centred, 8px gap, 14/18 padding, --tile-v4 over a
-          // --border-current rule. At ≤760 it becomes a stretched column.
-          className={
-            'flex items-center flex-wrap gap-s4 px-s9 py-s7 bg-tile-v4 border-b border-border-current ' +
-            'max760:flex-col max760:items-stretch'
-          }
-        >
-          {filters}
-        </div>
-      )}
+  const body = (
+    <>
       <div role={openable ? 'grid' : 'table'} aria-label={label}>
         <div
           data-r-thead
@@ -288,6 +263,53 @@ export function DataTable<Row>({
         </p>
       )}
       {pager}
+    </>
+  )
+  return (
+    // §5.2 — the shell is the card, at the 18px radius: the white surface, the
+    // near-invisible violet hairline and the two-layer neutral shadow that does
+    // the work on the violet field. `overflow-hidden` is what makes the head
+    // fill and the row rules stop at that radius.
+    //
+    // **With a filter bar the clip moves below it, off the card.** The bar holds
+    // Dropdowns and the calendar filter, whose popovers are absolutely placed
+    // inside it; clipped by the card, a popover opened over a table of two rows
+    // was cut off at the card's bottom edge (Task 12, measured on the activity
+    // screen — the design's own card has the same `overflow:hidden`, L2365, and
+    // hides it only because its fixtures always fill five rows). So the card
+    // stops clipping, the bar takes the card's top corners itself, and the rows,
+    // the empty line and the pager are clipped by one wrapper at the bottom
+    // corners. A popover's `z-dropdown` already lifts it over the rows. Without
+    // a filter bar nothing changes: the card clips, as it always has.
+    <Card data-r-tshell radius="doc" className={filters === undefined ? 'overflow-hidden' : ''}>
+      {/* The filter bar, the empty line and the pager are siblings of the
+          table, not children of it. A `role="table"`/`grid` may hold rows and
+          rowgroups; a filter bar full of comboboxes and a pager full of buttons
+          are neither, and `role="presentation"` does not launder them because
+          it is dropped from anything focusable. Nesting them changed nothing
+          visible and left every interactive control in this component sitting
+          in a table structure that cannot describe it. */}
+      {filters !== undefined && (
+        <div
+          data-r-tfilters
+          // The design's filter bar exactly (`:1516`, `:1635`): a wrapping flex
+          // line, centred, 8px gap, 14/18 padding, --tile-v4 over a
+          // --border-current rule. At ≤760 it becomes a stretched column. It
+          // carries the card's top corners itself, since the card no longer
+          // clips once a bar is present (see the note on the card).
+          className={
+            'flex items-center flex-wrap gap-s4 px-s9 py-s7 bg-tile-v4 border-b border-border-current ' +
+            'rounded-t-doc max760:flex-col max760:items-stretch'
+          }
+        >
+          {filters}
+        </div>
+      )}
+      {filters === undefined ? body : (
+        // `rounded-b-doc` and not `rounded-doc`: the bar above holds the top
+        // corners, and this wrapper only ever meets the card at the bottom two.
+        <div data-r-tclip className="overflow-hidden rounded-b-doc">{body}</div>
+      )}
     </Card>
   )
 }
