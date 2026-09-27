@@ -31,6 +31,18 @@ def _commit(root, subject, author="deploy", body=None):
                           capture_output=True, text=True).stdout.strip()
 
 
+def _commit_only(root, paths, subject, author="deploy", body=None):
+    """Like `_commit`, but stages only `paths` — for a commit that must leave
+    some other, already-modified file uncommitted."""
+    subprocess.run(["git", "-C", str(root), "add", "--"] + [str(p) for p in paths],
+                   check=True)
+    args = ["git", "-C", str(root), "-c", f"user.name={author}", "-c", "user.email=x@x",
+            "commit", "-q", "-m", subject] + (["-m", body] if body else [])
+    subprocess.run(args, check=True)
+    return subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], check=True,
+                          capture_output=True, text=True).stdout.strip()
+
+
 def _path(root):
     return root / "departments" / "cooking" / "processes" / f"{PID}.json"
 
@@ -108,6 +120,49 @@ def test_seeding_marks_what_is_already_stale_without_announcing_it(cfg, data_roo
     head = subprocess.run(["git", "-C", str(data_root), "rev-parse", "HEAD"],
                           check=True, capture_output=True, text=True).stdout.strip()
     assert _invalidated(cfg) == [] and _emitted(cfg, PID) == head
+
+
+def _overview_path(root):
+    return root / "departments" / "cooking" / "overview.json"
+
+
+def test_an_uncommitted_write_is_not_judged_until_it_lands(cfg, data_root):
+    """Reviewer's reproduction (fix review, D80): a target is fingerprinted at
+    `head`, never in the working tree, so a save that has not been committed
+    yet cannot make a *different*, already-committed commit take the blame."""
+    _confirm_current(cfg, data_root)
+    projection.run(cfg)                                          # seeds
+
+    _set_name(data_root, "نوشته نشده")                            # saved, NOT committed
+    ov = json.loads(_overview_path(data_root).read_text(encoding="utf-8"))
+    ov["name"] = ov.get("name", "") + " ویرایش نامرتبط"
+    _overview_path(data_root).write_text(json.dumps(ov, ensure_ascii=False, indent=2),
+                                         encoding="utf-8")
+    # A "ui-edit" commit writes no edit event of its own (D78) — only the
+    # `Acted-By` trailer credits a staleness event, which is exactly what
+    # lets this reproduce the reviewer's misattribution without the noise of
+    # an unrelated `process.edited`/`department.edited` row in the way.
+    unrelated_sha = _commit_only(data_root, [_overview_path(data_root)],
+                                 "ui-edit(cooking): save", author="ui-edit",
+                                 body="Acted-By: AAAA")
+    projection.run(cfg)
+    assert _invalidated(cfg) == []                                # not judged yet
+
+    bbbb_sha = _commit(data_root, "ui-edit(cooking-001): save", author="ui-edit",
+                       body="Acted-By: BBBB")                     # now stages cooking-001 too
+    projection.run(cfg)
+
+    rows = _invalidated(cfg)
+    assert rows == [("BBBB", PID)]
+    conn = db.connect(cfg.app_db)
+    try:
+        detail = json.loads(conn.execute(
+            "SELECT detail FROM audit_events WHERE action = 'confirmation.invalidated'"
+        ).fetchone()[0])
+    finally:
+        conn.close()
+    assert detail["commit"] == bbbb_sha
+    assert detail["commit"] != unrelated_sha
 
 
 def test_a_fact_confirmation_goes_stale_too(cfg, data_root):

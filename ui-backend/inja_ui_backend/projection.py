@@ -77,6 +77,16 @@ def _commits(cfg, since: str, head: str) -> list[dict]:
     return out
 
 
+def _head_time(cfg, head: str) -> int:
+    """`head`'s own commit time — the fallback timestamp for a staleness event
+    that names no commit of its own to borrow one from."""
+    r = gitcommit._git(cfg, "show", "-s", "--format=%ct", head)
+    try:
+        return int(r.stdout.strip()) if r.returncode == 0 else int(time.time())
+    except ValueError:
+        return int(time.time())
+
+
 def _kind(subject: str) -> str:
     return re.split(r"[(:]", subject, maxsplit=1)[0].strip()
 
@@ -169,46 +179,105 @@ def _touched(cfg, c: dict) -> list[tuple[str, str, str, dict]]:
     return [(a, t, ch, ex) for (a, t), (ch, ex) in found.items()]
 
 
-def _current(cfg, targets: list[str]) -> dict[str, str | None]:
-    """Each confirmation target's fingerprint now — `None` when it is gone.
+#: Sentinel: the target's content exists but could not be parsed — never
+#: treated as "gone" (which would read as a deletion) and never compared
+#: equal to anything, including itself, so a target stuck behind it is
+#: skipped rather than judged (fix review, D80).
+_UNREADABLE = object()
 
-    The kind test is `routers/confirmations._kind`'s, restated in two lines
-    rather than imported: a router is not something the background loop
-    depends on. Facts are loaded once for the lot, not once per target.
+
+def _target_relpath(target: str) -> str:
+    """The data-repo path a non-fact confirmation target lives at."""
+    if "-" in target:
+        return f"departments/{storage.dept_of(target)}/processes/{target}.json"
+    return f"departments/{target}/overview.json"
+
+
+def _head_fingerprint(cfg, head: str, target: str):
+    """`target`'s fingerprint AT `head` — never the live working tree.
+
+    A writer (a chat edit, a pipeline run) saves the file and commits it as
+    two separate steps; a pass that lands in between would see the new bytes
+    before any commit names who made them, and credit the change to whatever
+    unrelated commit happens to be newest instead (the reviewer's AAAA/BBBB
+    case). Reading at `head` instead means the fingerprint here always has a
+    real commit behind it. `None` when the target does not exist at `head`;
+    `_UNREADABLE` when it exists but its JSON cannot be parsed there — the
+    fact-file case already returns "not found" for that (`_entries_at`
+    swallows a parse error), which is fine: the aggregate never truly
+    disappears.
+
+    ponytail: one `git show` subprocess per confirmed target whenever HEAD
+    moves. Fine at today's confirmation counts (tens, not thousands); batch
+    with `git cat-file --batch` if that count reaches the thousands.
     """
-    facts = None
-    out: dict[str, str | None] = {}
-    for t in targets:
-        if _FACT_ID.fullmatch(t):
-            if facts is None:
-                facts = {e.get("id"): e for e in facts_store.load_all(cfg.data_root)}
-            out[t] = fact_fingerprint(facts[t]) if t in facts else None
-        else:
-            path = (storage.proc_path(cfg.data_root, t) if "-" in t
-                    else storage.overview_path(cfg.data_root, t))
-            out[t] = fingerprint(storage.read_json(path)) if path.is_file() else None
-    return out
+    if _FACT_ID.fullmatch(target):
+        for name in ("records", "measurements", "rules", "notes"):
+            entries = _entries_at(cfg, head, f"facts/{name}.json")
+            if target in entries:
+                return fact_fingerprint(entries[target])
+        return None
+    r = gitcommit._git(cfg, "show", f"{head}:{_target_relpath(target)}")
+    if r.returncode != 0:
+        return None
+    try:
+        return fingerprint(json.loads(r.stdout))
+    except (ValueError, TypeError, AttributeError):
+        return _UNREADABLE
 
 
-def _staleness(cfg, conn, head: str, credit: dict, fallback: tuple, *,
-               announce: bool) -> int:
-    """Compare every confirmation with its target's content at HEAD (D80).
+def _working_fingerprint(cfg, target: str):
+    """`target`'s fingerprint in the live working tree — same shape as
+    `_head_fingerprint`, compared against it to tell "already committed" from
+    "a writer still has this file open" (D80)."""
+    if _FACT_ID.fullmatch(target):
+        facts = {e.get("id"): e for e in facts_store.load_all(cfg.data_root)}
+        return fact_fingerprint(facts[target]) if target in facts else None
+    path = (storage.proc_path(cfg.data_root, target) if "-" in target
+            else storage.overview_path(cfg.data_root, target))
+    if not path.is_file():
+        return None
+    try:
+        return fingerprint(storage.read_json(path))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return _UNREADABLE
+
+
+def _judgeable(cfg, head: str, targets: list[str]) -> dict[str, str | None]:
+    """Each of `targets` this pass may judge for staleness: its fingerprint at
+    `head`, but only when the working tree already agrees with `head` — a
+    target still mid-write (saved but not yet committed, or committed but not
+    yet checked out here) is left out of the map entirely, and picked up on a
+    later pass once the two agree (D80). `_UNREADABLE` never equals anything,
+    including another `_UNREADABLE`, so an unparseable target is left out too
+    rather than silently judged "unchanged"."""
+    head_fp = {t: _head_fingerprint(cfg, head, t) for t in targets}
+    work_fp = {t: _working_fingerprint(cfg, t) for t in targets}
+    return {t: head_fp[t] for t in targets
+            if head_fp[t] is not _UNREADABLE and head_fp[t] == work_fp[t]}
+
+
+def _staleness(cfg, conn, head: str, now_fp: dict[str, str | None], credit: dict,
+               fallback: tuple, *, announce: bool) -> int:
+    """Compare every confirmation with its target's `now_fp` (D80) — the
+    caller's map of judgeable targets, computed once at `head` before this
+    pass's transaction opened.
 
     A new mismatch writes `confirmation.invalidated` once — credited to the
-    newest commit in the batch that touched the target — and marks the row with
-    `emitted_for_sha`. A match clears the mark silently: the content is back to
-    what was vouched for. With `announce=False` (seeding) mismatches are marked
-    and nothing is written, so old staleness is not announced as new.
-
-    ponytail: measured at HEAD, not per commit — when two commits land within
-    one pass the event is credited to the later. Per-commit fingerprints would
-    mean reading every confirmed document out of every commit.
+    newest commit in the batch that touched the target, or to `fallback` when
+    none did — and marks the row with `emitted_for_sha`. A match clears the
+    mark silently: the content is back to what was vouched for. With
+    `announce=False` (seeding) mismatches are marked and nothing is written,
+    so old staleness is not announced as new. A target missing from `now_fp`
+    (confirmed after the map was built, or still mid-write) is left untouched
+    this pass — neither announced, marked, nor cleared.
     """
     rows = conn.execute(
         "SELECT target, fingerprint, emitted_for_sha FROM confirmations").fetchall()
-    now_fp = _current(cfg, [r["target"] for r in rows])
     n = 0
     for r in rows:
+        if r["target"] not in now_fp:
+            continue
         stale = now_fp[r["target"]] != r["fingerprint"]
         if stale and r["emitted_for_sha"] is None:
             if announce:
@@ -224,10 +293,15 @@ def _staleness(cfg, conn, head: str, credit: dict, fallback: tuple, *,
     return n
 
 
+def _targets(conn) -> list[str]:
+    return [r["target"] for r in conn.execute("SELECT target FROM confirmations")]
+
+
 def _seed(cfg, conn, head: str) -> None:
+    now_fp = _judgeable(cfg, head, _targets(conn))
     conn.execute("BEGIN IMMEDIATE")
     try:
-        _staleness(cfg, conn, head, {}, (head, 0, SYSTEM), announce=False)
+        _staleness(cfg, conn, head, now_fp, {}, (head, 0, SYSTEM), announce=False)
         _set_marker(conn, head)
         conn.execute("COMMIT")
     except BaseException:
@@ -272,16 +346,19 @@ def run(cfg) -> int:
                     if actor is not None:
                         rows.append((c["at"], actor, action, target,
                                      {"change": change, "commit": c["sha"], **extra}))
-            last = commits[-1] if commits else None
-            fallback = ((head, last["at"], _actor(last) or last["acted_by"]
-                         or f"git:{last['author']}") if last
-                        else (head, int(time.time()), SYSTEM))
+            # Always the system, at HEAD's own commit time — never a commit
+            # that, by construction, never touched this target (fix review):
+            # the last commit in the batch may be an unrelated department's
+            # edit, and crediting it here would misattribute a permanent,
+            # append-only record entry to the wrong person.
+            fallback = (head, _head_time(cfg, head), SYSTEM)
+            now_fp = _judgeable(cfg, head, _targets(conn))
             conn.execute("BEGIN IMMEDIATE")
             try:
                 for at, actor, action, target, detail in rows:
                     audit.record(conn, actor=actor, action=action, now=at,
                                  target=target, detail=detail)
-                n = len(rows) + _staleness(cfg, conn, head, credit, fallback,
+                n = len(rows) + _staleness(cfg, conn, head, now_fp, credit, fallback,
                                            announce=True)
                 _set_marker(conn, head)
                 conn.execute("COMMIT")
