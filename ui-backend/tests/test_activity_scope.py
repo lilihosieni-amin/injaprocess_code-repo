@@ -2,8 +2,10 @@
 §11 test 28): a scoped `view_audit` holder sees content for their departments
 and no access or governance events; a `*` holder sees both."""
 import json
+import time
 
 from inja_ui_backend import db
+from inja_ui_backend.store import audit
 
 
 def _uid(people, name):
@@ -115,6 +117,30 @@ def test_an_unconfirmed_processs_id_never_surfaces_on_an_admins_timeline(
 
     own = people["editor"].get(f"/api/activity/users/{eid}")
     assert "cooking-002" in [r["target"] for r in own.json()["rows"]]
+
+
+def test_a_withheld_facts_id_never_surfaces_on_an_admins_timeline(people):
+    """Final review I3: F-00001 carries no confirmation, so D22 serves it to
+    its editors alone. The Editor's `fact.edited` row stays on an Admin's
+    read of their timeline — the event happened — but with no target."""
+    eid = _uid(people, "editor")
+    assert people["admin"].get("/api/facts/F-00001").status_code == 404
+    conn = db.connect(people["editor"].app_db)
+    try:
+        who = conn.execute("SELECT username FROM users WHERE id = ?", (eid,)).fetchone()[0]
+        audit.record(conn, actor=who, action="fact.edited", now=int(time.time()),
+                     target="F-00001", detail={"change": "updated", "department": "cooking"})
+    finally:
+        conn.close()
+
+    res = people["admin"].get(f"/api/activity/users/{eid}")
+    assert res.status_code == 200
+    row = next(r for r in res.json()["rows"] if r["action"] == "fact.edited")
+    assert row["target"] is None
+    assert "F-0000" not in res.text
+
+    own = people["editor"].get(f"/api/activity/users/{eid}")
+    assert "F-00001" in [r["target"] for r in own.json()["rows"]]
 
 
 def test_a_deleted_processs_id_stays_on_the_timeline_only_for_its_editors(

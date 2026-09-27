@@ -2,6 +2,7 @@
 cadmin (admin, dept:cashier), head/viewer/other (readers, cooking)."""
 from inja_ui_backend import db
 from inja_ui_backend.auth import COOKIE_NAME
+from inja_ui_backend.store import audit
 
 
 def _uid(people, name):
@@ -20,6 +21,21 @@ def test_every_user_is_listed_with_their_counts(people):
     assert viewer["role"] == "reader" and viewer["scopes"] == ["dept:cooking"]
     assert set(viewer) == {"id", "username", "displayName", "role", "scopes", "disabled",
                            "logins", "failures", "sessions", "activeSeconds", "lastSeen"}
+
+
+def test_a_users_failures_count_throttled_attempts_too(people):
+    """Final review M4: the same two actions the failures tab and the summary
+    count — hammering a locked account is exactly the signal (D44)."""
+    conn = db.connect(people["editor"].app_db)
+    try:
+        who = conn.execute("SELECT username FROM users WHERE display_name = 'viewer'"
+                           ).fetchone()[0]
+        for action in ("login.failure", "login.throttled", "login.throttled"):
+            audit.record(conn, actor=who, action=action, now=1, outcome="fail")
+    finally:
+        conn.close()
+    rows = people["editor"].get("/api/activity/users").json()
+    assert next(r for r in rows if r["displayName"] == "viewer")["failures"] == 3
 
 
 def test_one_users_events_filter_and_never_carry_a_session_id(people):

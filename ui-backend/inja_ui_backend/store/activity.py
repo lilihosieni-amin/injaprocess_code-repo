@@ -18,6 +18,9 @@ from . import audit
 #: rather than imported to keep this module free of `routers` (it is imported
 #: the other way already, and a cycle here would be a new one, not this one).
 _PROCESS_ID_RE = re.compile(r"^[a-z]+-[0-9]{3}$")
+#: A fact id, exactly `routers/facts._FACT_ID_RE` — duplicated for the same
+#: reason; `routers/activity._servable` reads it from here.
+FACT_ID_RE = re.compile(r"^F-[0-9]{5}$")
 
 #: D42 as amended by D76 — every event the record holds, by the one-user page's
 #: three kinds. `tests/test_activity_catalogue.py` pins it against the writers.
@@ -68,7 +71,8 @@ def users(conn: sqlite3.Connection, user_id: int | None = None) -> list[dict]:
           (SELECT COUNT(*) FROM audit_events a
             WHERE a.actor = u.username AND a.action = 'login.success') AS logins,
           (SELECT COUNT(*) FROM audit_events a
-            WHERE a.actor = u.username AND a.action = 'login.failure') AS failures,
+            WHERE a.actor = u.username
+              AND a.action IN ('login.failure', 'login.throttled')) AS failures,
           (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id) AS sessions,
           (SELECT COALESCE(SUM(i.ended_at - i.started_at), 0) FROM activity_intervals i
             JOIN sessions s ON s.id = i.session_id WHERE s.user_id = u.id) AS active,
@@ -104,9 +108,11 @@ def user_events(conn: sqlite3.Connection, username: str, *, day: int | None,
     # Editor's `process.viewed` row for a process D22 withholds from that
     # Admin must not hand its id over here either, even though the row's
     # *action* and *kind* still stand — the event happened, only the process
-    # it names is not this caller's to be told about. Every other target
-    # (a department code, a fact id, a `CMT-n`, a `dept:x/report:k`) passes
-    # through unchanged; `_PROCESS_ID_RE` is what tells the two apart.
+    # it names is not this caller's to be told about. A fact id is gated the
+    # same way (final review I3: an Editor's `fact.edited` row for an
+    # unconfirmed entry). Every other target (a department code, a `CMT-n`,
+    # a `dept:x/report:k`) passes through unchanged; `_PROCESS_ID_RE` and
+    # `FACT_ID_RE` are what tell them apart.
     where, args = ["actor = ?"], [username]
     if day is not None:
         start = day * 86400 - TEHRAN_OFFSET_S
@@ -132,7 +138,8 @@ def user_events(conn: sqlite3.Connection, username: str, *, day: int | None,
         (TEHRAN_OFFSET_S, username))}
 
     def visible_target(t: str | None) -> str | None:
-        return None if t and _PROCESS_ID_RE.match(t) and not servable(t) else t
+        gated = t and (_PROCESS_ID_RE.match(t) or FACT_ID_RE.match(t))
+        return None if gated and not servable(t) else t
 
     return {"total": total, "days": days, "rows": [
         {"id": r["id"], "at": r["at"], "action": r["action"],

@@ -194,9 +194,11 @@ def _reachable(request: Request, user, fid: str) -> dict:
 def _served(shown: Disclosure, reach, entry: dict, mark: str | None) -> bool:
     """May this caller be told what `GET /api/facts/{id}` would tell them?
 
-    **The** predicate, and it has exactly two callers: `get_fact`, which is the
-    route it describes, and `_neighbour_visibility`, which decides whether a
-    neighbour's title may be named. One implementation rather than four
+    **The** predicate, and it has exactly three callers: `get_fact`, which is
+    the route it describes, `_neighbour_visibility`, which decides whether a
+    neighbour's title may be named, and `routers/activity._servable`, which
+    decides whether the activity timeline may name its id (final review
+    I3). One implementation rather than four
     parallel conditions, because the four it composes — `is_fact`, reach, the
     record gate and the kind switch — are each free to change, and a mask that
     restated them would start disagreeing with the route the first time one did.

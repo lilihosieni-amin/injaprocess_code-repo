@@ -8,11 +8,12 @@ from typing import Callable, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 
-from .. import comment_jobs, projection, storage
+from .. import comment_jobs, facts_store, projection, storage
 from ..access import NOT_FOUND, reachable_departments, requires
 from ..auth import require_session
 from ..disclosure import Disclosure
-from ..store import activity
+from ..store import activity, confirmations
+from . import facts as facts_router
 
 router = APIRouter(prefix="/api/activity")
 log = logging.getLogger(__name__)
@@ -101,29 +102,50 @@ def _servable(request: Request, user) -> Callable[[str | None], bool]:
     them), and nobody else learns it. `Disclosure.edits` is that question —
     `access.allows(conn, user, "edit", f"dept:{dept}")`, hoisted. An
     unreadable, non-JSON or non-object document is never servable — the
-    activity record's own dubious row must not raise, only be excluded."""
+    activity record's own dubious row must not raise, only be excluded.
+
+    A **fact id** (`F-00001`) is asked the same way (final review I3): an
+    Editor's `fact.edited` row for an unconfirmed entry must not hand its id
+    to an Admin who could never open it. The question is `routers/facts.
+    _served` — the conjunction `GET /api/facts/{id}` and the facts list both
+    answer (reach, D22's record gate, the kind switch) — called, not
+    restated. A fact **missing** from the store has no scope left to read, so
+    it is taken as the universal scope `_targets` gives a scope-less entry:
+    servable only to whoever may `edit` at `*`. An unreadable store hides it."""
     cfg = request.app.state.cfg
-    shown = Disclosure(request.app.state.db, user)
+    conn = request.app.state.db
+    shown = Disclosure(conn, user)
     cache: dict[str, bool] = {}
 
-    def servable(pid: str | None) -> bool:
-        if not pid:
+    def process(pid: str) -> bool:
+        try:
+            doc = storage.read_json(storage.proc_path(cfg.data_root, pid))
+        except FileNotFoundError:
+            return shown.edits(storage.dept_of(pid))
+        except (OSError, ValueError):
             return False
-        if pid not in cache:
-            try:
-                doc = storage.read_json(storage.proc_path(cfg.data_root, pid))
-            except FileNotFoundError:
-                cache[pid] = shown.edits(storage.dept_of(pid))
-            except (OSError, ValueError):
-                cache[pid] = False
-            else:
-                # `may_serve` calls `.get`/`.get` on `doc`, so anything valid
-                # JSON but not an object (`[]`, `null`, a bare string) would
-                # otherwise raise AttributeError instead of answering False
-                # (review round 2).
-                cache[pid] = isinstance(doc, dict) and shown.may_serve(
-                    doc, storage.dept_of(pid), pid)
-        return cache[pid]
+        # `may_serve` calls `.get`/`.get` on `doc`, so anything valid JSON but
+        # not an object (`[]`, `null`, a bare string) would otherwise raise
+        # AttributeError instead of answering False (review round 2).
+        return isinstance(doc, dict) and shown.may_serve(doc, storage.dept_of(pid), pid)
+
+    def fact(fid: str) -> bool:
+        try:
+            entry = facts_store.load_entry(cfg.data_root, fid)
+        except (OSError, ValueError, TypeError, AttributeError, KeyError):
+            return False
+        if entry is None:
+            return shown.edits_fact(facts_router._targets(None))
+        mark = confirmations.stored_for(conn, [fid]).get(fid)
+        return facts_router._served(shown, facts_router._reach(conn, user), entry, mark)
+
+    def servable(target: str | None) -> bool:
+        if not target:
+            return False
+        if target not in cache:
+            cache[target] = (fact(target) if activity.FACT_ID_RE.fullmatch(target)
+                             else process(target))
+        return cache[target]
 
     return servable
 
