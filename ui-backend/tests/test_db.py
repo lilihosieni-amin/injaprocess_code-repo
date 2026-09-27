@@ -227,12 +227,13 @@ V1_SQL = """
 def test_migration_2_creates_the_confirmation_and_policy_tables(tmp_path):
     conn = db.connect(tmp_path / "app.db")
     # `db.migrate` always brings a fresh connection to the *latest* schema, so
-    # this necessarily also runs migration 3 — `data_repo_commit` is in `cols`
-    # below for that reason, not because migration 2 itself grew a column.
-    assert db.migrate(conn) == 3
+    # this necessarily also runs migrations 3 and 4 — `data_repo_commit` and
+    # `emitted_for_sha` are in `cols` below for that reason, not because
+    # migration 2 itself grew those columns.
+    assert db.migrate(conn) == db.SCHEMA_VERSION
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(confirmations)")}
     assert cols == {"target", "fingerprint", "confirmed_by", "confirmed_at",
-                    "data_repo_commit"}
+                    "data_repo_commit", "emitted_for_sha"}
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(visibility_policy)")}
     assert cols == {"field", "visible"}
 
@@ -259,7 +260,7 @@ def test_a_database_at_version_1_upgrades_without_losing_its_rows(tmp_path):
     conn.execute("INSERT INTO users (username, display_name, password_hash, role_id)"
                  " VALUES ('09120000000', 'e', 'h', ?)", (rid,))
 
-    assert db.migrate(conn) == 3
+    assert db.migrate(conn) == db.SCHEMA_VERSION
     assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
     assert conn.execute("SELECT COUNT(*) FROM confirmations").fetchone()[0] == 0
 
@@ -313,12 +314,13 @@ def test_a_confirmation_target_is_unique(tmp_path):
     import pytest
     conn = db.connect(tmp_path / "app.db")
     db.migrate(conn)
-    # A 5th value for `data_repo_commit` (migration 3) — NULL, since this test
-    # is about `target`'s uniqueness and not about that column.
-    conn.execute("INSERT INTO confirmations VALUES ('dining-001', 'aa', '0912', 1, NULL)")
+    # A 5th and 6th value for `data_repo_commit` (migration 3) and
+    # `emitted_for_sha` (migration 4) — both NULL, since this test is about
+    # `target`'s uniqueness and not about either column.
+    conn.execute("INSERT INTO confirmations VALUES ('dining-001', 'aa', '0912', 1, NULL, NULL)")
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute(
-            "INSERT INTO confirmations VALUES ('dining-001', 'bb', '0912', 2, NULL)")
+            "INSERT INTO confirmations VALUES ('dining-001', 'bb', '0912', 2, NULL, NULL)")
 
 
 def test_no_column_of_a_confirmation_may_be_missing(tmp_path):
@@ -335,15 +337,15 @@ def test_no_column_of_a_confirmation_may_be_missing(tmp_path):
     """
     conn = db.connect(tmp_path / "app.db")
     db.migrate(conn)
-    # A 5th value for `data_repo_commit` (migration 3) in every row — NULL,
-    # since that column is deliberately nullable (a row written before
-    # migration 3 carries none) and is not one of the holes this test is
-    # about.
+    # A 5th and 6th value for `data_repo_commit` (migration 3) and
+    # `emitted_for_sha` (migration 4) in every row — both NULL, since both
+    # columns are deliberately nullable (a row written before that migration
+    # carries none) and neither is one of the holes this test is about.
     rows = [
-        ("target",       "(NULL, 'aa', '0912', 1, NULL)"),
-        ("fingerprint",  "('dining-001', NULL, '0912', 1, NULL)"),
-        ("confirmed_by", "('dining-002', 'aa', NULL, 1, NULL)"),
-        ("confirmed_at", "('dining-003', 'aa', '0912', NULL, NULL)"),
+        ("target",       "(NULL, 'aa', '0912', 1, NULL, NULL)"),
+        ("fingerprint",  "('dining-001', NULL, '0912', 1, NULL, NULL)"),
+        ("confirmed_by", "('dining-002', 'aa', NULL, 1, NULL, NULL)"),
+        ("confirmed_at", "('dining-003', 'aa', '0912', NULL, NULL, NULL)"),
     ]
     for column, values in rows:
         with pytest.raises(sqlite3.IntegrityError):
@@ -405,15 +407,16 @@ def test_migration_2_survives_the_connection_that_wrote_it(tmp_path):
     names = {r[0] for r in again.execute(
         "SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"confirmations", "visibility_policy"} <= names
-    assert again.execute("SELECT version FROM schema_version").fetchone()[0] == 3
+    assert again.execute("SELECT version FROM schema_version").fetchone()[0] == db.SCHEMA_VERSION
     # And the constraints came back with the tables, not just the column names.
-    # (A 5th value for migration 3's `data_repo_commit`, NULL — this is about
-    # `target`'s uniqueness, not that column.)
+    # (A 5th and 6th value for migration 3's `data_repo_commit` and migration
+    # 4's `emitted_for_sha`, both NULL — this is about `target`'s uniqueness,
+    # not either column.)
     again.execute(
-        "INSERT INTO confirmations VALUES ('dining-001', 'aa', '0912', 1, NULL)")
+        "INSERT INTO confirmations VALUES ('dining-001', 'aa', '0912', 1, NULL, NULL)")
     with pytest.raises(sqlite3.IntegrityError):
         again.execute(
-            "INSERT INTO confirmations VALUES ('dining-001', 'bb', '0912', 2, NULL)")
+            "INSERT INTO confirmations VALUES ('dining-001', 'bb', '0912', 2, NULL, NULL)")
     again.close()
 
 
@@ -428,14 +431,15 @@ def test_the_new_columns_hold_the_types_the_stores_read_back(tmp_path):
     conn = db.connect(tmp_path / "app.db")
     db.migrate(conn)
     # Values deliberately given in the *other* type, so only affinity converts
-    # them — for all five columns now, migration 3's `data_repo_commit`
-    # included. `target` and `fingerprint` used to be inserted as text, which
+    # them — for all six columns now, migration 3's `data_repo_commit` and
+    # migration 4's `emitted_for_sha` included. `target` and `fingerprint`
+    # used to be inserted as text, which
     # stays text under TEXT affinity, under BLOB affinity (which has none) and
     # under INTEGER affinity alike: the two assertions about them held for
     # every declaration SQLite has, so `fingerprint TEXT` → INTEGER and
     # `target TEXT` → BLOB were both invisible here. A number given to a TEXT
     # column is the only value that tells them apart.
-    conn.execute("INSERT INTO confirmations VALUES (1, 2, 912, '1700000000', 3)")
+    conn.execute("INSERT INTO confirmations VALUES (1, 2, 912, '1700000000', 3, 4)")
     row = conn.execute(
         "SELECT typeof(target) t, typeof(fingerprint) f, typeof(confirmed_by) b,"
         " typeof(confirmed_at) a, typeof(data_repo_commit) c, target, fingerprint,"

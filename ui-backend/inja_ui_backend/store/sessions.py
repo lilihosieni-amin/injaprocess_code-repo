@@ -9,6 +9,29 @@ import secrets
 import sqlite3
 
 
+#: D43/D81: an interval stays open while requests keep arriving within this gap.
+IDLE_S = 300
+
+
+def touch_interval(conn: sqlite3.Connection, session_id: str, now: int) -> None:
+    """Extend the session's open activity interval, or open a new one (D81).
+
+    Called on every signed-in request (`resolve`), so an interval ends at its
+    last request by construction — D43's "backdated to the last heartbeat",
+    with nothing to backdate. The heartbeat is the SPA's 60-second refetch of
+    `/api/auth/me`, which TanStack Query pauses while the tab is hidden.
+    """
+    row = conn.execute(
+        "SELECT id, ended_at FROM activity_intervals WHERE session_id = ?"
+        " ORDER BY id DESC LIMIT 1", (session_id,)).fetchone()
+    if row is not None and now - row["ended_at"] <= IDLE_S:
+        conn.execute("UPDATE activity_intervals SET ended_at = ? WHERE id = ?",
+                     (now, row["id"]))
+    else:
+        conn.execute("INSERT INTO activity_intervals (session_id, started_at, ended_at)"
+                     " VALUES (?, ?, ?)", (session_id, now, now))
+
+
 def issue(conn: sqlite3.Connection, user_id: int, *, ip: str, user_agent: str,
           now: int) -> str:
     sid = secrets.token_urlsafe(32)
@@ -46,6 +69,7 @@ def resolve(conn: sqlite3.Connection, session_id: str, *, ttl: int,
     if now - row["issued_at"] >= ttl:
         return None
     conn.execute("UPDATE sessions SET last_seen = ? WHERE id = ?", (now, session_id))
+    touch_interval(conn, session_id, now)
     return row
 
 

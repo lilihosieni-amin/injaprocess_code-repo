@@ -1,7 +1,7 @@
 """The operational store (spec D1, D6).
 
 stdlib sqlite3, no ORM. The project already refuses an ORM for process content;
-this store has seven tables and no relational complexity that would justify a
+this store has nine tables and no relational complexity that would justify a
 dependency. Schema is a list of numbered migrations so the same code path
 creates a fresh database and upgrades an existing one.
 """
@@ -104,6 +104,31 @@ MIGRATIONS: list[tuple[int, str]] = [
         -- on since. Nullable: a row written before this migration carries
         -- none, and that is a fact about it, not an error.
         ALTER TABLE confirmations ADD COLUMN data_repo_commit TEXT;
+    """),
+    (4, """
+        -- D81: presence as intervals — one row per stretch of signed-in
+        -- requests no more than `sessions.IDLE_S` apart. Not audit events:
+        -- one row per working session, extended in place.
+        CREATE TABLE activity_intervals (
+            id         INTEGER PRIMARY KEY,
+            session_id TEXT NOT NULL REFERENCES sessions(id),
+            started_at INTEGER NOT NULL,
+            ended_at   INTEGER NOT NULL
+        );
+        CREATE INDEX activity_intervals_session ON activity_intervals (session_id, id);
+        -- D77: the 30-minute view window is looked up per session.
+        CREATE INDEX audit_session ON audit_events (session_id, at);
+        -- D80: the HEAD at which this confirmation going stale was announced,
+        -- so the same transition is never announced twice. A notification
+        -- marker, never the state: confirmed-ness is always the live
+        -- fingerprint comparison (D20).
+        ALTER TABLE confirmations ADD COLUMN emitted_for_sha TEXT;
+        -- D79: the projection's marker, one row — the last data-repo commit
+        -- projected into the activity record.
+        CREATE TABLE projection_state (
+            id  INTEGER PRIMARY KEY CHECK (id = 1),
+            sha TEXT NOT NULL
+        );
     """),
 ]
 
