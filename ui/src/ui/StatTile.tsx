@@ -1,6 +1,6 @@
 import { toFa } from '../lib/format'
 
-export type StatTone = 'violet' | 'ink' | 'conflict' | 'ok' | 'warn'
+export type StatTone = 'violet' | 'ink' | 'conflict' | 'ok' | 'warn' | 'muted'
 
 const TONE: Record<StatTone, string> = {
   violet: 'text-violet',
@@ -8,6 +8,8 @@ const TONE: Record<StatTone, string> = {
   conflict: 'text-conflict',
   ok: 'text-green',
   warn: 'text-warn',
+  // The one-user page's failure count at zero (Panel L5382): nothing to flag.
+  muted: 'text-muted',
 }
 
 /**

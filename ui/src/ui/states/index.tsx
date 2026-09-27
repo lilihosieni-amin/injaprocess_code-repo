@@ -5,7 +5,7 @@ import { Card } from '../Card'
 /**
  * The columns the skeleton can stand in, by the screen that draws them.
  *
- * Named rather than taken as a class string: a screen's column is one of six
+ * Named rather than taken as a class string: a screen's column is one of seven
  * settled widths, and a caller free to pass any `max-w-*` could quietly give a
  * loading screen a different shape from the screen it is standing in for.
  */
@@ -16,6 +16,7 @@ const COLUMN = {
   access: 'max-w-access',
   departments: 'max-w-departments',
   reader: 'max-w-reader',
+  audit: 'max-w-audit',
 } as const
 
 /** One pulsing block. Height and radius come off the token scale; the WIDTH is

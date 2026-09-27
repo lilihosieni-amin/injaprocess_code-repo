@@ -455,6 +455,9 @@ describe('F10 — RTL is structural', () => {
       // (`CMT-12`, which bidi-reorders to «12-CMT» unpinned), a username and an
       // IP — each a stored token that must keep the order it was written in.
       'src/screens/Activity.tsx',
+      // The one-user page's two: an event's IP and a session tag (`a1b2c3`),
+      // mono latin runs in otherwise Persian rows (Panel L2560, L2588).
+      'src/screens/UserActivity.tsx',
       // §8 — the flow canvas is laid out left-to-right and re-flips its own
       // nodes. Declared even though `src/flow/` is unpolicedso that this list is
       // the whole truth about the app rather than the whole truth about what is
