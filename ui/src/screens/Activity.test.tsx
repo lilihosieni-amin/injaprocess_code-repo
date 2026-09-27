@@ -89,6 +89,9 @@ describe('Activity', () => {
     await userEvent.click(await screen.findByRole('tab', { name: 'ورود ناموفق' }))
     expect(await screen.findByText('09129999999')).toBeTruthy()
     expect(screen.getByText('۶')).toBeTruthy()
+    // The IP in Persian digits, as on the one-user page; the username as stored.
+    expect(screen.getByText('۱۸۵.۱.۱.۱')).toBeTruthy()
+    expect(screen.queryByText('185.1.1.1')).toBeNull()
   })
 
   it('names each permission change in Persian, before and after', async () => {

@@ -389,7 +389,10 @@ function FailsTab() {
   const columns: TemplatedColumn<SignInFailure>[] = [
     { key: 'username', head: 'نام کاربری', grow: true, cell: (r) =>
       <span dir="ltr" className={`${LTR} text-body font-bold text-ink`}>{r.username}</span> },
-    { key: 'ip', head: 'IP', cell: (r) => <span dir="ltr" className={`${LTR} text-fs-sm text-body-ink`}>{r.ip}</span> },
+    // Persian digits, as the design paints them (R_FAIL, L3794) — §2.7's
+    // every-number rule has no exception for a technical one.
+    { key: 'ip', head: 'IP', cell: (r) =>
+      <span dir="ltr" className={`${LTR} text-fs-sm text-body-ink`}>{r.ip ? toFa(r.ip) : '—'}</span> },
     { key: 'attempts', head: 'تلاش', cell: (r) =>
       <span className={`${C13} font-bold ${warn(r.attempts >= 5)}`}>{toFa(r.attempts)}</span> },
     { key: 'first', head: 'نخستین', cell: (r) => <span className={`${C125} text-body-ink`}>{whenFa(r.first)}</span> },
@@ -403,7 +406,7 @@ function FailsTab() {
         <Filter label="نام کاربری" all="همهٔ نام‌های کاربری" value={f.username} onChange={set('username')}
           values={same(all.map((r) => r.username))} searchable />
         <Filter label="IP" all="همهٔ IPها" value={f.ip} onChange={set('ip')}
-          values={same(all.map((r) => r.ip))} searchable />
+          values={pairs(all.map((r) => [r.ip, toFa(r.ip)]))} searchable />
         <Count n={rows.length} />
       </>} />
   )
