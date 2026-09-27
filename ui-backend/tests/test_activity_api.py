@@ -1,7 +1,5 @@
 """The activity reports (addendum D83). `people`: editor (*), admin (*),
 cadmin (admin, dept:cashier), head/viewer/other (readers, cooking)."""
-import json
-
 from inja_ui_backend import db
 from inja_ui_backend.auth import COOKIE_NAME
 
@@ -42,6 +40,12 @@ def test_one_users_events_filter_and_never_carry_a_session_id(people):
 def test_a_bad_filter_is_refused(people):
     uid = _uid(people, "viewer")
     assert people["editor"].get(f"/api/activity/users/{uid}?kind=secret").status_code == 422
+
+
+def test_a_day_past_the_bound_is_refused_not_a_500(people):
+    uid = _uid(people, "viewer")
+    r = people["editor"].get(f"/api/activity/users/{uid}?day=1000000000000000")
+    assert r.status_code == 422
 
 
 def test_failed_sign_ins_group_by_username_and_ip(people):

@@ -50,6 +50,9 @@ def _in(names) -> str:
 
 
 def users(conn: sqlite3.Connection, user_id: int | None = None) -> list[dict]:
+    # ponytail: `logins`/`failures` are keyed on the CURRENT username, same
+    # ceiling as `user_events` below (see its docstring) — a number change
+    # zeroes both here too.
     where = "WHERE u.id = ?" if user_id is not None else ""
     rows = conn.execute(f"""
         SELECT u.id, u.username, u.display_name, r.name AS role, u.disabled_at,
@@ -75,6 +78,16 @@ def users(conn: sqlite3.Connection, user_id: int | None = None) -> list[dict]:
 
 def user_events(conn: sqlite3.Connection, username: str, *, day: int | None,
                 kind: str | None, outcome: str | None, offset: int) -> dict:
+    # ponytail: keyed on the CURRENT username (`actor = username`), not the
+    # user id — `PATCH /api/users/{id}` can change a username (D57's phone
+    # number). After a number change this page shows only events recorded
+    # under the number the account holds *now*; logins/failures restart from
+    # zero (sessions/active time/last seen are keyed by user id in `users()`
+    # above and keep their history across the change). A number later handed
+    # to a different account would show that new holder this history's old
+    # rows. Upgrade path: follow former usernames too, each with the time
+    # window it held them, read off `user.modified`'s `detail.changed.username`
+    # rows in the governance record.
     where, args = ["actor = ?"], [username]
     if day is not None:
         start = day * 86400 - TEHRAN_OFFSET_S

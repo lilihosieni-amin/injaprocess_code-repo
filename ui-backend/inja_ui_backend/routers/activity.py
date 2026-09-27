@@ -6,7 +6,7 @@ import logging
 import time
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 
 from .. import comment_jobs, projection
 from ..access import NOT_FOUND, reachable_departments, requires
@@ -55,11 +55,12 @@ def list_users(request: Request, _=Depends(star)):
 
 
 @router.get("/users/{user_id}")
-def one_user(request: Request, user_id: int, _=Depends(star),
-             day: int | None = None,
+def one_user(request: Request, user_id: int = Path(..., ge=1, le=2**62),
+             _=Depends(star),
+             day: int | None = Query(None, ge=0, le=1_000_000),
              kind: Literal["access", "content", "governance"] | None = None,
              outcome: Literal["ok", "fail"] | None = None,
-             offset: int = Query(0, ge=0)):
+             offset: int = Query(0, ge=0, le=1_000_000)):
     conn = request.app.state.db
     found = activity.users(conn, user_id)
     if not found:
