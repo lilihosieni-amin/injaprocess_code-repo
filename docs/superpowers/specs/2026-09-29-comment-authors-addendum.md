@@ -126,3 +126,40 @@ The smallest honest guard: `comments show` prints a version (the id of the
 comment's latest event); `comments resolve` takes `--seen N` and refuses when
 the version has moved; one line in data-repo's `CLAUDE.md` tells the bot to
 pass it. **Deferred at the owner's decision** (lili, 2026-09-29); not built.
+
+## 5. 2026-09-29, later — an Editor's comment is for Editors only
+
+**Amends** D66, and D67's audience with it, for one kind of comment; replaces
+decision A's *Why* where it says an Editor's comment is visible "to the Admins
+whose scope covers its department". Decided by lili.
+
+A comment **written as an Editor** is seen by the Editors — its author among
+them — and by nobody else. No Admin sees it: not one covering its department,
+not a `*` one. Readers never did. Every other row of D66 stands.
+
+*Why:* an Editor's comment lands `approved` in the Editors' inbox and never
+passes the Admin pool (decision A), so Admins have no part in its life.
+
+- **Written as an Editor** is the author's kind when they wrote it — the role
+  D62 snapshots into the `detail` of the comment's one `submitted` event — not
+  their kind now. An Editor made an Admin later keeps seeing their own comment
+  (the author check comes first) and does not open it to the other Admins. A
+  `submitted` event with no role recorded reads as not an Editor's.
+- `can_see` and `visible_sql` state it — D66's one rule, stated twice — so the
+  detail (the same 404 as any comment the caller may not see, no audit row),
+  the inbox tabs, the drawers and the badges on steps, processes and
+  departments all follow. The pending count (D68) had counted the Admin pool
+  without asking `visible_sql`; it now asks.
+- **Known limitation — one way back to the pool.** Routing reads the author's
+  kind *now* (D63.1). An Editor made a Reader who then edits or sends their
+  comment again sends it up the chain, and it can reach an Admin pool whose
+  Admins cannot see it. It is not counted for them, and nobody can approve it:
+  it waits there. Not addressed here; the owner decides.
+- **The activity record is unchanged.** Its «مسیر کامنت‌ها» tab still lists
+  such a comment to an Admin whose `view_audit` covers its department — its
+  `CMT-n`, department, author, state and stage, never its text (D44) — and a
+  `*` holder's one-user page still shows the Editor's `comment.*` events with
+  their `CMT-n`. Left for the owner to decide.
+- **Schema:** none changed, in `comments.db` or `app.db`. Only a comment whose
+  `submitted` event records `editor` changes visibility, and the server refused
+  Editor authors until decision A.
