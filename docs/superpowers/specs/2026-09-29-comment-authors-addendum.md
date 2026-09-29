@@ -4,7 +4,7 @@
 |---|---|
 | **Date** | 2026-09-29 |
 | **Status** | Decided by lili, 2026-09-29, on a real user's report |
-| **Amends** | `2026-08-04-multi-user-rbac-design.md` — **D11**'s "the Editor is offered no composer", **D33**'s lifecycle and **D36**; `2026-09-21-comments-routing-addendum.md` — **D63.5** and D63's closing line, **§7.2**, **D73**'s restatement of D36, and **D74**, which is withdrawn |
+| **Amends** | `2026-08-04-multi-user-rbac-design.md` — **D11**'s "the Editor is offered no composer", **D33**'s lifecycle, **D36**, and **D42**'s event catalogue; `2026-09-21-comments-routing-addendum.md` — **D63.5** and D63's closing line, **§7.2**, **D73**'s restatement of D36, and **D74**, which is withdrawn; `2026-09-27-activity-record-addendum.md` — **D76**, the catalogue as built, which gains `comment.restored`; the Panel design's editor inbox tabs (`Inja Panel.dc.html` L4192) |
 | **Unchanged** | Routing for a Reader (D63.1–D63.4, D63.6–D63.8), D64–D72, D75; `rejected` stays final (D73) |
 | **Schema** | None changed. `comment_events.kind` is plain `TEXT`; a comment sent again returns to `awaiting` or `approved`, which already exist |
 
@@ -31,8 +31,10 @@ hidden composer both go; the composer's path line says
 
 *Why:* D11 called an Editor's comment "meaningless rather than forbidden",
 because it would land in their own inbox. It is not meaningless — it is a note
-an Editor wants kept with the process, visible to Admins and Readers on the
-path, and closed by `addressed` like any other. The capability was always held
+an Editor wants kept with the process, visible to every Editor and to the
+Admins whose scope covers its department (D66), and closed by `addressed` like
+any other. No Reader sees it: a Reader sees only what they wrote or were
+assigned, and an Editor's comment is never assigned to anyone. The capability was always held
 (D11's nesting argument stands); only the refusal is withdrawn.
 
 ### B — Every author controls their comment until someone else acts on it
@@ -40,6 +42,12 @@ path, and closed by `addressed` like any other. The capability was always held
 `edit` and `withdraw` are offered to the author while the comment is
 `awaiting` **or** `approved` **and** nobody has approved it since the last
 restart. This replaces D36's table as D73 restated it.
+
+`edit` also asks, now, for what creating the comment asked for: `comment` on
+its department (D48 — every action re-derives permission). An author whose
+scope or role no longer allows it is refused with 403 and `access.denied`.
+`withdraw` asks for nothing more: taking one's own words back never needs a
+permission.
 
 *Why the predicate is right:* approvals since the last restart are the only act
 by someone else that leaves a comment open; addressing, rejecting and
@@ -55,7 +63,15 @@ it, so the author keeps it — the same rule, not an exception.
 
 The panel inbox now draws the author's controls. They are one component with
 the Reader card's (`ui/src/comments/AuthorActions.tsx`), at each surface's own
-metrics, at the foot of the comment.
+metrics, at the foot of the comment. After an edit the toast says where the
+comment landed: «اصلاح شد» when it is `approved` again at once,
+«اصلاح شد و زنجیره از اول شروع شد» when it is back in the chain.
+
+**The Editor's panel inbox gains «کامنت‌های من»** (lili, 2026-09-29), between
+«رسیده به شما» and «همه», where the other kinds have it. This departs from the
+Panel design (L4192), which left the tab out because an Editor wrote no
+comments. Without it, a withdrawn Editor comment — where «ارسال دوباره» lives —
+could be reached only by paging «همه», where closed comments sort last.
 
 ### C — Sending a withdrawn comment again restarts its journey
 
@@ -72,6 +88,14 @@ approver, an Admin's or an Editor's lands `approved` again.
 - A new audit event, **`comment.restored`** («ارسال دوبارهٔ کامنت»), in the
   record's catalogue under `governance` like the other `comment.*` events.
 - The undo does not ask for confirmation; the withdrawal it undoes did.
+- Sending again is commenting again, so it asks what creating asked: `comment`
+  on the department (403 and `access.denied` when refused, as for `edit`), and
+  the anchor must still stand and be served to the author — the same check,
+  run by the same code, as creating (404 when it does not). A comment on a
+  process tombstoned since is not sent back to the Editors.
+- **Comments already `withdrawn` when this ships become sendable again by
+  their authors.** Intended: the rule reads the state, not when the withdrawal
+  happened.
 
 *Why:* a withdrawal is the author's own act, so the author may undo it. A
 rejection is someone else's decision and stays final (D73).
@@ -81,3 +105,22 @@ rejection is someone else's decision and stays final (D73).
 `withdrawn` is no longer terminal **for its author**: it leads back to
 `awaiting` or `approved` through `restored`. `rejected` and `addressed` remain
 final. Nothing is hard-deleted, as before.
+
+**Where `restored` is recorded.** The schema comment in `comments_db.py`
+(lines 59–60) lists the event kinds and does not name `restored`. It sits inside
+the frozen v1 migration string, which `tests/test_comments_contract.py` pins
+byte for byte to `engine/tests/comments_schema_v1.sql`, so it is not edited;
+this addendum is the record that `restored` is a kind.
+
+## 4. Known limitation — the Telegram bot and an author's edit
+
+`comments resolve` checks only `state == 'approved'`. An Admin's or an Editor's
+comment is now theirs to change while it is `approved`, so an author who edits
+it while the bot is working on it gets their **new** text marked addressed —
+text the bot never read. (A withdrawal meanwhile is safe: `resolve` then finds
+nothing and refuses.)
+
+The smallest honest guard: `comments show` prints a version (the id of the
+comment's latest event); `comments resolve` takes `--seen N` and refuses when
+the version has moved; one line in data-repo's `CLAUDE.md` tells the bot to
+pass it. **Deferred at the owner's decision** (lili, 2026-09-29); not built.
