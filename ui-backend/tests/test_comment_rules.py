@@ -108,6 +108,15 @@ def test_an_admin_author_is_approved_at_once(world):
     assert (c["state"], c["stage"]) == ("approved", None)
 
 
+def test_an_editor_author_is_approved_at_once(world):
+    """2026-09-29 addendum, decision A: an Editor's comment skips routing as an
+    Admin's does (D63.5) — with a covering Admin present, so it is not D63.6."""
+    app, cc = world
+    mk(app, "admin", "admin", "*")
+    c = S.get(cc, post(app, cc, editor_id(app)))
+    assert (c["state"], c["stage"]) == ("approved", None)
+
+
 def test_no_covering_admin_delivers_with_the_skip_recorded(world):
     app, cc = world
     mk(app, "cashier admin", "admin", "dept:cashier")

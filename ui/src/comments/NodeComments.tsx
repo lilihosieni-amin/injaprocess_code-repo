@@ -14,7 +14,7 @@ const open = (c: NonNullable<ReturnType<typeof useComments>>, s: Step) =>
 
 /**
  * The flow detail drawer's comment part — Reader L625–653 (= Panel L921–950):
- * «کامنت روی این گام» (hidden for Editors, addendum §7.2), then the step's
+ * «کامنت روی این گام» (for whoever may comment here), then the step's
  * comments as flow mini cards.
  */
 export function NodeComments(s: Step) {

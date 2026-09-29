@@ -140,13 +140,13 @@ def present(request: Request, viewer, c, *, trail: bool = False,
 
 def _gate(request: Request, user, dept: str) -> None:
     """Scope before capability (access.requires): 404 out of scope, 403 +
-    access.denied when visible but not allowed. D74 refuses an Editor author."""
+    access.denied when visible but not allowed."""
     app = request.app.state.db
     target = f"dept:{dept}"
     if not allows(app, user, "view", target):
         log_out_of_scope(request, user, target)
         raise HTTPException(status_code=404, detail=NOT_FOUND)
-    if not allows(app, user, "comment", target) or R.kind_of(app, user) == "editor":
+    if not allows(app, user, "comment", target):
         record(request, "access.denied", actor=user["username"],
                session_id=getattr(request.state, "session_id", None), target=target,
                outcome="denied", detail={"capability": "comment"})

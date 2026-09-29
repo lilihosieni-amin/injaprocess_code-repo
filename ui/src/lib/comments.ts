@@ -56,8 +56,9 @@ const UNTIL = 'تا وقتی کسی تأیید نکرده، می‌توانید 
  * username only, so the name is shown only when a caller has it.
  */
 export function pathLine(s: SessionDescriptor, supervisorName?: string | null): string {
-  if (can(s, 'manage_users') && !can(s, 'edit'))
-    // An admin's comment is approved at submit (D63.5): no edit/withdraw window (D73).
+  if (can(s, 'manage_users') || can(s, 'edit'))
+    // An Admin's or an Editor's comment skips the chain and is approved at
+    // submit (D63.5; 2026-09-29 addendum, decision A).
     return 'این کامنت مستقیم به ادیتور می‌رود.'
   if (s.supervisor)
     return `این کامنت اول برای ${supervisorName || 'سرپرست شما'} می‌رود؛ پس از تأیید او به یکی از ادمین‌ها و سپس به ادیتور می‌رسد. ${UNTIL}`

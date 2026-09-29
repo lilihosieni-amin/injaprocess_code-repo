@@ -106,13 +106,13 @@ describe('step comments on the flowchart', () => {
     expect(await screen.findByText('گام «دروازهٔ منطقی XOR» · پخت')).toBeInTheDocument()
   })
 
-  it('an Editor sees the list and no button', async () => {
+  it('an Editor sees the list and the button (2026-09-29 addendum, decision A)', async () => {
     flow(EDITOR)
     await screen.findByTitle('کامنت دارد')
     fireEvent.click(screen.getByText('ثبت'))
     const d = drawer()
     expect(within(d).getByText('کامنت‌های این گام (۲)')).toBeInTheDocument()
-    expect(within(d).queryByRole('button', { name: 'کامنت روی این گام' })).toBeNull()
+    expect(within(d).getByRole('button', { name: 'کامنت روی این گام' })).toBeInTheDocument()
   })
 })
 

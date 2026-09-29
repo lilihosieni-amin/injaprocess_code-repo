@@ -103,10 +103,14 @@ def advance(app: sqlite3.Connection, cc: sqlite3.Connection, cid: int, *,
 
 
 def submit(app: sqlite3.Connection, cc: sqlite3.Connection, cid: int, *, now: int) -> None:
-    """Route a comment just written or just edited, from its author (D63.1, D63.5)."""
+    """Route a comment just written, edited or sent again, from its author (D63.1).
+
+    An Admin's or an Editor's lands in the Editors' inbox at once (D63.5; the
+    2026-09-29 addendum, decision A): the chain exists to bring a comment to
+    an Admin's word and then to the Editors, and theirs already is."""
     c = S.get(cc, cid)
     author = users.by_id(app, c["author_id"])
-    if kind_of(app, author) == "admin":
+    if kind_of(app, author) in ("admin", "editor"):
         S.set_state(cc, cid, state="approved", now=now)
         return
     advance(app, cc, cid, from_user_id=author["id"], now=now)

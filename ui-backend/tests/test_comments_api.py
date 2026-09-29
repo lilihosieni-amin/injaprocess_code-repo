@@ -1,4 +1,5 @@
-"""The comments read and create API (addendum D65, D66, D70, D71, D74, D75).
+"""The comments read and create API (addendum D65, D66, D70, D71, D75; the
+2026-09-29 addendum's decision A).
 
 `people` (conftest) is one shared app.db/comments.db cast: editor, admin (*),
 cadmin (dept:cashier), head (Reader supervisor), viewer (reports to head),
@@ -29,11 +30,17 @@ def test_create_on_a_node_routes_and_snapshots(people):
     assert c["author"] == {"name": "viewer", "isMe": True, "role": "reader"}
 
 
-def test_the_editor_may_not_author(people):
+def test_the_editor_authors_and_it_lands_in_the_inbox(people):
+    """2026-09-29 addendum, decision A (reverses D74): no refusal, no routing."""
     r = people["editor"].post("/api/comments", json={
         "anchorKind": "process", "anchorId": "cooking-001", "text": "x"})
-    assert r.status_code == 403
-    assert _events(people["editor"], "access.denied")[-1]["target"] == "dept:cooking"
+    assert r.status_code == 201, r.text
+    c = r.json()
+    assert (c["state"], c["waitingWith"]) == ("approved", {"kind": "editors"})
+    assert c["author"] == {"name": "editor", "isMe": True, "role": "editor"}
+    assert _events(people["editor"], "comment.created")[-1]["target"] == c["id"]
+    assert _events(people["editor"], "access.denied") == []
+    assert _waiting(people, "editor") == [c["id"]]
 
 
 def test_out_of_scope_anchor_is_404(people):

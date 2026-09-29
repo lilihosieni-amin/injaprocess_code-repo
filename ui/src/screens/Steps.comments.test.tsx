@@ -94,11 +94,11 @@ describe('Steps — comments on a step', () => {
     expect(scroll.mock.contexts[0]).toBe(card('استقبال'))
   })
 
-  it('an Editor sees the chip and no button', async () => {
+  it('an Editor sees the chip and the button (2026-09-29 addendum, decision A)', async () => {
     draw(EDITOR)
     await screen.findByText('۱ کامنت')
     fireEvent.click(screen.getByText('استقبال'))
     expect(within(card('استقبال')).getByText('میزبان')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'کامنت روی این گام' })).toBeNull()
+    expect(within(card('استقبال')).getByRole('button', { name: 'کامنت روی این گام' })).toBeInTheDocument()
   })
 })

@@ -25,13 +25,11 @@ export const CommentsContext = createContext<CommentsApi | null>(null)
 export const useComments = () => useContext(CommentsContext)
 
 /**
- * «کامنت تازه» and its siblings: the session may comment on this department
- * and is not an Editor (addendum §7.2 — the Editor reads comments, never writes one).
+ * «کامنت تازه» and its siblings: the session may comment on this department.
+ * An Editor may too (2026-09-29 addendum, decision A, reversing §7.2).
  */
 export function useMayComment(code: string): boolean {
-  const session = useSession().data
-  const can = useCan(session)
-  return can('comment', `dept:${code}`) && session?.capabilities.includes('edit') !== true
+  return useCan(useSession().data)('comment', `dept:${code}`)
 }
 
 /**
