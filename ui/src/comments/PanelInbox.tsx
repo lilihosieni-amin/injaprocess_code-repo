@@ -19,6 +19,7 @@ import { Timeline, type TimelineNode } from '../ui/Timeline'
 import { LoadFailedScreen, ScreenSkeleton } from '../ui/states'
 import { useToast } from '../write/ToastProvider'
 import { fromComment } from '../shell/back'
+import { AuthorActions, DRAFT_HINT, type AuthorLook } from './AuthorActions'
 import { DecisionModal, type Decision } from './DecisionModal'
 
 /** Panel L4192–4194. */
@@ -183,6 +184,12 @@ const ROW = 'flex gap-s5 flex-wrap max760:flex-col max760:flex-nowrap max760:gap
 const BTN = 'flex-1 py-s6 px-s8 rounded-button font-bold text-fs-sm cursor-pointer disabled:opacity-60 max760:w-full max760:flex-none max760:min-w-0'
 const GHOST = `${BTN} border-hairline border-line bg-card text-violet`
 const FIELD = 'text-role-textarea py-textarea-y px-s6 rounded-input leading-normal'
+const DANGER = `${BTN} min-w-cmt-action border-hairline border-border-danger bg-tile-c2 text-danger`
+/** The author's own controls, at the foot of their comment as on the Reader card. */
+const AUTHOR: AuthorLook = {
+  row: `${ROW} mt-s7`, ghost: `${GHOST} min-w-cmt-action`, danger: DANGER,
+  send: `${BTN} min-w-cmt-action-wide border-0 bg-violet text-card shadow-violet`, cancel: `${GHOST} min-w-cmt-action`,
+}
 
 type Mode = null | 'note' | 'reject'
 
@@ -197,6 +204,7 @@ function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
   const [mode, setMode] = useState<Mode>(null)
   const [text, setText] = useState('')
   const [ask, setAsk] = useState<Decision | null>(null)
+  const [draft, setDraft] = useState<string | null>(null)
   const busy = approve.isPending || reject.isPending || address.isPending
 
   const pane = (body: ReactNode) => (
@@ -273,13 +281,17 @@ function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
           <div className="text-fs-xxs font-bold text-ink">{c.author.name}</div>
           {c.author.role && <div className="text-fs-xxs text-muted mt-half">{roleLabel(c.author.role)}</div>}
         </div>
-        <div className="text-fs-lg text-ink leading-loose whitespace-pre-line [text-wrap:pretty]">{c.text}</div>
+        {draft !== null
+          ? <TextField multiline rows={4} label={DRAFT_HINT} placeholder={DRAFT_HINT} value={draft} onChange={setDraft}
+              boxClassName={FIELD} className="[&>label]:sr-only" />
+          : <div className="text-fs-lg text-ink leading-loose whitespace-pre-line [text-wrap:pretty]">{c.text}</div>}
         {c.notes.map((n, i) => (
           <div key={i} className="mt-s7 border-t border-dashed border-border-current pt-s7">
             <div className={`${LABEL} mb-s4`}>{n.by} اضافه کرد:</div>
             <div className="text-fs-body text-ink leading-loose bg-tile-v4 rounded-control p-s6 whitespace-pre-line">{n.text}</div>
           </div>
         ))}
+        <AuthorActions c={c} draft={draft} onDraft={setDraft} look={AUTHOR} />
       </div>
 
       <div className={`${BOX} mb-s7`}>
@@ -319,7 +331,7 @@ function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
               <button type="button" onClick={askApprove} className={`${BTN} min-w-cmt-action border-0 bg-green text-card shadow-green`}>تأیید و ارسال به بالا</button>
               <button type="button" onClick={() => switchTo('note')} className={`${GHOST} min-w-cmt-action`}>افزودن یادداشت</button>
               {c.actions.reject && (
-                <button type="button" onClick={askReject} className={`${BTN} min-w-cmt-action border-hairline border-border-danger bg-tile-c2 text-danger`}>رد کردن</button>
+                <button type="button" onClick={askReject} className={DANGER}>رد کردن</button>
               )}
             </div>
           )}

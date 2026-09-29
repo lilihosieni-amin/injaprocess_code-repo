@@ -315,6 +315,38 @@ def test_actions(world):
     assert not act(viewer)["edit"] and not act(viewer)["withdraw"]
     S.set_state(cc, cid, state="approved", now=NOW)
     assert act(editor_id(app))["address"] and not act(admin)["address"]
+    # a Reader's comment reached `approved` through approvals: no longer theirs
+    assert not act(viewer)["edit"] and not act(viewer)["withdraw"]
+
+
+@pytest.mark.parametrize("kind", ["admin", "editor"])
+def test_an_admin_or_editor_author_keeps_their_comment_until_it_is_addressed(world, kind):
+    """2026-09-29 addendum, decision B: approved at submission with nobody's
+    approval, so still the author's to edit or withdraw — until an Editor acts."""
+    app, cc = world
+    other = mk(app, "admin", "admin", "*")
+    author = editor_id(app) if kind == "editor" else mk(app, "author", "admin", "*")
+    cid = post(app, cc, author)
+
+    def act(uid):
+        return R.actions(app, cc, users.by_id(app, uid), S.get(cc, cid))
+
+    assert S.get(cc, cid)["state"] == "approved"
+    assert act(author)["edit"] and act(author)["withdraw"]
+    assert not act(other)["edit"] and not act(other)["withdraw"]
+    S.set_state(cc, cid, state="addressed", now=NOW)
+    assert not act(author)["edit"] and not act(author)["withdraw"]
+
+
+def test_a_reader_comment_delivered_with_nobody_acting_stays_the_authors(world):
+    """D63.6 delivers with no approval at all. Nobody else has acted on it, so
+    decision B leaves it the author's, as it does an Admin's."""
+    app, cc = world
+    viewer = mk(app, "viewer", "reader", "dept:dining")   # no supervisor, no Admin
+    cid = post(app, cc, viewer)
+    assert S.get(cc, cid)["state"] == "approved"
+    a = R.actions(app, cc, users.by_id(app, viewer), S.get(cc, cid))
+    assert a["edit"] and a["withdraw"]
 
 
 def test_rejected_is_closed_to_its_author(world):

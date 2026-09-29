@@ -131,6 +131,27 @@ def test_withdraw(people):
     assert _events(people["viewer"], "comment.withdrawn")[-1]["target"] == cid
 
 
+def test_an_admin_author_edits_and_withdraws_until_it_is_addressed(people):
+    """2026-09-29 addendum, decision B."""
+    cid = _new(people, "admin")
+    r = people["admin"].put(f"/api/comments/{cid}", json={"text": "تازه"})
+    assert r.status_code == 200, r.text
+    assert (r.json()["text"], r.json()["state"]) == ("تازه", "approved")
+    assert r.json()["actions"]["withdraw"]
+    assert people["editor"].post(f"/api/comments/{cid}/address", json={}).status_code == 200
+    assert people["admin"].put(f"/api/comments/{cid}", json={"text": "z"}).status_code == 403
+    assert people["admin"].post(f"/api/comments/{cid}/withdraw").status_code == 403
+
+
+def test_an_editor_author_withdraws_their_own_and_nobody_else_may(people, second_admin):
+    cid = _new(people, "editor")
+    assert second_admin.post(f"/api/comments/{cid}/withdraw").status_code == 403
+    r = people["editor"].post(f"/api/comments/{cid}/withdraw")
+    assert r.status_code == 200, r.text
+    assert r.json()["state"] == "withdrawn"
+    assert _events(people["editor"], "comment.withdrawn")[-1]["target"] == cid
+
+
 def test_two_admins_racing_only_one_wins(people, second_admin):
     cid = _new(people)
     people["head"].post(f"/api/comments/{cid}/approve", json={})

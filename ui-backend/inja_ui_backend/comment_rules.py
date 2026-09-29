@@ -194,7 +194,14 @@ def actions(app, cc, viewer: sqlite3.Row, c: sqlite3.Row) -> dict[str, bool]:
     decide = awaiting and (
         (c["stage"] == "reader" and k == "reader" and c["approver_id"] == viewer["id"])
         or (c["stage"] == "pool" and k == "admin" and covers(app, viewer, c["department"])))
-    own_untouched = (c["author_id"] == viewer["id"] and awaiting
+    # The author's until someone else acts on it (D36, as amended by the
+    # 2026-09-29 addendum, decision B). Approvals since the last restart are
+    # the only act that leaves the comment open; addressing, rejecting and
+    # withdrawing each close it into a state of their own. So a Reader's
+    # comment drops out at its first approval, while an Admin's or an Editor's
+    # — `approved` at submission with none — stays theirs until addressed.
+    own_untouched = (c["author_id"] == viewer["id"]
+                     and c["state"] in ("awaiting", "approved")
                      and not S.approvers_since_restart(cc, c["id"]))
     return {"approve": decide, "reject": decide, "edit": own_untouched,
             "withdraw": own_untouched,

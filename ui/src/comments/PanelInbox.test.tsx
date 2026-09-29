@@ -263,6 +263,65 @@ describe('panel inbox', () => {
     expect(writeText).toHaveBeenCalledWith('CMT-8')
   })
 
+  // 2026-09-29 addendum, decision B: every author controls their own comment
+  // until someone else acts on it — the panel draws the reader's controls.
+  const mine = (n: number, over: Partial<CommentDetail> = {}) => cmt(n, {
+    state: 'approved', stage: null, waitingWith: { kind: 'editors' }, approvals: 0,
+    author: { name: 'مهدی رجبی', isMe: true, role: 'admin' },
+    actions: { ...NO, edit: true, withdraw: true },
+    trail: [ev('submitted', 'مهدی رجبی', { role: 'admin' })], ...over,
+  })
+
+  it('gives an Admin author «عوض کردن متن»: the text becomes a box, «دوباره بفرست» PUTs it', async () => {
+    const own = mine(9)
+    const spy = stub({ own: [own] }, [own])
+    open(ADMIN, '/comments?c=CMT-9')
+    fireEvent.click(await screen.findByRole('button', { name: 'عوض کردن متن' }))
+    const box = screen.getByPlaceholderText('حرفتان را ساده بنویسید…')
+    expect(box).toHaveValue('متن نویسنده 9')
+    fireEvent.change(box, { target: { value: 'متن تازه' } })
+    fireEvent.click(screen.getByRole('button', { name: 'دوباره بفرست' }))
+    await waitFor(() => expect(posted(spy)).toHaveLength(1))
+    const [url, init] = posted(spy)[0]
+    expect(url).toBe('/api/comments/CMT-9')
+    expect(init!.method).toBe('PUT')
+    expect(JSON.parse(String(init!.body))).toEqual({ text: 'متن تازه' })
+  })
+
+  it('gives an Admin author «پس گرفتن», which asks first in the panel’s own modal', async () => {
+    const own = mine(9)
+    const spy = stub({ own: [own] }, [own])
+    open(ADMIN, '/comments?c=CMT-9')
+    fireEvent.click(await screen.findByRole('button', { name: 'پس گرفتن' }))
+    const modal = screen.getByRole('dialog', { name: 'این کامنت را پس می‌گیرید؟' })
+    expect(posted(spy)).toHaveLength(0)
+    expect(within(modal).getByRole('button', { name: 'انصراف' })).toBeInTheDocument()
+    fireEvent.click(within(modal).getByRole('button', { name: 'پس می‌گیرم' }))
+    await waitFor(() => expect(posted(spy)).toHaveLength(1))
+    expect(posted(spy)[0][0]).toBe('/api/comments/CMT-9/withdraw')
+  })
+
+  it('gives an Editor author both the resolve box and their own controls, each with its own text', async () => {
+    const own = mine(10, { author: { name: 'آرزو نیک‌پی', isMe: true, role: 'editor' },
+      actions: { ...NO, address: true, edit: true, withdraw: true } })
+    stub({ waiting: [own] }, [own], EDITOR)
+    open(EDITOR, '/comments?c=CMT-10')
+    fireEvent.change(await screen.findByPlaceholderText('یادداشت رسیدگی — چه تغییری داده شد…'), { target: { value: 'یادداشت رسیدگی' } })
+    fireEvent.click(screen.getByRole('button', { name: 'عوض کردن متن' }))
+    expect(screen.getByPlaceholderText('حرفتان را ساده بنویسید…')).toHaveValue('متن نویسنده 10')
+    expect(screen.getByPlaceholderText('یادداشت رسیدگی — چه تغییری داده شد…')).toHaveValue('یادداشت رسیدگی')
+    expect(screen.getByRole('button', { name: 'ثبت به‌عنوان رسیدگی‌شده' })).toBeInTheDocument()
+  })
+
+  it('offers no author control on someone else’s comment', async () => {
+    const pool = cmt(11, { actions: { ...NO, approve: true, reject: true } })
+    stub({ waiting: [pool] }, [pool])
+    open(ADMIN, '/comments?c=CMT-11')
+    expect(await screen.findByRole('button', { name: 'تأیید و ارسال به بالا' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'عوض کردن متن' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'پس گرفتن' })).toBeNull()
+  })
+
   it('marks the open comment’s row as selected; the others stay plain', async () => {
     const a = cmt(5), b = cmt(6)
     stub({ waiting: [a, b] }, [a, b])

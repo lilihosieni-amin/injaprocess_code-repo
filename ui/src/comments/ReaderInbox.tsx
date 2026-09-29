@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
-  useApproveComment, useComment, useEditComment, useInbox, useRejectComment, useWithdrawComment,
+  useApproveComment, useComment, useInbox, useRejectComment,
   type Comment, type InboxTab,
 } from '../api/comments'
 import { ApiError } from '../api/client'
@@ -15,6 +15,7 @@ import { TextField } from '../ui/TextField'
 import { LoadFailedScreen, ScreenSkeleton } from '../ui/states'
 import { useToast } from '../write/ToastProvider'
 import { fromComment } from '../shell/back'
+import { AuthorActions, DRAFT_HINT, type AuthorLook } from './AuthorActions'
 import { DecisionModal, type Decision } from './DecisionModal'
 
 /** Reader L1999–2001. */
@@ -133,29 +134,32 @@ const SOLID = `${SUB} p-button-x text-fs-lg border-0 text-card disabled:opacity-
 const FIELD = 'text-role-textarea p-s7 rounded-tile leading-loose'
 // Reader L750 (4528a04): `padding:3px 9px 3px 7px` — 9 at the inline start.
 const PILL = 'inline-flex items-center gap-s2 max-w-full py-hint ps-option pe-button-icon rounded-pill bg-value-current text-fs-micro font-semibold text-muted text-start leading-cmt-pill'
+const AUTHOR: AuthorLook = {
+  row: `${ROW} mt-s6`, ghost: `${GHOST} p-s7 text-fs-body-lead`, danger: DANGER,
+  send: `${SOLID} bg-violet shadow-violet`, cancel: `${GHOST} p-button-x text-fs-lg`,
+}
 
-type Mode = null | 'note' | 'reject' | 'edit'
+type Mode = null | 'note' | 'reject'
 
 function InboxCard({ c, open, onToggle }: { c: Comment; open: boolean; onToggle: (open: boolean) => void }) {
   const toast = useToast()
   const approve = useApproveComment()
   const reject = useRejectComment()
-  const edit = useEditComment()
-  const withdraw = useWithdrawComment()
   const [mode, setMode] = useState<Mode>(null)
   const [text, setText] = useState('')
+  const [draft, setDraft] = useState<string | null>(null)
   const [ask, setAsk] = useState<Decision | null>(null)
   const st = STATUS[c.state]
   const notes = history(c)
   const info = infoLine(c)
-  const busy = approve.isPending || reject.isPending || edit.isPending || withdraw.isPending
+  const busy = approve.isPending || reject.isPending
   // Reader L2722–2727 (4528a04): at first glance the anchor and the text; the
   // context sits behind «جزئیات», and any open mode holds the card open.
   const own = c.author.isMe
   const hasMore = notes.length > 0 || !own || (c.state === 'awaiting' && (!!c.approvals || own)) || c.state === 'approved'
-  const expanded = open || mode !== null
+  const expanded = open || mode !== null || draft !== null
 
-  const switchTo = (m: Mode, seed = '') => { setMode(mode === m ? null : m); setText(seed) }
+  const switchTo = (m: Mode) => { setMode(mode === m ? null : m); setText('') }
   const fail = (e: unknown) => toast.show((e instanceof ApiError && e.detail) || 'انجام نشد')
   const done = (msg: string) => () => { toast.show(msg); setMode(null); setText(''); setAsk(null) }
 
@@ -169,9 +173,7 @@ function InboxCard({ c, open, onToggle }: { c: Comment; open: boolean; onToggle:
     setAsk('reject')
   }
   function confirm() {
-    if (ask === 'withdraw') {
-      withdraw.mutate(c.id, { onSuccess: done('پس گرفته شد — در سابقه می‌ماند'), onError: fail })
-    } else if (ask === 'reject') {
+    if (ask === 'reject') {
       reject.mutate({ ref: c.id, reason: text.trim() },
         { onSuccess: done('رد شد و با دلیل به نویسنده برگشت'), onError: fail })
     } else {
@@ -180,16 +182,10 @@ function InboxCard({ c, open, onToggle }: { c: Comment; open: boolean; onToggle:
         { onSuccess: done(note ? 'یادداشت شما ثبت و تأیید شد' : 'تأیید شد و بالاتر رفت'), onError: fail })
     }
   }
-  function saveEdit() {
-    if (!text.trim()) { toast.show('متن خالی است'); return }
-    edit.mutate({ ref: c.id, text: text.trim() },
-      { onSuccess: done('اصلاح شد و زنجیره از اول شروع شد'), onError: fail })
-  }
-
-  // Reader L761 (edit, margin 12), L791/L794 (note/reject, margin 14).
+  // Reader L791/L794 (note/reject, margin 14).
   const area = (placeholder: string, rows: number, danger = false) => (
     <TextField multiline rows={rows} label={placeholder} placeholder={placeholder} value={text} onChange={setText}
-      danger={danger} boxClassName={FIELD} className={`${mode === 'edit' ? 'mt-s6' : 'mt-s7'} [&>label]:sr-only`} />
+      danger={danger} boxClassName={FIELD} className="mt-s7 [&>label]:sr-only" />
   )
 
   return (
@@ -211,8 +207,10 @@ function InboxCard({ c, open, onToggle }: { c: Comment; open: boolean; onToggle:
           </Link>
         )}
 
-        {mode === 'edit'
-          ? area('حرفتان را ساده بنویسید…', 4)
+        {draft !== null
+          // Reader L761 (margin 12)
+          ? <TextField multiline rows={4} label={DRAFT_HINT} placeholder={DRAFT_HINT} value={draft} onChange={setDraft}
+              boxClassName={FIELD} className="mt-s6 [&>label]:sr-only" />
           : <div className="text-fs-dialog font-bold text-ink leading-sub mt-s4 whitespace-pre-line [text-wrap:pretty]">{c.text}</div>}
 
         {hasMore && (
@@ -282,23 +280,7 @@ function InboxCard({ c, open, onToggle }: { c: Comment; open: boolean; onToggle:
           </>
         )}
 
-        {(c.actions.edit || c.actions.withdraw) && (mode === 'edit' ? (
-          <div data-r-cmtactions className={`${ROW} mt-s6`}>
-            <button type="button" onClick={saveEdit} disabled={busy} className={`${SOLID} bg-violet shadow-violet`}>دوباره بفرست</button>
-            <button type="button" onClick={() => switchTo('edit')} className={`${GHOST} p-button-x text-fs-lg`}>انصراف</button>
-          </div>
-        ) : (
-          <div data-r-cmtactions className={`${ROW} mt-s6`}>
-            {c.actions.edit && (
-              <button type="button" onClick={() => switchTo('edit', c.text)} className={`${GHOST} p-s7 text-fs-body-lead`}>عوض کردن متن</button>
-            )}
-            {c.actions.withdraw && (
-              <button type="button" disabled={busy} className={DANGER} onClick={() => setAsk('withdraw')}>
-                پس گرفتن
-              </button>
-            )}
-          </div>
-        ))}
+        <AuthorActions c={c} draft={draft} onDraft={setDraft} look={AUTHOR} />
       </div>
 
       {ask && <DecisionModal kind={ask} pending={busy} onConfirm={confirm} onClose={() => setAsk(null)} />}
