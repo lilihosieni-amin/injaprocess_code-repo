@@ -350,21 +350,44 @@ def test_the_role_at_writing_decides_not_the_role_now(world):
     assert see(author) and not see(star_admin)
 
 
-def test_an_admin_is_not_counted_an_editor_s_comment_they_cannot_see(world):
-    """`pending_count` is the badge over the list behind it (D68): a comment
-    written as an Editor that reaches the pool — its author a Reader since, who
-    edited it — must not be counted for an Admin who cannot open it."""
+@pytest.mark.parametrize("pass_kind", ["edited", "restored"])
+def test_a_new_pass_as_a_reader_opens_it_to_the_admins_it_now_waits_on(world, pass_kind):
+    """The latest pass decides (addendum §5): an Editor made a Reader who edits
+    or sends their comment again sends it up the chain, so the Admins of the
+    pool it reaches see it and are counted it."""
     app, cc = world
     admin = mk(app, "admin", "admin", "dept:dining")
     author = mk(app, "author", "editor", "*")
     cid = post(app, cc, author)
     re_role(app, author, "reader")
-    S.event(cc, cid, kind="edited", now=NOW, user_id=author, user_name="author",
+    S.event(cc, cid, kind=pass_kind, now=NOW, user_id=author, user_name="author",
             role="reader")
     R.submit(app, cc, cid, now=NOW)
     assert S.get(cc, cid)["stage"] == "pool"
-    assert not R.can_see(app, cc, users.by_id(app, admin), S.get(cc, cid))
-    assert R.pending_count(app, cc, users.by_id(app, admin)) == 0
+    u = users.by_id(app, admin)
+    where, params = R.visible_sql(app, u)
+    assert [r[0] for r in cc.execute(f"SELECT c.id FROM comments c WHERE {where}", params)] == [cid]
+    assert R.can_see(app, cc, u, S.get(cc, cid))
+    assert R.pending_count(app, cc, u) == 1
+
+
+def test_a_new_pass_as_an_editor_closes_it_to_the_admins(world):
+    """The reverse: a Reader made an Editor who edits their comment makes it an
+    Editor's, which lands `approved` without the pool."""
+    app, cc = world
+    admin = mk(app, "admin", "admin", "*")
+    author = mk(app, "author", "reader", "dept:dining")
+    cid = post(app, cc, author)
+    assert R.can_see(app, cc, users.by_id(app, admin), S.get(cc, cid))
+    re_role(app, author, "editor")
+    S.event(cc, cid, kind="edited", now=NOW, user_id=author, user_name="author",
+            role="editor")
+    R.submit(app, cc, cid, now=NOW)
+    assert S.get(cc, cid)["state"] == "approved"
+    u = users.by_id(app, admin)
+    where, params = R.visible_sql(app, u)
+    assert cc.execute(f"SELECT c.id FROM comments c WHERE {where}", params).fetchall() == []
+    assert not R.can_see(app, cc, u, S.get(cc, cid))
 
 
 def test_actions(world):

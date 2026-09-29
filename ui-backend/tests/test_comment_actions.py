@@ -273,24 +273,31 @@ def test_the_badge(people):
     assert people["viewer"].get("/api/auth/me").json()["pendingApprovals"] == 0
 
 
-def test_the_badge_never_counts_an_editor_s_comment_for_an_admin(people):
-    """Written as an Editor, its author a Reader since, edited: it climbs to
-    the pool (routing reads the author's kind now) — but stays out of every
-    Admin's sight (2026-09-29 addendum, §5), so the badge must not count what
-    the list behind it cannot show."""
+@pytest.mark.parametrize("again", ["edit", "resend"])
+def test_an_editor_s_comment_sent_again_as_a_reader_waits_on_admins_who_see_it(people, again):
+    """Written as an Editor, its author a Reader since, edited or withdrawn and
+    sent again: it climbs to the pool (routing reads the author's kind now), so
+    the latest pass's role makes it the pool's Admins' to see, count and
+    approve (2026-09-29 addendum, §5)."""
     cid = _new(people, "editor")
+    assert people["admin"].get(f"/api/comments/{cid}").status_code == 404
     conn = db.connect(people["editor"].app_db)
     try:
         conn.execute("UPDATE users SET role_id = (SELECT id FROM roles WHERE name = 'reader')"
                      " WHERE display_name = 'editor'")
     finally:
         conn.close()
-    r = people["editor"].put(f"/api/comments/{cid}", json={"text": "y"})
+    if again == "edit":
+        r = people["editor"].put(f"/api/comments/{cid}", json={"text": "y"})
+    else:
+        assert people["editor"].post(f"/api/comments/{cid}/withdraw").status_code == 200
+        r = people["editor"].post(f"/api/comments/{cid}/restore")
     assert r.status_code == 200, r.text
     assert r.json()["waitingWith"] == {"kind": "pool"}
     waiting = people["admin"].get("/api/comments/inbox?tab=waiting").json()["items"]
-    assert waiting == []
-    assert people["admin"].get("/api/auth/me").json()["pendingApprovals"] == 0
+    assert [c["id"] for c in waiting] == [cid]
+    assert people["admin"].get("/api/auth/me").json()["pendingApprovals"] == 1
+    assert people["admin"].post(f"/api/comments/{cid}/approve", json={}).status_code == 200
 
 
 def test_disabling_the_supervisor_moves_the_comment(people):

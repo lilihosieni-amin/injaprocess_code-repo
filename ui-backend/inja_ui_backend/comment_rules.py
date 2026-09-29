@@ -155,12 +155,15 @@ def _received(cc: sqlite3.Connection, cid: int, user_id: int) -> bool:
 
 
 #: Written as an Editor (2026-09-29 addendum, §5): an Admin has no part in such
-#: a comment's life, so does not see it. The kind is the one `submitted`
-#: snapshotted (D62), never the author's now — an Editor made an Admin since
-#: must not open their old comments to the Admins. One `submitted` per comment;
-#: an edit is `edited`, a send-again `restored`.
-_AS_EDITOR = ("EXISTS (SELECT 1 FROM comment_events e WHERE e.comment_id = c.id"
-              " AND e.kind = 'submitted' AND json_extract(e.detail, '$.role') = 'editor')")
+#: a comment's life, so does not see it. The kind is the one the latest pass —
+#: `submitted`, `edited` or `restored` — snapshotted (D62), never the author's
+#: now: each pass went through `submit()`, which routed by that very kind, so
+#: the comment is visible to whoever the path it is on waits for, and an Editor
+#: made an Admin since does not open their untouched comments to the Admins.
+#: `IS`, not `=`: a pass with no role recorded reads as not an Editor's.
+_AS_EDITOR = ("(SELECT json_extract(e.detail, '$.role') FROM comment_events e"
+              " WHERE e.comment_id = c.id AND e.kind IN ('submitted', 'edited', 'restored')"
+              " ORDER BY e.id DESC LIMIT 1) IS 'editor'")
 
 
 def can_see(app, cc, viewer: sqlite3.Row, c: sqlite3.Row) -> bool:
@@ -236,9 +239,8 @@ def pending_count(app, cc, viewer: sqlite3.Row) -> int:
         " AND approver_id = ?", (viewer["id"],)).fetchone()[0]
     if k != "admin":
         return reader_hops
-    # Only what the viewer may see (D66): a comment written as an Editor that
-    # climbed back to the pool (its author a Reader since, who edited it) is
-    # not an Admin's to count, since the waiting tab behind this count hides it.
+    # Only what the viewer may see (D66), so the count agrees with the waiting
+    # tab behind it by construction rather than by the rules happening to match.
     where, wp = visible_sql(app, viewer)
     pool = [r["department"] for r in cc.execute(
         "SELECT c.department FROM comments c WHERE c.state = 'awaiting'"
