@@ -4,6 +4,8 @@ user change that strands a waiting comment moves it on.
 
 `people` (conftest) is the shared cast of test_comments_api.py.
 """
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 from inja_ui_backend import db
@@ -168,6 +170,41 @@ def test_a_withdrawn_comment_is_sent_again_from_the_start(people):
     assert c["actions"]["edit"] and c["actions"]["withdraw"] and not c["actions"]["restore"]
     assert [e["target"] for e in _events(people["viewer"], "comment.restored")] == [cid]
     assert people["viewer"].post(f"/api/comments/{cid}/restore").status_code == 403
+
+
+def test_an_author_out_of_scope_may_withdraw_but_not_edit_or_send_again(people):
+    """Review finding 1 (D48): the `comment` capability create asks for, asked
+    again by edit and send-again; never by withdraw."""
+    cid = _new(people)
+    conn = db.connect(people["viewer"].app_db)
+    try:
+        conn.execute("UPDATE user_scopes SET scope = 'dept:cashier' WHERE user_id = ?",
+                     (_user_id(people, "viewer"),))
+    finally:
+        conn.close()
+    before = len(_events(people["viewer"], "access.denied"))
+    assert people["viewer"].put(f"/api/comments/{cid}", json={"text": "y"}).status_code == 403
+    assert len(_events(people["viewer"], "access.denied")) == before + 1
+    assert people["viewer"].post(f"/api/comments/{cid}/withdraw").status_code == 200
+    assert people["viewer"].post(f"/api/comments/{cid}/restore").status_code == 403
+    denied = _events(people["viewer"], "access.denied")[before:]
+    assert [e["target"] for e in denied] == [cid, cid]
+
+
+def test_sending_again_rechecks_the_anchor_as_creating_does(people, data_root):
+    """Review finding 2: a comment on a process tombstoned since is not sent
+    back to the Editors — the anchor is refused exactly as `create` refuses it."""
+    cid = _new(people)
+    people["viewer"].post(f"/api/comments/{cid}/withdraw")
+    path = data_root / "departments" / "cooking" / "processes" / "cooking-001.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    doc["tombstoned"] = True
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    assert people["viewer"].post("/api/comments", json={
+        "anchorKind": "process", "anchorId": "cooking-001", "text": "x"}).status_code == 404
+    assert people["viewer"].post(f"/api/comments/{cid}/restore").status_code == 404
+    assert people["viewer"].get(f"/api/comments/{cid}").json()["state"] == "withdrawn"
+    assert _events(people["viewer"], "comment.restored") == []
 
 
 @pytest.mark.parametrize("who", ["admin", "editor"])

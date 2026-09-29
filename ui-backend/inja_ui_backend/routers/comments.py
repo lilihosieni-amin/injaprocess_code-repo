@@ -153,22 +153,23 @@ def _gate(request: Request, user, dept: str) -> None:
         raise HTTPException(status_code=403, detail=FORBIDDEN)
 
 
-def _anchor(request: Request, user, body: CommentBody) -> tuple[str | None, str, dict]:
-    """(process_id, department, D31 snapshot) for an anchor the caller may see, or 404."""
+def _anchor(request: Request, user, kind: str, aid: str) -> tuple[str | None, str, dict]:
+    """(process_id, department, D31 snapshot) for an anchor the caller may see, or 404.
+    Asked by creating a comment and again by sending one in again."""
     cfg, app = request.app.state.cfg, request.app.state.db
-    if body.anchorKind == "department":
-        dept = body.anchorId
+    if kind == "department":
+        dept = aid
         name = _registry_name(cfg, dept)
         if name is None:
             raise HTTPException(status_code=404, detail=NOT_FOUND)
         _gate(request, user, dept)
         return None, dept, {"department_name": name}
-    if body.anchorKind == "node":
-        if not (ids.is_real_activity_id(body.anchorId) or ids.is_real_junction_id(body.anchorId)):
+    if kind == "node":
+        if not (ids.is_real_activity_id(aid) or ids.is_real_junction_id(aid)):
             raise HTTPException(status_code=404, detail=NOT_FOUND)
-        pid = body.anchorId.rsplit("-", 1)[0]
+        pid = aid.rsplit("-", 1)[0]
     else:
-        pid = body.anchorId
+        pid = aid
         # the id becomes a path below: nothing but a real process id gets there
         if not PROCESS_ID_RE.fullmatch(pid):
             raise HTTPException(status_code=404, detail=NOT_FOUND)
@@ -181,9 +182,9 @@ def _anchor(request: Request, user, body: CommentBody) -> tuple[str | None, str,
     if not Disclosure(app, user).may_serve(doc, dept, pid):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
     snap = {"department_name": _registry_name(cfg, dept), "process_name": doc.get("name")}
-    if body.anchorKind == "node":
+    if kind == "node":
         node = next((n for n in doc.get("nodes", [])
-                     if n["id"] == body.anchorId and not n.get("removed")), None)
+                     if n["id"] == aid and not n.get("removed")), None)
         if node is None:
             raise HTTPException(status_code=404, detail=NOT_FOUND)
         snap["node_label"] = node.get("label")
@@ -193,7 +194,7 @@ def _anchor(request: Request, user, body: CommentBody) -> tuple[str | None, str,
 @router.post("", status_code=201)
 def create_comment(body: CommentBody, request: Request, user=Depends(require_session)):
     text = clean(body.text)
-    pid, dept, snap = _anchor(request, user, body)
+    pid, dept, snap = _anchor(request, user, body.anchorKind, body.anchorId)
     now = int(time.time())
     with write(request) as cc:
         cid = S.insert(cc, author=user, anchor_kind=body.anchorKind, anchor_id=body.anchorId,
@@ -385,10 +386,16 @@ def withdraw(ref: str, request: Request, user=Depends(require_session)):
 def restore(ref: str, request: Request, user=Depends(require_session)):
     """Send a withdrawn comment again (2026-09-29 addendum, decision C). A new
     pass from its author, routed as an edit is: a Reader's goes back to the
-    first approver, an Admin's or an Editor's lands approved again."""
+    first approver, an Admin's or an Editor's lands approved again.
+
+    The anchor must still stand and be served to the author, exactly as when the
+    comment was created (`_anchor`'s 404) — a comment on a process tombstoned
+    since is not sent back to the Editors. Asked after `actions` has allowed the
+    send, so an author who may no longer comment here gets its 403 instead."""
     app = request.app.state.db
 
     def go(cc, c, now):
+        _anchor(request, user, c["anchor_kind"], c["anchor_id"])
         S.event(cc, c["id"], kind="restored", now=now, user_id=user["id"],
                 user_name=user["display_name"], role=R.kind_of(app, user))
         R.submit(app, cc, c["id"], now=now)

@@ -370,6 +370,24 @@ def test_the_author_of_a_withdrawn_comment_may_send_it_again(world):
     assert not act(viewer)["restore"]                       # D73: rejected stays closed
 
 
+def test_editing_and_sending_again_need_the_comment_capability_withdrawing_does_not(world):
+    """D48: every action re-derives permission. An author whose scope no longer
+    covers the department may take their words back, but not change them or send
+    them in again (review finding 1)."""
+    app, cc = world
+    viewer = mk(app, "viewer", "reader", "dept:dining")
+    mk(app, "admin", "admin", "*")
+    cid = post(app, cc, viewer)
+    app.execute("UPDATE user_scopes SET scope = 'dept:cashier' WHERE user_id = ?", (viewer,))
+
+    def act():
+        return R.actions(app, cc, users.by_id(app, viewer), S.get(cc, cid))
+
+    assert not act()["edit"] and act()["withdraw"]
+    S.set_state(cc, cid, state="withdrawn", now=NOW)
+    assert not act()["restore"]
+
+
 def test_sending_again_restarts_the_pass(world):
     """`restored` resets the approvals that count, as `submitted` and `edited` do."""
     app, cc = world

@@ -200,14 +200,19 @@ def actions(app, cc, viewer: sqlite3.Row, c: sqlite3.Row) -> dict[str, bool]:
     # withdrawing each close it into a state of their own. So a Reader's
     # comment drops out at its first approval, while an Admin's or an Editor's
     # — `approved` at submission with none — stays theirs until addressed.
-    own_untouched = (c["author_id"] == viewer["id"]
-                     and c["state"] in ("awaiting", "approved")
+    mine = c["author_id"] == viewer["id"]
+    own_untouched = (mine and c["state"] in ("awaiting", "approved")
                      and not S.approvers_since_restart(cc, c["id"]))
-    return {"approve": decide, "reject": decide, "edit": own_untouched,
+    # Changing the words or sending them in again is commenting, so it asks for
+    # what creating asked for, re-derived now (D48): an author whose scope or
+    # role no longer allows `comment` here keeps only the withdrawal — taking
+    # one's own words back never needs a permission.
+    may_comment = mine and access.allows(app, viewer, "comment", f"dept:{c['department']}")
+    return {"approve": decide, "reject": decide, "edit": own_untouched and may_comment,
             "withdraw": own_untouched,
             # a withdrawal is the author's own act, so the author may undo it
             # (decision C); a rejection is someone else's and stays final (D73)
-            "restore": c["author_id"] == viewer["id"] and c["state"] == "withdrawn",
+            "restore": may_comment and c["state"] == "withdrawn",
             "address": c["state"] == "approved" and k == "editor"}
 
 
