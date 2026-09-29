@@ -3223,6 +3223,39 @@ def gate_b(root, skeleton, entries, state):
     return "\n".join(out)
 
 
+PERSIAN_MONTHS = ("فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+                  "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند")
+
+
+def _owner_date(recording):
+    """`preparation-1405-06-04-02` → «۴ شهریور ۱۴۰۵ (۲)» — the date in words,
+    because the report admits no `/` (spec 2026-09-29 §9)."""
+    m = re.search(r"([0-9]{4})-([0-9]{2})-([0-9]{2})(?:-0*([0-9]+))?$", recording)
+    if not m or not 1 <= int(m.group(2)) <= 12:
+        return recording
+    text = (f"{_fa(int(m.group(3)))} {PERSIAN_MONTHS[int(m.group(2)) - 1]} "
+            f"{_fa(int(m.group(1)))}")
+    return text + (f" ({_fa(int(m.group(4)))})" if m.group(4) else "")
+
+
+def _contradicted_block(rows):
+    """Spec 2026-09-29 §9 — what the meetings said against a process step or a
+    recorded entry, set aside, closing the report; nothing when nothing was."""
+    if not rows:
+        return []
+    out = ["کنار گذاشته شد چون با فرایندها یا ثبت‌های همین اجرا نمی‌خواند:"]
+    for row in rows:
+        said = f'گفت‌وگوی {_owner_date(pathlib.Path(row["ref"]).stem)}'
+        if "process" in row["against"]:
+            tail = (f'فرایند «{row["process_name"]}»، گام «{row["node_label"]}» '
+                    "خلاف آن را می‌گوید.")
+        else:
+            tail = f'با «{row.get("entry_title") or "ثبتی از همین اجرا"}» نمی‌خواند.'
+        out.append(f'  • {said}: «{row["claim"].strip()}» — {tail}')
+    out.append("")
+    return out
+
+
 def report(root, run_dir):
     """`report.md` (§2.7) — written after `apply`, from `assembly.json`, the
     run's `id-map.json` and the store. Every entry is named by its Persian
@@ -3314,6 +3347,7 @@ def report(root, run_dir):
         out.append({"applied": "بازبینی انجام شد.",
                     "partial": "بازبینی انجام شد.",
                     "absent": "بازبینی اجرا نشد."}[status])
+    out += _contradicted_block(assembly.get("contradicted") or [])
     path = run_dir / "report.md"
     write_text_atomic(path, "\n".join(out) + "\n")
     return path

@@ -2,7 +2,8 @@ import json
 import re
 
 from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _write
-from facts_plan.assemble import ISSUE_FA, _disputes, gate_b, report
+from facts_plan.assemble import (ISSUE_FA, _contradicted_block, _disputes, _owner_date,
+                                 gate_b, report)
 from facts_plan.build import ISSUE_TEXT
 from merge_facts import load_store
 from merge_facts.apply import apply
@@ -468,3 +469,32 @@ def test_a_run_that_placed_everything_says_nothing_about_the_unattached(tmp_path
     assert "«فرم تبدیل»: ۱ قاعده" in text
     assert "بدون جدول" not in text
     assert "تغییر نکرد" not in text
+
+
+def test_a_recording_is_named_by_its_date_in_words():
+    assert _owner_date("preparation-1405-06-04") == "۴ شهریور ۱۴۰۵"
+    assert _owner_date("preparation-1405-05-28-02") == "۲۸ مرداد ۱۴۰۵ (۲)"
+    assert _owner_date("bez-tarikh") == "bez-tarikh"
+
+
+def test_the_set_aside_claims_close_the_report_in_the_owners_words():
+    rows = [
+        {"claim": "کنار شنیسل خام تنها برای غذای پرسنل است",
+         "ref": "meetings/transcripts/preparation-1405-06-04.txt", "lines": "210-218",
+         "against": {"process": "preparation-012", "node": "preparation-012-n039"},
+         "unit": "u-tr-x", "process_name": "تولید مرغ پیتزا",
+         "node_label": "انتقال کنار شینسل خام به سردخانه"},
+        {"claim": "وزن هر لقمه سی گرم است",
+         "ref": "meetings/transcripts/preparation-1405-05-28-02.txt", "lines": "5",
+         "against": {"ref": "S-rec-000000000001"}, "unit": "u-tr-y",
+         "entry_title": "فرم تبدیل سینه مرغ"}]
+    assert _contradicted_block(rows) == [
+        "کنار گذاشته شد چون با فرایندها یا ثبت‌های همین اجرا نمی‌خواند:",
+        "  • گفت‌وگوی ۴ شهریور ۱۴۰۵: «کنار شنیسل خام تنها برای غذای پرسنل است» — "
+        "فرایند «تولید مرغ پیتزا»، گام «انتقال کنار شینسل خام به سردخانه» خلاف آن را می‌گوید.",
+        "  • گفت‌وگوی ۲۸ مرداد ۱۴۰۵ (۲): «وزن هر لقمه سی گرم است» — "
+        "با «فرم تبدیل سینه مرغ» نمی‌خواند.",
+        ""]
+    assert _contradicted_block([]) == []
+    for line in _contradicted_block(rows):
+        assert not re.search(r"__s|S-|N-|u-|/", line), line
