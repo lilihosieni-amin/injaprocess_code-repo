@@ -549,3 +549,14 @@ def test_photo_groups_documents_validate(validate):
                     {"schema_version": 1, "groups": [{"photos": ["/abs/a.jpg"]}]}) != []
     assert validate("photo-groups.schema.json",
                     {"schema_version": 1, "groups": [{"photos": []}]}) != []
+
+
+def test_a_unit_may_set_contradicted_claims_aside(validate):
+    doc = _unit_doc()
+    doc["contradicted"] = [{"claim": "کنار شنیسل خام غذای پرسنل است",
+                            "ref": "meetings/transcripts/p.txt", "lines": "3-4",
+                            "against": {"process": "preparation-012",
+                                        "node": "preparation-012-n039"}}]
+    assert validate("facts-unit.schema.json", doc) == []
+    doc["contradicted"] = ["نه یک شیء"]
+    assert validate("facts-unit.schema.json", doc) != []

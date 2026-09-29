@@ -2555,3 +2555,63 @@ def test_an_account_a_unit_writes_is_dropped_by_the_gate(tmp_path):
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     assert all("accounts" not in e for e in delta["entries"])
+
+
+def _claim(lines="2-3", against=None, ref="meetings/transcripts/c.txt"):
+    return {"claim": "کنار شنیسل خام تنها برای غذای پرسنل است", "ref": ref,
+            "lines": lines,
+            "against": against or {"process": "cooking-001", "node": "cooking-001-n001"}}
+
+
+def _with_step(root):
+    (root / "departments" / "cooking" / "processes" / "cooking-001.json").write_text(
+        json.dumps({"id": "cooking-001", "name": "تولید مرغ پیتزا", "edges": [],
+                    "nodes": [{"id": "cooking-001-n001", "label": "انتقال به سردخانه"}]},
+                   ensure_ascii=False), encoding="utf-8")
+
+
+def _assembled(root, rule):
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule})
+    assemble(root, run_dir)
+    return json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+
+
+def test_a_contradiction_reaches_the_assembly_with_its_names(tmp_path):
+    root = _root(tmp_path)
+    _with_step(root)
+    rule = _rule_out()
+    rule["contradicted"] = [_claim()]
+    assert _assembled(root, rule)["contradicted"] == [dict(
+        _claim(), unit="u-b", process_name="تولید مرغ پیتزا",
+        node_label="انتقال به سردخانه")]
+
+
+def test_a_short_node_id_is_read_as_its_process_step(tmp_path):
+    root = _root(tmp_path)
+    _with_step(root)
+    rule = _rule_out()
+    rule["contradicted"] = [_claim(against={"process": "cooking-001", "node": "n001"})]
+    row = _assembled(root, rule)["contradicted"][0]
+    assert row["against"] == {"process": "cooking-001", "node": "cooking-001-n001"}
+
+
+def test_a_contradiction_against_a_recorded_entry_names_its_title(tmp_path):
+    root = _root(tmp_path)
+    rule = _rule_out()
+    rule["contradicted"] = [_claim(against={"ref": "S-rec-000000000001"})]
+    row = _assembled(root, rule)["contradicted"][0]
+    assert row["entry_title"] == "گزارش شبانهٔ لاین پیتزا"
+
+
+@pytest.mark.parametrize("bad", [
+    {"lines": "30-40"},                                    # outside the excerpt (L1-L20)
+    {"ref": "meetings/transcripts/other.txt"},             # not the unit's transcript
+    {"against": {"process": "cooking-001", "node": "cooking-001-n999"}},
+    {"against": {"ref": "S-rec-999999999999"}},
+    {"claim": "  "}])
+def test_a_contradiction_the_engine_cannot_check_is_dropped(tmp_path, bad):
+    root = _root(tmp_path)
+    _with_step(root)
+    rule = _rule_out()
+    rule["contradicted"] = [dict(_claim(), **bad)]
+    assert _assembled(root, rule)["contradicted"] == []

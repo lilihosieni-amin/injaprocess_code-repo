@@ -386,6 +386,58 @@ def _drop_items(doc, items):
     return out
 
 
+_NEW_HANDLE = re.compile(r"N-u-[a-z0-9_-]+-[0-9]+")
+
+
+def _checked_contradiction(item, ctx):
+    """Spec 2026-09-29 §8 — one set-aside claim the engine can check, or None
+    (REPAIR, no note): a Persian sentence, lines inside this unit's own excerpt
+    (the `voice` gate), and against either a live step — a short node id read
+    as its process's — or a handle of this run."""
+    if not (isinstance(item, dict) and isinstance(item.get("claim"), str)
+            and item["claim"].strip()):
+        return None
+    if not _cited({"type": "voice", "ref": item.get("ref"),
+                   "lines": item.get("lines")}, ctx["talk"]):
+        return None
+    against = item.get("against")
+    if not isinstance(against, dict):
+        return None
+    if "process" in against:
+        process, node = str(against.get("process")), str(against.get("node"))
+        full = node if node.startswith(f"{process}-") else f"{process}-{node}"
+        if f"{process}::{full}" not in ctx["node_ids"]:
+            return None
+        return dict(item, against={"process": process, "node": full})
+    ref = against.get("ref")
+    if isinstance(ref, str) and (ref in ctx["candidates"]
+                                 or _NEW_HANDLE.fullmatch(ref)):
+        return dict(item, against={"ref": ref})
+    return None
+
+
+def _named_contradictions(root, rows, entries):
+    """Each set-aside claim with the names the report prints (spec 2026-09-29
+    §9): the step's process name and label, or the phase-1 entry's title."""
+    from facts_plan.build import process_departments, process_docs
+    steps = {(doc["id"], node["id"]): (doc.get("name") or doc["id"],
+                                        node.get("label") or node["id"])
+             for department in process_departments(root)
+             for doc in process_docs(root, department)
+             for node in doc.get("nodes") or []}
+    titles = {e["_skeleton"]: e["title"] for e in entries if e.get("_skeleton")}
+    out = []
+    for row in rows:
+        against = row["against"]
+        if "process" in against:
+            name, label = steps.get((against["process"], against["node"]),
+                                    (against["process"], against["node"]))
+            out.append(dict(row, process_name=name, node_label=label))
+        else:
+            out.append(dict(row, entry_title=titles.get(against["ref"], "")))
+    return out
+
+
 def _judge_doc(root, run_dir, path, doc, semantics=True):
     """`(doc, findings, unshaped)` — rows A3–A28 over a parsed document, in
     place. `doc` is None when a finding refuses the whole of it; otherwise it is
@@ -476,6 +528,9 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
                     item["voice"] = voices
                 if froms:
                     item["from"] = froms
+    doc["contradicted"] = [c for c in (_checked_contradiction(item, ctx)
+                                       for item in doc.get("contradicted") or [])
+                           if c]
     if semantics:
         found += _item_checks(root, doc, passed, ctx, skeleton)
     return doc, found, unshaped
@@ -1047,7 +1102,8 @@ def _folded(doc, found):
         if item is not None:
             (refused if finding.tier == tiers.REFUSE else noted) \
                 .setdefault(item, []).append(finding)
-    out = {"decisions": [], "new": [], "refused": {}, "refused_new": {}}
+    out = {"decisions": [], "new": [], "refused": {}, "refused_new": {},
+           "contradicted": list(doc.get("contradicted") or [])}
     for n, decision in enumerate(doc["decisions"]):
         if not isinstance(decision, dict):
             continue
@@ -1112,6 +1168,13 @@ def _overlay(first, later, unit):
     for skid, lines in later["refused"].items():
         if skid not in at:
             out["refused"][skid] = lines
+    seen = set()
+    out["contradicted"] = []
+    for row in (first.get("contradicted") or []) + (later.get("contradicted") or []):
+        key = json.dumps(row, ensure_ascii=False, sort_keys=True)
+        if key not in seen:
+            seen.add(key)
+            out["contradicted"].append(row)
     return out
 
 
@@ -1148,7 +1211,7 @@ def _collect(root, run_dir, plan, skeleton):
     """The units' decisions keyed by skeleton id, their `new[]` entries as
     candidates of their own, what their gates refused, and the units that
     returned nothing usable."""
-    state = {"by_skeleton": {}, "new": [], "failed": set(),
+    state = {"by_skeleton": {}, "new": [], "failed": set(), "contradicted": [],
              "review_status": "absent", "dropped": [], "undecided": [],
              # Both halves of R1, seeded here so a run assembled without
              # `--review` writes `review_held: []` rather than nothing, and the
@@ -1171,6 +1234,8 @@ def _collect(root, run_dir, plan, skeleton):
             state["new"].append(candidate)
             state["by_skeleton"][handle] = decision
         state["items_ignored"] += doc.get("_items_ignored") or 0
+        state["contradicted"] += [dict(row, unit=unit["id"])
+                                  for row in doc.get("contradicted") or []]
         state["refused"].update(doc["refused"])
         state["refused_new"] += [dict(row, unit=unit["id"])
                                  for _n, row in sorted(doc["refused_new"].items())]
@@ -2717,6 +2782,8 @@ def assemble(root, run_dir, *, review=False):
                        "provenance": state["provenance"],
                        "review_status": state["review_status"],
                        "review_held": state.get("review_held") or [],
+                       "contradicted": _named_contradictions(
+                           root, state.get("contradicted") or [], entries),
                        "lost_sources": _lost_sources(root, skeleton, state)})
     write_text_atomic(run_dir / "gate-b.md", gate_b(root, skeleton, entries, state))
     return {"entries": len(clean), "dropped": len(state["dropped"]),

@@ -10,7 +10,8 @@
     "unit": { "type": "string", "minLength": 1 },
     "attempt": { "type": "integer", "minimum": 1 },
     "decisions": { "type": "array", "items": { "$ref": "#/$defs/decision" } },
-    "new": { "type": "array", "items": { "$ref": "#/$defs/newEntry" } }
+    "new": { "type": "array", "items": { "$ref": "#/$defs/newEntry" } },
+    "contradicted": { "type": "array", "items": { "type": "object" } }
   },
   "if": { "properties": { "unit": { "const": "review" } }, "required": ["unit"] },
   "else": { "properties": { "decisions": { "items": {
