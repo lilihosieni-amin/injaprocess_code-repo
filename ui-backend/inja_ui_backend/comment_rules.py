@@ -171,7 +171,12 @@ def _received(cc: sqlite3.Connection, cid: int, user_id: int) -> bool:
 #: the comment is visible to whoever the path it is on waits for, and an Editor
 #: made an Admin since does not open their untouched comments to the Admins.
 #: `IS`, not `=`: a pass with no role recorded reads as not an Editor's.
-_AS_EDITOR = ("(SELECT json_extract(e.detail, '$.role') FROM comment_events e"
+#:
+#: Public because the activity record's comment tab asks the same question
+#: (`store/activity.comments`): one definition, so the inbox and that tab can
+#: never disagree about whether a comment is an Editor's. Written against the
+#: alias `c` for `comments`.
+AS_EDITOR = ("(SELECT json_extract(e.detail, '$.role') FROM comment_events e"
               " WHERE e.comment_id = c.id AND e.kind IN ('submitted', 'edited', 'restored')"
               " ORDER BY e.id DESC LIMIT 1) IS 'editor'")
 
@@ -183,7 +188,7 @@ def can_see(app, cc, viewer: sqlite3.Row, c: sqlite3.Row) -> bool:
         return True
     if k == "admin":
         return covers(app, viewer, c["department"]) and not cc.execute(
-            f"SELECT {_AS_EDITOR} FROM comments c WHERE c.id = ?", (c["id"],)).fetchone()[0]
+            f"SELECT {AS_EDITOR} FROM comments c WHERE c.id = ?", (c["id"],)).fetchone()[0]
     return _received(cc, c["id"], viewer["id"])
 
 
@@ -200,11 +205,11 @@ def visible_sql(app, viewer: sqlite3.Row) -> tuple[str, list]:
         depts: set[str] = set()
         for s in access.scopes_of(app, viewer):
             if s == "*":
-                return f"(c.author_id = ? OR NOT {_AS_EDITOR})", [viewer["id"]]
+                return f"(c.author_id = ? OR NOT {AS_EDITOR})", [viewer["id"]]
             if scopes.SCOPE_RE.fullmatch(s) and "/" not in s:
                 depts.add(scopes.dept_of(s))
         marks = ",".join("?" * len(depts)) or "NULL"
-        return (f"(c.author_id = ? OR (c.department IN ({marks}) AND NOT {_AS_EDITOR}))",
+        return (f"(c.author_id = ? OR (c.department IN ({marks}) AND NOT {AS_EDITOR}))",
                 [viewer["id"], *sorted(depts)])
     return ("(c.author_id = ? OR EXISTS (SELECT 1 FROM comment_events e"
             " WHERE e.comment_id = c.id AND e.kind = 'assigned' AND e.user_id = ?))",

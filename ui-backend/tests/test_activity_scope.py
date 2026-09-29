@@ -162,3 +162,29 @@ def test_a_deleted_processs_id_stays_on_the_timeline_only_for_its_editors(
     assert res.status_code == 200
     assert next(r for r in res.json()["rows"] if r["id"] == row)["target"] is None
     assert "cooking-002" not in res.text
+
+
+def test_an_editors_comment_is_left_out_of_the_comment_flow_for_non_editors(people):
+    """2026-09-29 addendum §5, at the owner's decision: «مسیر کامنت‌ها» does not
+    list an Editor's comment to anyone but an Editor, and the summary's count
+    follows the list it is derived from. Each person's own activity page is
+    left whole — it is the audit of what they did, and it never shows a text."""
+    ed = people["editor"].post("/api/comments", json={
+        "anchorKind": "process", "anchorId": "cooking-001", "text": "یادداشت ادیتور"})
+    rd = people["viewer"].post("/api/comments", json={
+        "anchorKind": "process", "anchorId": "cooking-001", "text": "x"})
+    assert ed.status_code == 201 and rd.status_code == 201
+    ed_ref, rd_ref = ed.json()["id"], rd.json()["id"]
+
+    as_admin = {r["ref"] for r in people["admin"].get("/api/activity/comments").json()}
+    assert as_admin == {rd_ref}, "an Admin — `*` and holding view_audit — must not see it"
+    as_editor = {r["ref"] for r in people["editor"].get("/api/activity/comments").json()}
+    assert as_editor == {ed_ref, rd_ref}, "an Editor still sees every comment"
+
+    flow = people["admin"].get("/api/activity/comments").json()
+    summary = people["admin"].get("/api/activity/summary").json()
+    assert summary["commentsAwaiting"] == sum(1 for r in flow if r["state"] == "awaiting")
+
+    eid = _uid(people, "editor")
+    timeline = people["admin"].get(f"/api/activity/users/{eid}").json()["rows"]
+    assert ed_ref in [r["target"] for r in timeline], "the per-person audit stays whole"
