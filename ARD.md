@@ -918,7 +918,7 @@ The intended deployment is: the analyst as **Editor** + `*`; a deputy as **Admin
 
 A department head is therefore a Reader: they read, comment, download and approve their branch's comments, but hold no `manage_users` and no `view_audit`. **All user administration is centralised at `*` scope**, and no role but Editor can edit or confirm.
 
-**The Editor holds `comment` but is offered no composer.** The roles are strictly nested, and delegation requires a created user's set to be a subset of the creator's — so removing `comment` from Editor would make `Reader ⊄ Editor` and leave the Editor unable to create any user at all. It is also meaningless rather than forbidden: routing climbs to the first holder of `edit` (§19.8), so an Editor's own comment would be approved on creation and land in their own inbox. The UI therefore offers no composer to any holder of `edit` — a rule derived from routing, not a permission (spec D11).
+**The Editor holds `comment`, and uses it.** The roles are strictly nested, and delegation requires a created user's set to be a subset of the creator's — so removing `comment` from Editor would make `Reader ⊄ Editor` and leave the Editor unable to create any user at all. Through 2026-09-28 the Editor was nonetheless offered no composer and the server refused an Editor author (spec D11, addendum D74); since the 2026-09-29 comment-authors addendum an Editor writes comments like anyone else, and, like an Admin's, an Editor's comment skips routing and lands `approved` in the Editors' inbox.
 
 **Resolution.**
 
@@ -1055,11 +1055,11 @@ Every anchor carries a **snapshot** taken at comment time — department name, p
 
 **Identity:** `CMT-{n}`, monotonic from `comments.db`, never reused — INV-1's principle on a different ledger, because comments are not `data-repo` content.
 
-**Lifecycle:** `draft` → `awaiting` (one named approver at a time) → `approved` → `addressed`, with `rejected` and `withdrawn` as terminal-until-revised states. Nothing is hard-deleted, matching INV-4's doctrine: a supervisor's refusal must leave a trace.
+**Lifecycle:** `draft` → `awaiting` (one named approver at a time) → `approved` → `addressed`. `rejected` is final; `withdrawn` is final for everyone but its author, who may send it again (`restored`), restarting its routing from the beginning (2026-09-29 comment-authors addendum, decision C). Nothing is hard-deleted, matching INV-4's doctrine: a supervisor's refusal must leave a trace.
 
 **Routing** climbs the supervisor edges and becomes `approved` when the next hop would hold `edit` — an editor does not approve their own inbox. Disabled hops are skipped and recorded as skipped; a chain with no live approver above reaches the editors rather than sticking. An approver may approve, reject with a reason, or amend and approve — an amendment keeps both texts.
 
-**The author controls the comment exactly while it carries no approvals.** After the first approval it can be neither edited nor withdrawn: an approval vouches for specific words, and letting them change afterwards would make every signature above worthless. The escape hatch is that any approver may reject, which returns it to the author and leaves a record.
+**The author controls the comment until someone else acts on it** — while it is `awaiting` or `approved` with no approval since the last restart, so an Admin's or an Editor's, `approved` at submission, stays theirs until it is addressed (2026-09-29 addendum, decision B). After the first approval it can be neither edited nor withdrawn: an approval vouches for specific words, and letting them change afterwards would make every signature above worthless. The escape hatch is that any approver may reject, which returns it to the author and leaves a record.
 
 **Visibility follows the supervisor tree, not content scope:** author, every supervisor above them at any stage, and holders of `edit` once it has cleared. An Admin scoped `*` still reads only their own branch. Resolution and rejection are visible to that whole audience, with who, when, why, and the commit reference if one exists. These names are the sole exception to FR-A11's rule that a Reader sees nothing about other users (§19.2).
 
