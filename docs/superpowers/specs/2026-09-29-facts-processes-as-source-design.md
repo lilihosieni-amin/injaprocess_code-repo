@@ -99,10 +99,16 @@ order: `# <id> · <name>` and the summary; per node, in file order:
 مجری: <actor>
 <description>
 ورودی: …  کنترل: …  خروجی: …  سازوکار: …        (only the non-empty ICOM lists)
+بعدی: «<label of the target node>» — <edge label>   (one line per outgoing edge; « — <label>» only when the edge has one)
 ```
 
-Tombstoned processes are skipped (I3, as `process_index` does today). Positions, layout, sources,
-`pending` and edges are left out. The files are rewritten by `refresh_inputs` like every input.
+The edges are the diagram the process engineer corrected: preparation's active processes have 751,
+and 133 carry a condition («در صورت مشاهده تکه کپک‌زده», «در صورت سفارش بیکن», …) — the exceptions
+her per-table questions ask for. An edge whose target is a subprocess or a missing node prints the
+target's id instead of a label.
+
+Tombstoned processes are skipped (I3, as `process_index` does today). Positions, layout, sources and
+`pending` are left out. The files are rewritten by `refresh_inputs` like every input.
 
 ### 5.2 Phase 1 — one table per unit
 
@@ -182,6 +188,8 @@ A department with no photos skips the stage.
   printed column is still filled come from the processes, which win over the form on all of these.
 - A printed column the processes say is no longer filled stays; its `description` says so and where
   the value is written now.
+- A condition on an edge («بعدی: … — در صورت …») is an exception of the step it leaves; when that
+  step fills or measures something in the table, the condition is written as that entry's exception.
 - Two processes that disagree: neither side is written as fact; a `note` on the table asks which is
   right (`about` = the table, `question` = the two sides in Persian).
 - Match processes to the table by its items and columns, not by its name.
