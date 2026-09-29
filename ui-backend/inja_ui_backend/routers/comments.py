@@ -70,21 +70,58 @@ def _registry_name(cfg, code: str) -> str | None:
     return next((d["name"] for d in reg["departments"] if d["code"] == code), None)
 
 
-def _orphan(cfg, c, docs: dict) -> bool:
-    """The anchor no longer stands: its process is gone or tombstoned, or its
-    node removed (D31: surfaced, never repointed). `docs` caches one read per
-    process for a listing."""
-    pid = c["process_id"]
-    if pid is None:
-        return False
+def _doc(cfg, pid: str, docs: dict) -> dict | None:
+    """A process document, or None when it is not on disk. `docs` caches one
+    read per process for a listing."""
     if pid not in docs:
         path = storage.proc_path(cfg.data_root, pid)
         docs[pid] = storage.read_json(path) if path.is_file() else None
-    doc = docs[pid]
+    return docs[pid]
+
+
+def _node(doc: dict, aid: str) -> dict | None:
+    return next((n for n in doc.get("nodes", []) if n["id"] == aid and not n.get("removed")),
+                None)
+
+
+def _orphan(cfg, c, docs: dict) -> bool:
+    """The anchor no longer stands: its process is gone or tombstoned, or its
+    node removed (D31: surfaced, never repointed)."""
+    pid = c["process_id"]
+    if pid is None:
+        return False
+    doc = _doc(cfg, pid, docs)
     if doc is None or doc.get("tombstoned"):
         return True
-    return c["anchor_kind"] == "node" and not any(
-        n["id"] == c["anchor_id"] and not n.get("removed") for n in doc.get("nodes", []))
+    return c["anchor_kind"] == "node" and _node(doc, c["anchor_id"]) is None
+
+
+def _pid(kind: str, aid: str) -> str | None:
+    """The process a node or process anchor names, or None when the id is not
+    the shape of one — it becomes a path: nothing but a real id gets there."""
+    if kind == "node":
+        real = ids.is_real_activity_id(aid) or ids.is_real_junction_id(aid)
+        return aid.rsplit("-", 1)[0] if real else None
+    return aid if PROCESS_ID_RE.fullmatch(aid) else None
+
+
+def _stands(request: Request, user, kind: str, aid: str, docs: dict) -> bool:
+    """The anchor still stands and is served to `user`: a department in the
+    registry; a process on disk that `Disclosure.may_serve` gives them (D17,
+    D22); a node on it, not removed.
+
+    Asks nothing of scope or capability and records nothing, so `present` can
+    ask it of each comment it offers «ارسال دوباره» on while `_anchor` refuses by
+    it: one check for the offer and the enforcement (D48)."""
+    cfg = request.app.state.cfg
+    if kind == "department":
+        return _registry_name(cfg, aid) is not None
+    pid = _pid(kind, aid)
+    doc = _doc(cfg, pid, docs) if pid else None
+    if doc is None or not Disclosure(request.app.state.db, user).may_serve(
+            doc, storage.dept_of(pid), pid):
+        return False
+    return kind != "node" or _node(doc, aid) is not None
 
 
 def _waiting(app, c) -> dict | None:
@@ -100,6 +137,7 @@ def _waiting(app, c) -> dict | None:
 def present(request: Request, viewer, c, *, trail: bool = False,
             docs: dict | None = None) -> dict:
     app, cc, cfg = request.app.state.db, request.app.state.comments_db, request.app.state.cfg
+    docs = {} if docs is None else docs
     snap = json.loads(c["snapshot"])
     evs = S.events(cc, c["id"])
     detail = [json.loads(e["detail"] or "{}") for e in evs]
@@ -107,6 +145,12 @@ def present(request: Request, viewer, c, *, trail: bool = False,
              for e in evs if e["kind"] == "approved" and e["note"]]
     rejected = next((e for e in reversed(evs) if e["kind"] == "rejected"), None)
     addressed = next((e for e in reversed(evs) if e["kind"] == "addressed"), None)
+    actions = R.actions(app, cc, viewer, c)
+    # Offered only where sending again would get through: `restore` refuses by
+    # this same check. Asked only of the viewer's own withdrawn comments, and
+    # `_orphan` has already cached the process read.
+    actions["restore"] = actions["restore"] and _stands(
+        request, viewer, c["anchor_kind"], c["anchor_id"], docs)
     out = {
         "id": R.cmt(c["id"]),
         "anchor": {"kind": c["anchor_kind"], "id": c["anchor_id"],
@@ -114,7 +158,7 @@ def present(request: Request, viewer, c, *, trail: bool = False,
                    "departmentName": snap.get("department_name"),
                    "processName": snap.get("process_name"),
                    "nodeLabel": snap.get("node_label"),
-                   "orphan": _orphan(cfg, c, {} if docs is None else docs)},
+                   "orphan": _orphan(cfg, c, docs)},
         "text": c["text"], "state": c["state"], "stage": c["stage"],
         "waitingWith": _waiting(app, c),
         "author": {"name": c["author_name"], "isMe": c["author_id"] == viewer["id"],
@@ -128,7 +172,7 @@ def present(request: Request, viewer, c, *, trail: bool = False,
                        "note": addressed["note"],
                        "commit": json.loads(addressed["detail"] or "{}").get("commit")}
                       if addressed else None),
-        "actions": R.actions(app, cc, viewer, c),
+        "actions": actions,
     }
     if trail:
         out["trail"] = [{"kind": e["kind"], "name": _who(e["user_name"]), "note": e["note"],
@@ -156,38 +200,24 @@ def _gate(request: Request, user, dept: str) -> None:
 def _anchor(request: Request, user, kind: str, aid: str) -> tuple[str | None, str, dict]:
     """(process_id, department, D31 snapshot) for an anchor the caller may see, or 404.
     Asked by creating a comment and again by sending one in again."""
-    cfg, app = request.app.state.cfg, request.app.state.db
+    cfg, docs = request.app.state.cfg, {}
     if kind == "department":
-        dept = aid
-        name = _registry_name(cfg, dept)
-        if name is None:
+        # an unknown department is a 404 before the gate, like a malformed id below
+        if not _stands(request, user, kind, aid, docs):
             raise HTTPException(status_code=404, detail=NOT_FOUND)
-        _gate(request, user, dept)
-        return None, dept, {"department_name": name}
-    if kind == "node":
-        if not (ids.is_real_activity_id(aid) or ids.is_real_junction_id(aid)):
-            raise HTTPException(status_code=404, detail=NOT_FOUND)
-        pid = aid.rsplit("-", 1)[0]
-    else:
-        pid = aid
-        # the id becomes a path below: nothing but a real process id gets there
-        if not PROCESS_ID_RE.fullmatch(pid):
-            raise HTTPException(status_code=404, detail=NOT_FOUND)
+        _gate(request, user, aid)
+        return None, aid, {"department_name": _registry_name(cfg, aid)}
+    pid = _pid(kind, aid)
+    if pid is None:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
     dept = storage.dept_of(pid)
     _gate(request, user, dept)
-    path = storage.proc_path(cfg.data_root, pid)
-    if not path.is_file():
+    if not _stands(request, user, kind, aid, docs):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
-    doc = storage.read_json(path)
-    if not Disclosure(app, user).may_serve(doc, dept, pid):
-        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    doc = docs[pid]
     snap = {"department_name": _registry_name(cfg, dept), "process_name": doc.get("name")}
     if kind == "node":
-        node = next((n for n in doc.get("nodes", [])
-                     if n["id"] == aid and not n.get("removed")), None)
-        if node is None:
-            raise HTTPException(status_code=404, detail=NOT_FOUND)
-        snap["node_label"] = node.get("label")
+        snap["node_label"] = _node(doc, aid).get("label")
     return pid, dept, snap
 
 

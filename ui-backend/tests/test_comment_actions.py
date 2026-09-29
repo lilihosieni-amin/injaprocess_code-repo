@@ -207,6 +207,45 @@ def test_sending_again_rechecks_the_anchor_as_creating_does(people, data_root):
     assert _events(people["viewer"], "comment.restored") == []
 
 
+def _rewrite(data_root, change):
+    path = data_root / "departments" / "cooking" / "processes" / "cooking-001.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    change(doc)
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+
+def _offered(people, cid) -> tuple[bool, bool]:
+    """«ارسال دوباره» as the detail and the author's own tab each serve it."""
+    one = people["viewer"].get(f"/api/comments/{cid}").json()["actions"]["restore"]
+    own = people["viewer"].get("/api/comments/inbox?tab=own").json()["items"]
+    return one, next(c for c in own if c["id"] == cid)["actions"]["restore"]
+
+
+def test_send_again_is_offered_on_an_ordinary_withdrawn_comment(people):
+    """Review item 7 (c)."""
+    cid = _new(people)
+    people["viewer"].post(f"/api/comments/{cid}/withdraw")
+    assert _offered(people, cid) == (True, True)
+
+
+def test_send_again_is_not_offered_once_the_process_is_tombstoned(people, data_root):
+    """Review item 7 (a): the offer is the refusal's own check."""
+    cid = _new(people)
+    people["viewer"].post(f"/api/comments/{cid}/withdraw")
+    _rewrite(data_root, lambda d: d.update(tombstoned=True))
+    assert _offered(people, cid) == (False, False)
+
+
+def test_send_again_is_not_offered_once_the_process_is_withheld(people, data_root):
+    """Review item 7 (b): an edit leaves the process unconfirmed, so a Reader is
+    no longer served it (D22) — neither the offer nor the send."""
+    cid = _new(people)
+    people["viewer"].post(f"/api/comments/{cid}/withdraw")
+    _rewrite(data_root, lambda d: d.update(name="نام تازه"))
+    assert _offered(people, cid) == (False, False)
+    assert people["viewer"].post(f"/api/comments/{cid}/restore").status_code == 404
+
+
 @pytest.mark.parametrize("who", ["admin", "editor"])
 def test_an_admin_or_editor_comment_sent_again_lands_approved(people, who):
     cid = _new(people, who)
