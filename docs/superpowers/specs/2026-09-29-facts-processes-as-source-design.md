@@ -160,11 +160,12 @@ The core `fits` check is untouched: the process files are separate files, not pa
 
 ## 6. Grouping the photos (Stage G)
 
-Between Prepare and Plan, when the department has photos. The playbook lists the department's
-photos (`departments/<dept>/attachments/*.{jpg,jpeg,png}`) and dispatches `quantify` with
-`mode: group`, that list as `photos`, `run_dir`, and `schema_path` =
-`schemas/photo-groups.schema.json`. The agent reads each photo's extracted description (the
-`.text/<name>.image.md` beside it), may open the images, and writes `{run_dir}/photo-groups.json`:
+Between Prepare and Plan, when the department has photos. The playbook dispatches `quantify` with
+`mode: group`, the `department`, `run_dir`, and `schema_path` = `schemas/photo-groups.schema.json`
+— it lists nothing itself, keeping its read-only-three-things discipline. The agent lists the
+department's photos (`departments/<dept>/attachments/*.{jpg,jpeg,png}`, with `Glob`), reads each
+one's extracted description (the `.text/<name>.image.md` beside it), may open the images, and writes
+`{run_dir}/photo-groups.json`:
 
 ```json
 {"schema_version": 1,
@@ -181,8 +182,9 @@ A department with no photos skips the stage.
 
 **Phase 1 (workbook and attachment units).**
 - Read `input.md`, then the run's own department's process file whole (paging with `offset`/`limit`),
-  then any other department's file where the table's items or columns appear. `Grep` is added to the
-  agent's tools for that search, and it searches only `{run_dir}/processes/`.
+  then any other department's file where the table's items or columns appear. `Grep` and `Glob` are
+  added to the agent's tools — `Grep` for that search, only under `{run_dir}/processes/`; `Glob` for
+  listing the photos in group mode.
 - The table's columns, rows, printed titles and units come from the sheet or the photo, as today.
   Who fills it and approves it, when, how each value is measured, the exceptions, and whether a
   printed column is still filled come from the processes, which win over the form on all of these.
@@ -225,19 +227,24 @@ process file» line are removed.
 
 - **Node index.** A `processes[]` citation is checked against every department's active nodes
   (`process_index` over all departments), not only the run's.
-- **`contradicted[]`** is gated like a citation (the lines inside the unit's own excerpt; `against`
-  names a live node or a handle of this run; otherwise that member is dropped with a run-only note)
-  and collected into `assembly.json` as `contradicted[]` with the unit id.
-- **A `voice` account** written by any unit is ignored with a run-only note.
-- **Cross-unit merge keeper** (`_cross_unit`): sorted by source rank (sheet/photo/pdf/docx, then
-  process, then voice/chat), then unit id — today by unit id alone, which lets `u-tr-…` beat
-  `u-wb-…`.
+- **`contradicted[]`** is gated like a `voice` citation (the lines inside the unit's own excerpt;
+  `against` names a live node or a handle of this run; otherwise that member is dropped — REPAIR, no
+  note) and collected into `assembly.json` as `contradicted[]` with the unit id and, resolved at
+  assemble time, the process name and node label or the phase-1 entry's title.
+- **A unit never writes an account.** `_unit_accounts` goes, so an `accounts` member a unit writes
+  anyway is stripped by the gate's existing A7 drop of engine-owned members (REPAIR, no note), and
+  `_entry`'s block that paired a unit's account with the form's side goes with it.
+- **A process citation's `ref`** is built from the process id's own department prefix
+  (`warehouse-005` → `departments/warehouse/processes/warehouse-005.json`), not the run's.
+- **Cross-unit merge keeper** (`_cross_unit`): sorted by source rank (sheet, script, comment,
+  validation, cf, photo, pdf, docx; then process; then voice and chat), then unit id — today by unit
+  id alone, which lets `u-tr-…` beat `u-wb-…`.
 - **Only judgeable disputes become accounts.** One predicate over the path decides, used by both
-  writers of accounts (`_cross_unit` and the review's `account` resolution): a leaf named `title`,
-  `type`, `expr`, `lang` or `key`, and anything under `inputs[]`/`outputs[]` except `value`, `range`,
-  `unit` and `per`, is not judgeable. For those the keeper's value stays and the other side is
-  recorded as a run-only flag. Everything else (who, when, cadence, values, ranges, units, `per`,
-  statements) is asked as today.
+  writers of accounts (`_cross_unit` and `_settle`'s `account` resolution): a leaf named `title`,
+  `type`, `expr`, `lang` or `key`, and anything under `data/inputs/*` or `data/outputs/*` except
+  `value`, `range`, `unit` and `per`, is not judgeable — the keeper's value stays and nothing is
+  asked. Everything else (who, when, cadence, values, ranges, units, `per`, statements) is asked as
+  today.
 
 ## 9. The report
 
@@ -245,12 +252,13 @@ After everything the report prints today, and only when `contradicted[]` is non-
 
 ```
 کنار گذاشته شد چون با فرایندها یا ثبت‌های همین اجرا نمی‌خواند:
-  • گفت‌وگوی ۱۴۰۵/۰۶/۰۴: «کنار شنیسل خام تنها برای غذای پرسنل مصرف می‌شود» — فرایند «…»، گام «…» خلاف آن را می‌گوید.
-  • گفت‌وگوی ۱۴۰۵/۰۵/۲۸ (۲): «…» — با «<title of the phase-1 entry>» نمی‌خواند.
+  • گفت‌وگوی ۴ شهریور ۱۴۰۵: «کنار شنیسل خام تنها برای غذای پرسنل مصرف می‌شود» — فرایند «…»، گام «…» خلاف آن را می‌گوید.
+  • گفت‌وگوی ۲۸ مرداد ۱۴۰۵ (۲): «…» — با «<title of the phase-1 entry>» نمی‌خواند.
 ```
 
-The recording is named by `_recording_label`, a node by its process's name and its label, a phase-1
-entry by its title — no id, path or line number. The «اختلاف» section shrinks by §8 alone.
+The recording is named by its date in words (day, Persian month name, year — no `/`, which the
+report's leak check bans), a node by its process's name and its label, a phase-1 entry by its title
+— no id, path or line number. The «اختلاف» section shrinks by §8 alone.
 
 ## 10. Model
 
