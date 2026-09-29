@@ -1812,12 +1812,15 @@ def _entry(candidate, decision, state, part=None):
     # cited as the meeting — after the sheet or the photo, so `READ_OFF_A_FORM`
     # and the "form wins a merge" rule both keep reading the first source, and
     # before the process citations, which are not where the value came from.
-    # …and never twice: a transcript unit's `_unit_sources` already cites the
-    # excerpt it read, so its own `voice` member is the same meeting again.
-    for voice in written.get("voice") or []:
-        if not any(s.get("type") == "voice" and s.get("ref") == voice["ref"]
-                   for s in sources):
-            sources.append(voice)
+    # Spec 2026-09-29 §7: the lines a transcript unit says it took the fact
+    # from (gated to its own excerpt) replace the whole-excerpt citation
+    # `_unit_sources` gave it — hundreds of lines nobody can check. An entry
+    # whose unit wrote no `voice` keeps the whole excerpt.
+    voices = written.get("voice") or []
+    heard = {v["ref"] for v in voices}
+    sources = [s for s in sources
+               if not (s.get("type") == "voice" and s.get("ref") in heard)]
+    sources += voices
     # The citations hang off the decision, never off a split part (§2.5's
     # `splitPart` has no `processes`), so both parts of a split inherit them.
     # Owner ruling 2026-09-15: they sit beside the real origin, never instead

@@ -710,20 +710,42 @@ def test_a_form_unit_is_shown_no_talk_and_a_transcript_unit_its_excerpt():
         [{"rel": TR_EXCERPT, "first": 1, "last": 117}]
 
 
-def test_a_transcript_units_voice_in_its_own_excerpt_is_cited_once(tmp_path):
-    """`_unit_sources` already cites the excerpt a transcript unit read whole,
-    so a `voice` member inside it is the same meeting again: the entry carries
-    that meeting once, not twice."""
+def _tr_entry_voices(tmp_path, voice=None):
+    """The real transcript unit's first `new[]` entry, carrying `voice` when
+    given — `(its voice sources, the findings)`."""
     root, run_dir = _prep_root(tmp_path)
     path = run_dir / "units" / TR_UNIT / "out.1.json"
     doc = read_json(path)
-    doc["new"][0]["voice"] = [{"ref": TR_EXCERPT, "lines": "10-20"}]
-    write_json_atomic(path, doc)
+    if voice is not None:
+        doc["new"][0]["voice"] = voice
+        write_json_atomic(path, doc)
     entry = next(e for e in _built(root, run_dir, path)
                  if e["key"] == doc["new"][0]["key"])
-    assert [s for s in entry["source"] if s["type"] == "voice"] == \
-        [{"type": "voice", "ref": TR_EXCERPT, "lines": "1-117"}]
-    assert _refused(validate_unit(root, run_dir, path)) == []
+    return ([s for s in entry["source"] if s["type"] == "voice"],
+            validate_unit(root, run_dir, path))
+
+
+def test_a_transcript_units_voice_replaces_its_whole_excerpt(tmp_path):
+    """Spec 2026-09-29 §7: a transcript unit cites the lines it took the fact
+    from, and those lines — not the whole excerpt `_unit_sources` cites — are
+    what the owner can check."""
+    voices, findings = _tr_entry_voices(
+        tmp_path, [{"ref": TR_EXCERPT, "lines": "40-45"}])
+    assert voices == [{"type": "voice", "ref": TR_EXCERPT, "lines": "40-45"}]
+    assert _refused(findings) == []
+
+
+def test_a_transcript_units_entry_with_no_voice_cites_its_whole_excerpt(tmp_path):
+    voices, _findings = _tr_entry_voices(tmp_path)
+    assert voices == [{"type": "voice", "ref": TR_EXCERPT, "lines": "1-117"}]
+
+
+def test_two_voice_members_of_one_meeting_are_both_kept_in_order(tmp_path):
+    voices, _findings = _tr_entry_voices(
+        tmp_path, [{"ref": TR_EXCERPT, "lines": "60-70"},
+                   {"ref": TR_EXCERPT, "lines": "40-45"}])
+    assert voices == [{"type": "voice", "ref": TR_EXCERPT, "lines": "60-70"},
+                      {"type": "voice", "ref": TR_EXCERPT, "lines": "40-45"}]
 
 
 def test_a_new_entrys_voice_citation_reaches_its_sources(tmp_path):
