@@ -528,8 +528,9 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
                     item["voice"] = voices
                 if froms:
                     item["from"] = froms
+    rows = doc.get("contradicted")
     doc["contradicted"] = [c for c in (_checked_contradiction(item, ctx)
-                                       for item in doc.get("contradicted") or [])
+                                       for item in (rows if isinstance(rows, list) else []))
                            if c]
     if semantics:
         found += _item_checks(root, doc, passed, ctx, skeleton)
@@ -2466,23 +2467,26 @@ FORM_SOURCES = frozenset({"sheet", "script", "comment", "validation", "cf",
 
 def _keeper_order(entry):
     """When two units mint one entry, the one read off a form is kept, then
-    one read off a process, then the rest; ties by unit id, then id — today's
-    order, which alone let a `u-tr-…` beat a `u-wb-…`."""
+    one read off a process, then the rest; ties by phase (a `u-tr-…` unit is
+    phase 2, Ruling 22), then unit id, then id — the old order, which alone let
+    a `u-tr-…` beat a `u-wb-…`."""
     kind = ((entry.get("source") or [{}])[0] or {}).get("type")
     rank = 0 if kind in FORM_SOURCES else 1 if kind == "process" else 2
-    return (rank, entry.get("_unit") or "", entry.get("id") or "")
+    unit = entry.get("_unit") or ""
+    return (rank, 1 if unit.startswith("u-tr-") else 0, unit, entry.get("id") or "")
 
 
 #: A leaf the owner cannot judge from a chat message (spec 2026-09-29 §8).
 UNJUDGEABLE_LEAVES = frozenset({"title", "type", "expr", "lang", "key"})
 FORMULA_MEMBERS = frozenset({"inputs", "outputs"})
-FORMULA_JUDGEABLE = frozenset({"value", "range", "unit", "per"})
+FORMULA_JUDGEABLE = frozenset({"value", "range", "unit", "per", "share"})
 
 
 def judgeable(path):
     """Whether a disagreement at `path` is worth the owner's answer: never a
     title, a data type, a formula, its language or a key; inside a formula's
-    inputs and outputs only a value, a range, a unit or its basis."""
+    inputs and outputs only a value, a range, a unit, its basis or a share
+    (Ruling 21)."""
     segs = path.split("/")
     if segs[-1] in UNJUDGEABLE_LEAVES:
         return False
@@ -2690,10 +2694,18 @@ def phase_entries(root, run_dir, unit_ids):
     """
     run_dir, skeleton, state = _prepare(pathlib.Path(root), pathlib.Path(run_dir),
                                         False, only=set(unit_ids))
-    out = [{"handle": e["_skeleton"], "kind": e["kind"], "key": e.get("key"),
-            "title": e.get("title"), "statement": e.get("statement"),
-            "data": copy.deepcopy(e.get("data") or {})}
-           for e in _build_entries(root, skeleton, state)]
+    entries = _build_entries(root, skeleton, state)
+    # A home names its table by temp id here; phase 2 knows the handle.
+    handle = {e["id"]: e["_skeleton"] for e in entries}
+    out = []
+    for e in entries:
+        row = {"handle": e["_skeleton"], "kind": e["kind"], "key": e.get("key"),
+               "title": e.get("title"), "statement": e.get("statement"),
+               "data": copy.deepcopy(e.get("data") or {})}
+        if (e.get("home") or {}).get("ref"):
+            row["home"] = dict(e["home"], ref=handle.get(e["home"]["ref"],
+                                                         e["home"]["ref"]))
+        out.append(row)
     return sorted(out, key=lambda e: (KIND_ORDER.index(e["kind"]), e["handle"]))
 
 
@@ -3243,7 +3255,7 @@ def _contradicted_block(rows):
     recorded entry, set aside, closing the report; nothing when nothing was."""
     if not rows:
         return []
-    out = ["کنار گذاشته شد چون با فرایندها یا ثبت‌های همین اجرا نمی‌خواند:"]
+    out = ["", "کنار گذاشته شد چون با فرایندها یا ثبت‌های همین اجرا نمی‌خواند:"]
     for row in rows:
         said = f'گفت‌وگوی {_owner_date(pathlib.Path(row["ref"]).stem)}'
         if "process" in row["against"]:

@@ -506,3 +506,32 @@ def test_the_recorded_section_prints_every_phase_one_entry_whole():
     assert "کمد انبار" in text
     assert "ستون vazn (وزن، kg) — وزن تحویلی" in text
     assert entries[1]["statement"].strip() in text
+
+
+def test_a_recorded_rule_names_the_table_it_sits_on():
+    """Spec 2026-09-29 §5.4: a rule, measurement or note is printed with its
+    home — the recorded table's title when phase 1 recorded it, else the ref."""
+    entries = [
+        {"handle": "N-u-att-1-0", "kind": "record", "key": "form_tahvil",
+         "title": "فرم تحویل", "data": {}},
+        {"handle": "N-u-att-1-1", "kind": "rule", "key": "saqf", "title": "سقف",
+         "statement": "سقف پنج کیلو است.", "data": {},
+         "home": {"ref": "N-u-att-1-0", "field": "vazn"}},
+        {"handle": "N-u-att-1-2", "kind": "note", "key": "n", "title": "یادداشت",
+         "statement": "هر روز.", "data": {}, "home": {"ref": "F-00007"}}]
+    lines = recorded_slice(entries, [])
+    assert lines[1:4] == ["N-u-att-1-1 · rule · saqf · سقف", "  سقف پنج کیلو است.",
+                          "  جدول: «فرم تحویل» · ستون vazn"]
+    assert lines[4:] == ["N-u-att-1-2 · note · n · یادداشت", "  هر روز.",
+                         "  جدول: F-00007"]
+
+
+def test_the_recorded_section_is_cut_at_the_budget_by_whole_entries():
+    from facts_plan.build import _recorded_lines
+    first = {"handle": "N-u-att-1-0", "kind": "note", "key": "a", "title": "الف",
+             "statement": "یک جملهٔ کامل " * 20, "data": {}}
+    second = dict(first, handle="N-u-att-1-1", key="b", title="ب")
+    block = _recorded_lines(first, {})
+    budget = estimate_tokens("\n".join(block)) + len(block)
+    assert recorded_slice([first, second], ["F-00001 · record · units"],
+                          budget=budget) == block

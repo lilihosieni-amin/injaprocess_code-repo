@@ -436,15 +436,14 @@ export CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
 rm -f ~/.claude/.ponytail-active     # or: export PONYTAIL_DEFAULT_MODE=off
 test -f ~/.claude/.ponytail-active   # must exit 1 — the playbook checks this too
 
-# (c) the model, with the suffix. Plain `claude-opus-5` silently gets 200K.
-grep -n 'model:' ../data-repo/.claude/agents/quantify.md
-#   model: claude-opus-5[1m]
+# (c) the model and its effort (§14). Opus 5.5 is natively 1M: no `[1m]` suffix.
+grep -nE '^(model|effort):' ../data-repo/.claude/agents/quantify.md
+#   model: claude-opus-5-5
+#   effort: high
 ```
 
-Since 2026-09-15 (c) is the item that bites first: a form unit's input reaches
-130K with its related talk (§12, "Forms first, then the transcripts"), so the
-200K a missing suffix silently gives is no longer merely wasteful — it is a
-ceiling the run walks into.
+(c) is the item that bites first: a transcript unit's input reaches 210K (§14),
+so a model with a 200K window is a ceiling the run walks into.
 
 (d) the playbook uses only `Read, Write, Edit, Bash, Glob, Grep, Task` — the
 bot's own allowlist — so nothing authored on the laptop breaks on the server.
@@ -905,6 +904,8 @@ estimate did not.
 | a transcript chunk | — | **42K** (leaves the cards their room under 50K) |
 | **estimated output** | **20K** | **20K — unchanged** |
 
+«Superseded by §14 (2026-09-29): no related talk; transcript excerpts 70K under a 210K budget.»
+
 The output number is the binding one, and that is why it did not move: ADR
 0017's cap of 20K exists because the first cooking run (2026-09-02) handed one
 agent a whole department and **crashed three agents on the model's output
@@ -1087,7 +1088,7 @@ docker exec -d -w /data \
   -e DATA_ROOT=/data -e SCHEMA_DIR=/opt/schemas \
   -e CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 \
   inja-food-process-local-control-bot-1 sh -c \
-  'mkdir -p /tmp/acc; claude -p "/quantify cooking" --model "claude-opus-5[1m]" \
+  'mkdir -p /tmp/acc; claude -p "/quantify cooking" --model claude-opus-5-5 --effort high \
      --allowedTools Read,Write,Edit,Bash,Glob,Grep,Task \
      --disallowedTools AskUserQuestion,ExitPlanMode,EnterPlanMode \
      --max-turns 200 --output-format stream-json --verbose \
@@ -1204,14 +1205,15 @@ and unit-written accounts are superseded by this section.**
   نمی‌خواند», the meeting named by its date in words, no id, path or line.
 - **Keeper order.** The cross-unit merge keeps the sheet-side source
   (sheet, script, comment, validation, cf, photo, pdf, docx), then process, then
-  voice and chat, then unit id.
+  voice and chat; a tie goes to a phase-1 unit over a `u-tr-…` one, then unit id.
 - **Unjudgeable leaves.** A disagreement on a leaf named `title`, `type`, `expr`,
   `lang` or `key`, or under `data/inputs/*` or `data/outputs/*` except `value`,
-  `range`, `unit`, `per`, is never an owner question: the keeper's value stays.
+  `range`, `unit`, `per`, `share`, is never an owner question: the keeper's value stays.
   A same-kind drift there still reaches the reviewer; only the owner question is
   withheld.
 - **Model.** Every agent runs `claude-opus-5-5` at effort high (natively 1M, no
   `[1m]` suffix); the control-bot image pins Claude Code 2.1.284.
+- **Older runs.** A run built before 2026-09-29 is not resumed; start a fresh one.
 
 ## Next
 

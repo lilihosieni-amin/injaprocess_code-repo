@@ -1,8 +1,14 @@
 """Spec 2026-09-29 §5.1 — the corrected processes as the file a unit reads whole."""
 import json
 
-from facts_plan.build import (MAX_LINE, process_file_map, process_index,
-                              render_process_file, write_process_files)
+from facts_plan.build import (
+    MAX_LINE,
+    process_file_map,
+    process_index,
+    render_process_file,
+    write_process_files,
+)
+from test_facts_plan_fixture import _build
 
 
 def _process(pid, nodes, edges=(), **over):
@@ -93,9 +99,6 @@ def test_the_node_index_spans_every_department(tmp_path):
         ("warehouse-005", "warehouse-005-n002")}
     assert [r["process"] for r in process_index(tmp_path, "warehouse")] == \
         ["warehouse-005"]
-
-
-from test_facts_plan_fixture import _build
 
 
 def test_a_form_units_input_lists_the_process_files_and_no_talk(tmp_path):

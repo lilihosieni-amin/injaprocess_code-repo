@@ -1960,11 +1960,12 @@ Send lili: the seven results (pass/fail each, with the entry titles that prove t
 
 ## Rollout (only on lili's word — not part of the execution above)
 
-1. Trigger the server's git-push so origin has every server commit: `docker exec inja-food-process-git-push-1 /usr/local/bin/git-push-if-needed.sh` (on the server).
-2. Code: check `main` has not moved in a way that conflicts (the comment-authors worktree lands separately), merge `worktree-facts-src` into `main`, push.
-3. Data: in the main `data-repo`, fetch branch `facts-src` from the clone and merge **only** it (never `facts-src-acceptance`); push. Restart the local control-bot after the host-side git op (Docker bind-mount cache).
-4. Server: pull both repos; rebuild the control-bot image (new Claude Code pin); set `CLAUDE_MODEL=claude-opus-5-5` and `CLAUDE_CODE_EFFORT_LEVEL=high` in `/opt/inja/secrets/control-bot.env`; recreate control-bot only while the bot is idle.
-5. Server store: bundle the data-repo, reset preparation's facts to the seed (as Task 12 Step 2, on main), commit, push.
-6. Local test bot: set the same two variables in `deploy/local/control-bot.env` before its next recreate.
-7. Update memory `runtime-model-opus-5-1m` (the pipeline now runs `claude-opus-5-5`, no suffix, effort high).
-8. Clean up: `docker rm -f inja-facts-src`, `docker rmi inja-control-bot-facts-src`, delete the clone and the worktree after the merge.
+1. Unfinished runs (on the server): list every `runs/facts/*/*/meta.json` with `finished_at: null` and abandon or finish each run first — a run built before this change would resume silently degraded (its `talk` ignored, its phase-2 inputs naming no process file).
+2. Trigger the server's git-push so origin has every server commit: `docker exec inja-food-process-git-push-1 /usr/local/bin/git-push-if-needed.sh` (on the server).
+3. Code: check `main` has not moved in a way that conflicts (the comment-authors worktree lands separately), merge `worktree-facts-src` into `main`, push.
+4. Data: in the main `data-repo`, fetch branch `facts-src` from the clone and merge **only** it (never `facts-src-acceptance`); push. Restart the local control-bot after the host-side git op (Docker bind-mount cache).
+5. Server: pull both repos; rebuild the control-bot image (new Claude Code pin); set `CLAUDE_MODEL=claude-opus-5-5` and `CLAUDE_CODE_EFFORT_LEVEL=high` in `/opt/inja/secrets/control-bot.env`; recreate control-bot only while the bot is idle.
+6. Server store: bundle the data-repo, reset preparation's facts to the seed (as Task 12 Step 2, on main), commit, push.
+7. Local test bot: set the same two variables in `deploy/local/control-bot.env` before its next recreate.
+8. Update memory `runtime-model-opus-5-1m` (the pipeline now runs `claude-opus-5-5`, no suffix, effort high).
+9. Clean up: `docker rm -f inja-facts-src`, `docker rmi inja-control-bot-facts-src`, delete the clone and the worktree after the merge.

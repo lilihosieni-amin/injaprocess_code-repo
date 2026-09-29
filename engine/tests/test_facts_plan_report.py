@@ -2,8 +2,14 @@ import json
 import re
 
 from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _write
-from facts_plan.assemble import (ISSUE_FA, _contradicted_block, _disputes, _owner_date,
-                                 gate_b, report)
+from facts_plan.assemble import (
+    ISSUE_FA,
+    _contradicted_block,
+    _disputes,
+    _owner_date,
+    gate_b,
+    report,
+)
 from facts_plan.build import ISSUE_TEXT
 from merge_facts import load_store
 from merge_facts.apply import apply
@@ -489,6 +495,7 @@ def test_the_set_aside_claims_close_the_report_in_the_owners_words():
          "against": {"ref": "S-rec-000000000001"}, "unit": "u-tr-y",
          "entry_title": "فرم تبدیل سینه مرغ"}]
     assert _contradicted_block(rows) == [
+        "",
         "کنار گذاشته شد چون با فرایندها یا ثبت‌های همین اجرا نمی‌خواند:",
         "  • گفت‌وگوی ۴ شهریور ۱۴۰۵: «کنار شنیسل خام تنها برای غذای پرسنل است» — "
         "فرایند «تولید مرغ پیتزا»، گام «انتقال کنار شینسل خام به سردخانه» خلاف آن را می‌گوید.",

@@ -1,6 +1,7 @@
 """`facts-plan build`'s units: the grouping, the budgets, `plan.json` and the
 rendered `input.md` — over synthetic skeletons for the arithmetic and over the
 mini estate for the whole orchestrator."""
+import hashlib
 import json
 
 import pytest
@@ -570,10 +571,16 @@ def test_a_rule_candidate_names_what_each_parameter_reads():
 
 
 def _photos(root, department, names):
+    """Each photo with its served description: the sidecar and the digest of
+    the photo it was read off, as `extract-attachment` leaves them."""
     adir = root / "departments" / department / "attachments"
     (adir / ".text").mkdir(parents=True, exist_ok=True)
     for name in names:
         (adir / f"{name}.jpg").write_bytes(b"jpg-" + name.encode())
+        (adir / ".text" / f"{name}.image.md").write_text("عکس", encoding="utf-8")
+        (adir / ".text" / f"{name}.image.md.sha256").write_text(
+            hashlib.sha256(b"jpg-" + name.encode()).hexdigest() + "\n",
+            encoding="utf-8")
     return [f"departments/{department}/attachments/{n}.jpg" for n in names]
 
 
@@ -642,3 +649,42 @@ def test_build_plans_a_photo_group_as_one_unit(tmp_path):
     _root, _run, _skeleton, plan = _build(tmp_path, setup)
     assert [(u["id"], u["inputs"]) for u in plan["units"]
             if u["type"] == "attachment"] == [("u-att-1", _sidecars("cooking", "ab"))]
+
+
+@pytest.mark.parametrize("pair", [("x.jpg", "x.png"), ("forms__x.jpg", "forms/x.jpg")])
+def test_two_photos_of_one_sidecar_give_it_to_the_one_it_was_read_off(tmp_path, pair):
+    """`x.jpg`/`x.png` (or `forms/x.jpg`/`forms__x.jpg`) share one `.text/`
+    name; only the photo whose digest the sidecar holds is its unit's, so F4
+    does not see the sidecar read twice."""
+    adir = tmp_path / "departments" / "preparation" / "attachments"
+    for name in pair:
+        (adir / name).parent.mkdir(parents=True, exist_ok=True)
+        (adir / name).write_bytes(b"jpg-" + name.encode())
+    side = "departments/preparation/attachments/.text/" \
+        + pair[0].rsplit(".", 1)[0] + ".image.md"
+    (tmp_path / side).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / side).write_text("عکس یک فرم", encoding="utf-8")
+    (tmp_path / (side + ".sha256")).write_text(
+        hashlib.sha256((adir / pair[1]).read_bytes()).hexdigest() + "\n",
+        encoding="utf-8")
+    run = tmp_path / "run"
+    run.mkdir()
+    groups = attachment_groups(tmp_path, "preparation", run, [side])
+    assert groups == [[side]]
+    units = plan_units({"candidates": [], "instances": [], "issues": []}, {}, [],
+                       [side], attachment_groups=groups)
+    assert [u["inputs"] for u in units] == [[side]]
+
+
+def test_a_script_unit_is_shown_every_tables_columns(tmp_path):
+    """Ruling 19: a workbook's script rules plan into their own `-s0` unit,
+    and they read the workbook by column — so that unit is handed every record's
+    field table in the skeleton."""
+    _root, run, skeleton, plan = _build(tmp_path)
+    by_id = {c["id"]: c for c in skeleton["candidates"]}
+    unit = next(u for u in plan["units"] if u["id"].endswith("-s0"))
+    assert any((by_id[c].get("render") or {}).get("script") for c in unit["candidates"])
+    text = (run / "units" / unit["id"] / "input.md").read_text(encoding="utf-8")
+    section = text.split("## جدول‌های مرتبط\n\n", 1)[1].split("\n\n", 1)[0]
+    records = sorted(c["id"] for c in skeleton["candidates"] if c["kind"] == "record")
+    assert [line.split(" · ", 1)[0] for line in section.splitlines()] == records

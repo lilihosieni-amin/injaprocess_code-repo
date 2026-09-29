@@ -2130,6 +2130,20 @@ def test_the_phase_two_input_prints_a_phase_one_entry_by_handle_and_location(
     assert "  ستون vazn (وزن)" in text
 
 
+def test_a_recorded_rule_is_shown_to_phase_two_under_its_tables_title(tmp_path):
+    """Spec §5.4: phase 2 sees where a rule sits — the home `phase_entries`
+    carries is the handle of the recorded table, printed by its title."""
+    from facts_plan.build import render_phase2_inputs
+    rule = dict(RULE, home={"ref": "N-u-att-1-0", "field": "vazn"})
+    root, run = _two_unit_run(tmp_path, att_new=[FORM, rule], tr_new=[])
+    homed = next(e for e in phase_entries(root, run, ["u-att-1"])
+                 if e["key"] == "saqf")
+    assert homed["home"] == {"ref": "N-u-att-1-0", "field": "vazn"}
+    render_phase2_inputs(root, run)
+    text = (run / "units" / "u-tr-m-l1" / "input.md").read_text(encoding="utf-8")
+    assert "  جدول: «فرم تحویل» · ستون vazn" in text
+
+
 # --------------------------------------------------------------------------
 # `home` (spec 2026-09-16): every rule, measurement and note names the table it
 # belongs to — the unit writes it, or it is derived from the entry's own refs.
@@ -2617,13 +2631,32 @@ def test_a_contradiction_the_engine_cannot_check_is_dropped(tmp_path, bad):
     assert _assembled(root, rule)["contradicted"] == []
 
 
+@pytest.mark.parametrize("bad", [5, True, "x", {"claim": "یک"}])
+def test_a_contradicted_that_is_no_list_is_read_as_none(tmp_path, bad):
+    root = _root(tmp_path)
+    rule = _rule_out()
+    rule["contradicted"] = bad
+    assert _assembled(root, rule)["contradicted"] == []
+
+
+def test_a_retry_keeps_the_first_attempts_set_aside_claims_once():
+    from facts_plan.assemble import _overlay
+
+    def doc(*rows):
+        return {"decisions": [], "new": [], "refused": {}, "refused_new": {},
+                "contradicted": list(rows)}
+    a, b = _claim(), _claim(lines="3")
+    assert _overlay(doc(a), doc(a, b), "u-b")["contradicted"] == [a, b]
+
+
 @pytest.mark.parametrize("path,expected", [
     ("title", False), ("data/fields/vazn/type", False), ("data/expr", False),
     ("data/lang", False), ("data/outputs/vazn/title", False),
     ("data/inputs/x/from/field", False), ("data/fields/vazn/key", False),
     ("data/filled_by", True), ("data/cadence", True), ("statement", True),
     ("data/outputs/vazn/range/min", True), ("data/outputs/vazn/value", True),
-    ("data/outputs/vazn/per", True), ("data/fields/vazn/unit", True)])
+    ("data/outputs/vazn/per", True), ("data/fields/vazn/unit", True),
+    ("data/outputs/x/share", True)])
 def test_only_what_the_owner_can_judge_becomes_a_dispute(path, expected):
     from facts_plan.assemble import judgeable
     assert judgeable(path) is expected
@@ -2638,6 +2671,39 @@ def test_the_keeper_is_the_form_then_the_process_then_the_meeting():
                entry("photo", "u-c"), entry("chat", "u-0")]
     assert [e["_unit"] for e in sorted(entries, key=_keeper_order)] == \
         ["u-c", "u-b", "u-0", "u-a"]
+    # Ruling 22: a tie of rank goes to phase 1 before the unit id.
+    ties = [entry("process", "u-tr-a-l1"), entry("process", "u-wb-z")]
+    assert [e["_unit"] for e in sorted(ties, key=_keeper_order)] == \
+        ["u-wb-z", "u-tr-a-l1"]
+
+
+def test_the_sheet_reading_is_kept_over_the_meetings_across_units(tmp_path):
+    """Step 7 through `_cross_unit`: a transcript unit sorts first by id
+    (`u-tr` < `u-wb`), yet the table read off the sheet keeps its prose and
+    data; the meeting's other cadence is an account, not the keeper's."""
+    root = _root(tmp_path)
+    skeleton = _skeleton()
+    skeleton["candidates"] = [dict(skeleton["candidates"][0], unit="u-wb-a")]
+    plan = {"schema_version": 1, "department": "cooking", "hashes": {},
+            "units": [{"id": "u-wb-a", "type": "workbook", "phase": 1, "inputs": [],
+                       "nodes": [], "candidates": ["S-rec-000000000001"],
+                       "est_tokens_in": 1, "est_tokens_out": 1},
+                      {"id": "u-tr-c-l1", "type": "transcript", "phase": 2,
+                       "inputs": ["meetings/transcripts/c.txt#L1-L1"], "nodes": [],
+                       "candidates": [], "est_tokens_in": 1, "est_tokens_out": 1}]}
+    sheet = dict(_record_out(), unit="u-wb-a")
+    talk = {"schema_version": 1, "unit": "u-tr-c-l1", "attempt": 1, "decisions": [],
+            "new": [_second_record(cadence="weekly")]}
+    talk["new"][0]["statement"] = "جدولی که هر هفته پر می‌شود."
+    run_dir = _run(root, {"u-wb-a": sheet, "u-tr-c-l1": talk},
+                   skeleton=skeleton, plan=plan)
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    [record] = [e for e in delta["entries"] if e["key"] == "gozaresh_shabane_pitza"]
+    assert (record["title"], record["statement"]) == (
+        "گزارش شبانهٔ لاین پیتزا", "جدولی که سرلاین پیتزا هر شب پر می‌کند.")
+    assert record["data"]["cadence"] == "nightly"
+    assert record["source"][0]["type"] == "sheet"
 
 
 def test_a_column_type_two_sources_read_differently_is_no_dispute(tmp_path):

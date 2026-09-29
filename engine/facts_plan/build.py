@@ -2460,15 +2460,22 @@ def transcripts(root, recordings):
     return out
 
 
-def _recorded_lines(entry):
+def _recorded_lines(entry, titles):
     """One phase-1 entry as a transcript unit reads it — whole (spec
-    2026-09-29 §5.4): its handle line, its statement, and for a table where it
-    is kept, who fills and approves it, how often, and every column."""
+    2026-09-29 §5.4): its handle line, its statement, the table it sits on
+    (`titles`: a recorded table's handle → its title, else the ref itself), and
+    for a table where it is kept, who fills and approves it, how often, and
+    every column."""
     data = entry.get("data") or {}
     lines = [" · ".join(p for p in [entry["handle"], entry["kind"],
                                     entry.get("key") or "", entry.get("title") or ""] if p)]
     if entry.get("statement"):
         lines += _wrap(f'  {entry["statement"]}')
+    home = entry.get("home") or {}
+    if home.get("ref"):
+        title = titles.get(home["ref"])
+        lines.append(f'  جدول: {f"«{title}»" if title else home["ref"]}'
+                     + (f' · ستون {home["field"]}' if home.get("field") else ""))
     if entry["kind"] == "record":
         # §3's medium/location line: without it two records with like titles
         # are one paper form and one tab, and the unit cannot tell which the
@@ -2494,8 +2501,9 @@ def recorded_slice(entries, store_rows, budget=RECORDED_BUDGET):
     `_recorded_lines` prints it, then the store's rows as `reuse_slice` prints
     them. Cut at `budget` by whole entries, phase-1 entries first."""
     lines, spent = [], 0
+    titles = {e["handle"]: e.get("title") for e in entries if e["kind"] == "record"}
     for entry in entries:
-        block = _recorded_lines(entry)
+        block = _recorded_lines(entry, titles)
         cost = estimate_tokens("\n".join(block)) + len(block)
         if spent + cost > budget:
             break
@@ -2629,7 +2637,7 @@ def attachment_groups(root, department, run_dir, texts):
     sidecars `_attachment_state` serves; a photo whose text is not served is
     in no unit (it is already named unread). Without a usable grouping every
     photo is a unit of its own — never a stop."""
-    from extract_attachment import cache_path
+    from extract_attachment import cache_path, needs_conversion
     root = pathlib.Path(root)
     adir = root / "departments" / department / "attachments"
     served = set(texts)
@@ -2637,7 +2645,9 @@ def attachment_groups(root, department, run_dir, texts):
     sidecar = {}
     for rel in photos:
         side = str(cache_path(adir, root / rel).relative_to(root))
-        if side in served:
+        # `x.jpg`/`x.png` (or `forms/x.jpg`/`forms__x.jpg`) share one sidecar
+        # name: it is the unit of the photo its digest was read off, only.
+        if side in served and not needs_conversion(root / rel, root / side):
             sidecar[rel] = side
     groups = _read_photo_groups(pathlib.Path(run_dir) / PHOTO_GROUPS, photos)
     if groups is None:
@@ -2727,10 +2737,15 @@ def _store_slice(root):
 def _field_tables(unit, skeleton):
     """§2.3's one-line field table for every template **outside** this unit
     that one of its bindings or import edges points at — the only place the
-    unit sees a field key it did not mint itself."""
+    unit sees a field key it did not mint itself.
+
+    A script rule sits on no tab and binds nothing, yet reads the workbook by
+    column name — so a unit holding one is shown every record (Ruling 19)."""
     by_id = {c["id"]: c for c in skeleton["candidates"]}
     mine = [by_id[c] for c in unit["candidates"] if c in by_id]
     wanted, keys = set(), {k for c in mine for k in candidate_instances(c)}
+    if any((c.get("render") or {}).get("script") for c in mine):
+        wanted |= {c["id"] for c in skeleton["candidates"] if c["kind"] == "record"}
     for candidate in mine:
         for member in candidate["payload"].get("applies_to") or []:
             wanted.add((member.get("record") or {}).get("ref"))
