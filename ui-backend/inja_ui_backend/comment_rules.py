@@ -102,15 +102,25 @@ def advance(app: sqlite3.Connection, cc: sqlite3.Connection, cid: int, *,
         return
 
 
-def submit(app: sqlite3.Connection, cc: sqlite3.Connection, cid: int, *, now: int) -> None:
-    """Route a comment just written, edited or sent again, from its author (D63.1).
+def submit(app: sqlite3.Connection, cc: sqlite3.Connection, cid: int, *,
+           pass_kind: Literal["submitted", "edited", "restored"], now: int) -> None:
+    """Record the author's pass — written, edited or sent again — and route it
+    from them (D63.1).
+
+    The author's kind is read once, here, and both records the pass and routes
+    it: visibility reads the one and the comment's path follows the other
+    (2026-09-29 addendum, §5), so a re-role between two reads would leave a
+    comment waiting on Admins who cannot see it, or show Admins an Editor's.
 
     An Admin's or an Editor's lands in the Editors' inbox at once (D63.5; the
     2026-09-29 addendum, decision A): the chain exists to bring a comment to
     an Admin's word and then to the Editors, and theirs already is."""
     c = S.get(cc, cid)
     author = users.by_id(app, c["author_id"])
-    if kind_of(app, author) in ("admin", "editor"):
+    k = kind_of(app, author)
+    S.event(cc, cid, kind=pass_kind, now=now, user_id=author["id"],
+            user_name=author["display_name"], role=k)
+    if k in ("admin", "editor"):
         S.set_state(cc, cid, state="approved", now=now)
         return
     advance(app, cc, cid, from_user_id=author["id"], now=now)

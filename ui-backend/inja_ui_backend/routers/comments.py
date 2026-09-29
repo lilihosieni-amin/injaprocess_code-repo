@@ -162,9 +162,10 @@ def present(request: Request, viewer, c, *, trail: bool = False,
                    "orphan": _orphan(cfg, c, docs)},
         "text": c["text"], "state": c["state"], "stage": c["stage"],
         "waitingWith": _waiting(app, c),
+        # the latest pass's role: the one visibility and routing follow (§5)
         "author": {"name": c["author_name"], "isMe": c["author_id"] == viewer["id"],
-                   "role": next((d.get("role") for e, d in zip(evs, detail)
-                                 if e["kind"] == "submitted"), None)},
+                   "role": next((d.get("role") for e, d in zip(reversed(evs), reversed(detail))
+                                 if e["kind"] in ("submitted", "edited", "restored")), None)},
         "createdAt": _iso(c["created_at"]), "updatedAt": _iso(c["updated_at"]),
         "approvals": len(S.approvers_since_restart(cc, c["id"])),
         "notes": notes,
@@ -230,9 +231,7 @@ def create_comment(body: CommentBody, request: Request, user=Depends(require_ses
     with write(request) as cc:
         cid = S.insert(cc, author=user, anchor_kind=body.anchorKind, anchor_id=body.anchorId,
                        process_id=pid, department=dept, snapshot=snap, text=text, now=now)
-        S.event(cc, cid, kind="submitted", now=now, user_id=user["id"],
-                user_name=user["display_name"], role=R.kind_of(request.app.state.db, user))
-        R.submit(request.app.state.db, cc, cid, now=now)
+        R.submit(request.app.state.db, cc, cid, pass_kind="submitted", now=now)
     record(request, "comment.created", actor=user["username"],
            session_id=getattr(request.state, "session_id", None), target=R.cmt(cid),
            detail={"anchor": body.anchorKind, "department": dept})
@@ -392,9 +391,7 @@ def edit(ref: str, body: TextBody, request: Request, user=Depends(require_sessio
 
     def go(cc, c, now):
         S.set_text(cc, c["id"], text=text, now=now)
-        S.event(cc, c["id"], kind="edited", now=now, user_id=user["id"],
-                user_name=user["display_name"], role=R.kind_of(request.app.state.db, user))
-        R.submit(app, cc, c["id"], now=now)
+        R.submit(app, cc, c["id"], pass_kind="edited", now=now)
 
     out = _act(request, user, ref, "edit", go)
     _audit(request, user, "comment.edited", out)
@@ -429,9 +426,7 @@ def restore(ref: str, request: Request, user=Depends(require_session)):
 
     def go(cc, c, now):
         _anchor(request, user, c["anchor_kind"], c["anchor_id"])
-        S.event(cc, c["id"], kind="restored", now=now, user_id=user["id"],
-                user_name=user["display_name"], role=R.kind_of(app, user))
-        R.submit(app, cc, c["id"], now=now)
+        R.submit(app, cc, c["id"], pass_kind="restored", now=now)
 
     out = _act(request, user, ref, "restore", go)
     _audit(request, user, "comment.restored", out)

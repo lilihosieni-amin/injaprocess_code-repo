@@ -7,7 +7,9 @@ other (a Reader off the path).
 """
 import json
 import sqlite3
+from contextlib import contextmanager
 
+import pytest
 from fastapi.testclient import TestClient
 from inja_ui_backend import db
 from inja_ui_backend.tests_helpers import audit_events as _events
@@ -308,3 +310,34 @@ def test_an_editor_made_an_admin_still_sees_their_comment_other_admins_do_not(pe
     assert cid in _everything_listed(author)
     assert people["admin"].get(f"/api/comments/{cid}").status_code == 404
     assert cid not in _everything_listed(people["admin"])
+
+
+@pytest.mark.parametrize("who, becomes", [("editor", "reader"), ("viewer", "editor")])
+def test_the_pass_records_the_kind_it_was_routed_by(people, monkeypatch, who, becomes):
+    """Review finding 1: the author re-roled between the session's read and the
+    write must not split the pass's recorded role from the routing — the
+    visibility rule reads the one, the comment's path follows the other."""
+    from inja_ui_backend.routers import comments as router
+    real = router.write
+
+    @contextmanager
+    def re_roled_first(request):
+        conn = db.connect(people[who].app_db)
+        try:
+            conn.execute("UPDATE users SET role_id = (SELECT id FROM roles WHERE name = ?)"
+                         " WHERE display_name = ?", (becomes, who))
+        finally:
+            conn.close()
+        with real(request) as cc:
+            yield cc
+
+    monkeypatch.setattr(router, "write", re_roled_first)
+    r = people[who].post("/api/comments", json={
+        "anchorKind": "process", "anchorId": "cooking-001", "text": "x"})
+    monkeypatch.undo()
+    assert r.status_code == 201, r.text
+    c = r.json()
+    assert (c["trail"][0]["kind"], c["trail"][0]["role"]) == ("submitted", becomes)
+    assert (c["state"] == "approved") is (becomes == "editor")
+    seen = people["admin"].get(f"/api/comments/{c['id']}").status_code == 200
+    assert seen is (becomes == "reader")

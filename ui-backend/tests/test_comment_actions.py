@@ -296,6 +296,8 @@ def test_an_editor_s_comment_sent_again_as_a_reader_waits_on_admins_who_see_it(p
     assert r.json()["waitingWith"] == {"kind": "pool"}
     waiting = people["admin"].get("/api/comments/inbox?tab=waiting").json()["items"]
     assert [c["id"] for c in waiting] == [cid]
+    # the role shown is the latest pass's, the one the rule and the path follow
+    assert r.json()["author"]["role"] == waiting[0]["author"]["role"] == "reader"
     assert people["admin"].get("/api/auth/me").json()["pendingApprovals"] == 1
     assert people["admin"].post(f"/api/comments/{cid}/approve", json={}).status_code == 200
 

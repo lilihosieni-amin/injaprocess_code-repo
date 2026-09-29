@@ -35,14 +35,12 @@ def editor_id(app):
 
 
 def post(app, cc, author_id, dept="dining"):
-    """As `create_comment` does it, the `submitted` event and its role included."""
+    """As `create_comment` does it: `submit` records the `submitted` pass too."""
     author = users.by_id(app, author_id)
     cid = S.insert(cc, author=author, anchor_kind="department", anchor_id=dept,
                    process_id=None, department=dept,
                    snapshot={"department_name": "سالن"}, text="متن", now=NOW)
-    S.event(cc, cid, kind="submitted", now=NOW, user_id=author_id,
-            user_name=author["display_name"], role=R.kind_of(app, author))
-    R.submit(app, cc, cid, now=NOW)
+    R.submit(app, cc, cid, pass_kind="submitted", now=NOW)
     return cid
 
 
@@ -360,9 +358,7 @@ def test_a_new_pass_as_a_reader_opens_it_to_the_admins_it_now_waits_on(world, pa
     author = mk(app, "author", "editor", "*")
     cid = post(app, cc, author)
     re_role(app, author, "reader")
-    S.event(cc, cid, kind=pass_kind, now=NOW, user_id=author, user_name="author",
-            role="reader")
-    R.submit(app, cc, cid, now=NOW)
+    R.submit(app, cc, cid, pass_kind=pass_kind, now=NOW)
     assert S.get(cc, cid)["stage"] == "pool"
     u = users.by_id(app, admin)
     where, params = R.visible_sql(app, u)
@@ -380,14 +376,33 @@ def test_a_new_pass_as_an_editor_closes_it_to_the_admins(world):
     cid = post(app, cc, author)
     assert R.can_see(app, cc, users.by_id(app, admin), S.get(cc, cid))
     re_role(app, author, "editor")
-    S.event(cc, cid, kind="edited", now=NOW, user_id=author, user_name="author",
-            role="editor")
-    R.submit(app, cc, cid, now=NOW)
+    R.submit(app, cc, cid, pass_kind="edited", now=NOW)
     assert S.get(cc, cid)["state"] == "approved"
     u = users.by_id(app, admin)
     where, params = R.visible_sql(app, u)
     assert cc.execute(f"SELECT c.id FROM comments c WHERE {where}", params).fetchall() == []
     assert not R.can_see(app, cc, u, S.get(cc, cid))
+
+
+def test_a_reader_it_was_assigned_to_keeps_it_when_it_becomes_an_editor_s(world):
+    """D38 (D67): everyone who saw a comment sees how it ended. The Reader it
+    was assigned to on an earlier pass keeps it after its author, made an
+    Editor, edits it into an Editor's; only the Admins lose it. Pinned so that
+    tightening this is a decision, not an accident."""
+    app, cc = world
+    admin = mk(app, "admin", "admin", "*")
+    head = mk(app, "head", "reader", "dept:dining", can_sup=True)
+    author = mk(app, "author", "reader", "dept:dining", sup=head)
+    cid = post(app, cc, author)                             # assigned to head
+    re_role(app, author, "editor")
+    R.submit(app, cc, cid, pass_kind="edited", now=NOW)
+    assert S.get(cc, cid)["state"] == "approved"
+    for uid, sees in ((head, True), (admin, False)):
+        u = users.by_id(app, uid)
+        where, params = R.visible_sql(app, u)
+        in_sql = cc.execute(f"SELECT 1 FROM comments c WHERE c.id = ? AND {where}",
+                            [cid, *params]).fetchone() is not None
+        assert in_sql is R.can_see(app, cc, u, S.get(cc, cid)) is sees, uid
 
 
 def test_actions(world):
