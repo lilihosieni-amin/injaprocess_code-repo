@@ -127,15 +127,16 @@ comment's latest event); `comments resolve` takes `--seen N` and refuses when
 the version has moved; one line in data-repo's `CLAUDE.md` tells the bot to
 pass it. **Deferred at the owner's decision** (lili, 2026-09-29); not built.
 
-## 5. 2026-09-29, later — an Editor's comment is for Editors only
+## 5. 2026-09-29, later — no Admin sees an Editor's comment
 
 **Amends** D66, and D67's audience with it, for one kind of comment; replaces
 decision A's *Why* where it says an Editor's comment is visible "to the Admins
 whose scope covers its department". Decided by lili.
 
-A comment **written as an Editor** is seen by the Editors — its author among
-them — and by nobody else. No Admin sees it: not one covering its department,
-not a `*` one. Readers never did. Every other row of D66 stands.
+A comment **written as an Editor** is seen by the Editors, by its author, and
+by anyone it was assigned to on an earlier pass — a Reader supervisor who saw
+it keeps seeing how it ended (D38, D67) — and **never by an Admin**: not one
+covering its department, not a `*` one. Every other row of D66 stands.
 
 *Why:* an Editor's comment lands `approved` in the Editors' inbox and never
 passes the Admin pool (decision A), so Admins have no part in its life.
@@ -146,6 +147,9 @@ passes the Admin pool (decision A), so Admins have no part in its life.
   kind now: an Editor made an Admin later keeps seeing their own comment (the
   author check comes first) and does not open their untouched comments to the
   other Admins. A pass with no role recorded reads as not an Editor's.
+  `submit()` reads the author's kind once and both records the pass with it
+  and routes by it, so the two cannot disagree however the author is re-roled
+  mid-request; the author's role a comment shows is that same latest pass's.
 - *Why the latest pass, not only `submitted`:* every pass goes through
   `submit()`, which routes by the author's kind at that moment, so the latest
   pass's role is the one the comment's current path was decided on. A
