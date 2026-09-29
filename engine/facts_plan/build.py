@@ -21,7 +21,7 @@ import sys
 import textwrap
 
 from dump_workbook import is_ids_tab, is_mirror_tab, manifest_reconcile
-from engine_common import (read_json, schema_dir, write_json_atomic,
+from engine_common import (read_json, schema_dir, validate, write_json_atomic,
                            write_text_atomic)
 from merge_facts import is_open, sha256_file
 from merge_facts.conventions import DEFAULT as DEFAULT_CONVENTIONS
@@ -1725,15 +1725,19 @@ def split_unit(unit, skeleton, render, conventions=DEFAULT_CONVENTIONS):
 
 
 def plan_units(skeleton, groups, chunks, attachments,
-               render=lambda u: "", conventions=DEFAULT_CONVENTIONS):
+               render=lambda u: "", conventions=DEFAULT_CONVENTIONS,
+               attachment_groups=None):
     """`plan.json`'s `units[]` (§2.3) and, as a side effect, each candidate's
     `unit` — the two have to agree, so one function writes both.
 
     `chunks` is `[(recording, path, (first, last), text)]` and `attachments`
     the cached `.text`/`.md` paths; they become `attachment` units of their own
-    (`u-att-1`, … in input order), packed to the budget. Until 2026-09-13
-    they rode on the last transcript unit, and when that unit split on its
-    line range every one of them was
+    (`u-att-1`, …): one per list of `attachment_groups` (`attachment_groups()`
+    — a photo group, or one other file), in its order, and with
+    `attachment_groups=None` one per attachment in input order. The packing
+    to the budget went 2026-09-29 (spec §5.2): one table per unit. Until
+    2026-09-13 they rode on the last transcript unit, and when that unit split
+    on its line range every one of them was
     dropped: 13 form photos of the preparation run reached no unit (F4).
     """
     by_id = {c["id"]: c for c in skeleton["candidates"]}
@@ -1799,21 +1803,12 @@ def plan_units(skeleton, groups, chunks, attachments,
                       "inputs": [f"{path}#L{first}-L{last}"], "candidates": [],
                       "nodes": [], "est_tokens_in": estimate_tokens(text),
                       "est_tokens_out": 0})
-    packed = None
-    for path in attachments:
-        # A file joins the unit before it while the two still fit; one too big
-        # for any unit goes alone, and `split_unit` names it `oversized`.
-        if packed is not None:
-            trial = dict(packed, inputs=packed["inputs"] + [path])
-            if fits(trial, render(trial)):
-                packed["inputs"] = trial["inputs"]
-                continue
-        n = sum(u["type"] == "attachment" for u in units) + 1
-        packed = {"id": f"u-att-{n}", "type": "attachment",
-                  "phase": PHASE_OF["attachment"], "inputs": [path],
-                  "candidates": [], "nodes": [], "est_tokens_in": 0,
-                  "est_tokens_out": 0}
-        units.append(packed)
+    for n, group in enumerate(attachment_groups if attachment_groups is not None
+                              else [[path] for path in attachments], start=1):
+        units.append({"id": f"u-att-{n}", "type": "attachment",
+                      "phase": PHASE_OF["attachment"], "inputs": list(group),
+                      "candidates": [], "nodes": [], "est_tokens_in": 0,
+                      "est_tokens_out": 0})
     out = []
     for unit in units:
         unit["est_tokens_out"] = est_tokens_out(
@@ -1821,8 +1816,14 @@ def plan_units(skeleton, groups, chunks, attachments,
             unit["type"] == "transcript")
         text = render(unit)
         unit["est_tokens_in"] = max(unit["est_tokens_in"], estimate_tokens(text))
-        out += [unit] if fits(unit, text) \
-            else split_unit(unit, skeleton, render, conventions)
+        if unit["type"] == "workbook" and len(_axis_parts(unit, skeleton,
+                                                          conventions)) > 1:
+            # Spec 2026-09-29 §5.2: one table per unit — a workbook splits by
+            # tab always, not only over budget; each part is fitted as before.
+            out += split_unit(unit, skeleton, render, conventions)
+        else:
+            out += [unit] if fits(unit, text) \
+                else split_unit(unit, skeleton, render, conventions)
     for unit in out:
         for cid in unit["candidates"]:
             by_id[cid]["unit"] = unit["id"]
@@ -2572,6 +2573,64 @@ def unread_attachments(root, department):
     return _attachment_state(root, department)[1]
 
 
+#: The image files `extract-attachment` describes (its CONVERTERS' image rows).
+IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
+#: Stage G's output (spec 2026-09-29 §6), in the run directory.
+PHOTO_GROUPS = "photo-groups.json"
+
+
+def department_photos(root, department):
+    """The department's form photos, data-root-relative and sorted — what the
+    group agent groups and what a grouping must cover exactly once."""
+    from extract_attachment import find_attachments
+    root = pathlib.Path(root)
+    adir = root / "departments" / department / "attachments"
+    return [str(p.relative_to(root)) for p in find_attachments(adir)
+            if p.suffix.lower() in IMAGE_EXTENSIONS]
+
+
+def _read_photo_groups(path, photos):
+    """The group agent's grouping, or None when it cannot be used: missing,
+    unparseable, off-schema, or not covering the department's photos exactly
+    once (a photo twice, one missing, one that is not this department's)."""
+    try:
+        doc = read_json(path)
+        validate("photo-groups.schema.json", doc)
+    except (OSError, ValueError):
+        return None
+    groups = [list(group["photos"]) for group in doc["groups"]]
+    if sorted(p for group in groups for p in group) != sorted(photos):
+        return None
+    return groups
+
+
+def attachment_groups(root, department, run_dir, texts):
+    """Phase 1's attachment units (spec 2026-09-29 §5.2): one per photo group,
+    in the grouping's order, then one per other attachment. `texts` are the
+    sidecars `_attachment_state` serves; a photo whose text is not served is
+    in no unit (it is already named unread). Without a usable grouping every
+    photo is a unit of its own — never a stop."""
+    from extract_attachment import cache_path
+    root = pathlib.Path(root)
+    adir = root / "departments" / department / "attachments"
+    served = set(texts)
+    photos = department_photos(root, department)
+    sidecar = {}
+    for rel in photos:
+        side = str(cache_path(adir, root / rel).relative_to(root))
+        if side in served:
+            sidecar[rel] = side
+    groups = _read_photo_groups(pathlib.Path(run_dir) / PHOTO_GROUPS, photos)
+    if groups is None:
+        if photos:
+            print("facts-plan: no usable photo-groups.json; one unit per photo",
+                  file=sys.stderr)
+        groups = [[rel] for rel in photos]
+    units = [[sidecar[p] for p in group if p in sidecar] for group in groups]
+    taken = set(sidecar.values())
+    return [u for u in units if u] + [[t] for t in texts if t not in taken]
+
+
 def _wrap(line):
     """One transcript line is one speaker's turn, and the estate's longest runs
     to 5,924 characters — §2.3 bounds a rendered line at 1,900, and the split
@@ -2866,7 +2925,9 @@ def build(root, department, run_dir, recordings, *, rebuild=False):
         w["short"] for w in manifest["workbooks"]
         if w["spreadsheetId"] in estate
         and is_reference_workbook(w, estate[w["spreadsheetId"]])], conventions),
-        chunks, attachments, render=render, conventions=conventions)
+        chunks, attachments, render=render, conventions=conventions,
+        attachment_groups=attachment_groups(root, department, run_dir,
+                                            attachments))
 
     # After `plan_units`, not before: `skeleton.json`'s candidates carry the
     # unit they were planned into, and that is what `plan_units` assigns — and

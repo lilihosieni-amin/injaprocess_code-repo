@@ -1,0 +1,21 @@
+{
+ "schema_version": 1,
+ "unit": "u-wb-mavade_avalie-s5",
+ "attempt": 1,
+ "decisions": [
+  {
+   "skeleton": "S-rec-ddf68f27bc5d",
+   "action": "keep",
+   "key": "mavad_farangi",
+   "title": "مواد اولیهٔ فرنگی",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه فرنگی در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  }
+ ]
+}

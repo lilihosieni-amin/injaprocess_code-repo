@@ -120,19 +120,21 @@ def _run(tmp_path):
     run.mkdir(parents=True)
     build(root, "cooking", run, ["cooking-1405-05-26"])
     plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
-    # F4 — the attachments are a unit of their own, so a form is written by the
-    # unit that was shown its evidence: `{unit type: unit id}`, one of each.
+    # F4 — every attachment is a unit of its own (spec 2026-09-29 §5.2), so a
+    # form is written by the unit that was shown its evidence: `{input: unit
+    # id}`, the transcript by its file.
     units = {}
     for unit in plan["units"]:
-        if unit["type"] in ("transcript", "attachment"):
-            assert unit["type"] not in units, "the mini estate fits one of each"
-            units[unit["type"]] = unit["id"]
+        for ref in unit["inputs"] if unit["type"] != "workbook" else []:
+            path = ref.partition("#")[0]
+            assert path not in units, "the mini estate fits one unit per file"
+            units[path] = unit["id"]
     return root, run, units
 
 
 def _writer(units, form):
     """The unit that writes `form` — the one shown its evidence."""
-    return units[EVIDENCE[form[0]][0]]
+    return units[EVIDENCE[form[0]][2][1]]
 
 
 def _out(run, unit_id, entries, attempt=1):
@@ -214,9 +216,9 @@ def test_every_form_survives_assemble_and_simulate(tmp_path):
     """The whole of I1: what passes the unit's gate is what `apply` accepts. A
     per-entry refusal after this point is the defect §2 names."""
     root, run, units = _run(tmp_path)
-    for kind, unit_id in units.items():
+    for unit_id in sorted({_writer(units, f) for f in FORMS}):
         _out(run, unit_id, [_record(f) for f in FORMS
-                            if EVIDENCE[f[0]][0] == kind])
+                            if _writer(units, f) == unit_id])
 
     assemble(root, run)
 
@@ -230,7 +232,7 @@ def test_every_form_survives_assemble_and_simulate(tmp_path):
                and e["data"]["medium"] == "paper"]
     assert sorted(e["key"] for e in records) == sorted(f[0] for f in FORMS)
     # each form cites its own evidence as what it is: the nested `.docx`, the
-    # pdf and the photo from the attachment unit, the spoken form as voice —
+    # pdf and the photo from their attachment units, the spoken form as voice —
     # and the spoken one cites no file it was never shown.
     for entry in records:
         cited = {(c["type"], c["ref"]) for c in entry.get("source") or []}

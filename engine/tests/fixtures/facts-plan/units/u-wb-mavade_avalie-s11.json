@@ -1,0 +1,21 @@
+{
+ "schema_version": 1,
+ "unit": "u-wb-mavade_avalie-s11",
+ "attempt": 1,
+ "decisions": [
+  {
+   "skeleton": "S-rec-3ac3b278cadf",
+   "action": "keep",
+   "key": "mavad_esteyk",
+   "title": "مواد اولیهٔ استیک",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه استیک در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  }
+ ]
+}

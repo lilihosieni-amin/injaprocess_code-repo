@@ -1,0 +1,21 @@
+{
+ "schema_version": 1,
+ "unit": "u-wb-mavade_avalie-s9",
+ "attempt": 1,
+ "decisions": [
+  {
+   "skeleton": "S-rec-d8a25df7d5be",
+   "action": "keep",
+   "key": "mavad_salad",
+   "title": "مواد اولیهٔ سالاد",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه سالاد در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  }
+ ]
+}

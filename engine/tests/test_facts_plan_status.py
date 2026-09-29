@@ -269,3 +269,20 @@ def test_status_reports_instead_of_raising_when_the_estate_moved(
     assert "facts-plan: phase-2 inputs not rendered: " in capsys.readouterr().err
     assert RECORDED_HEADING not in (run / "units" / "u-tr-m-l1"
                                     / "input.md").read_text(encoding="utf-8")
+
+
+def test_status_asks_for_the_photo_grouping_before_the_plan(tmp_path):
+    adir = tmp_path / "departments" / "preparation" / "attachments"
+    adir.mkdir(parents=True)
+    (adir / "a.jpg").write_bytes(b"jpg")
+    run = tmp_path / "runs" / "facts" / "preparation" / "20260929-100000"
+    run.mkdir(parents=True)
+    assert status(tmp_path, run)["stage"] == "G"
+    (run / "photo-groups.json").write_text("{}", encoding="utf-8")
+    assert status(tmp_path, run)["stage"] == "P"
+
+
+def test_a_department_without_photos_goes_straight_to_the_plan(tmp_path):
+    run = tmp_path / "runs" / "facts" / "preparation" / "20260929-100000"
+    run.mkdir(parents=True)
+    assert status(tmp_path, run)["stage"] == "P"

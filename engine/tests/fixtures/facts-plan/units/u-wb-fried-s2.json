@@ -1,20 +1,8 @@
 {
  "schema_version": 1,
- "unit": "u-wb-fried",
+ "unit": "u-wb-fried-s2",
  "attempt": 1,
  "decisions": [
-  {
-   "skeleton": "S-rec-a1440cef3fb8",
-   "action": "keep",
-   "key": "mojudi_aval_shab_sokhari",
-   "title": "موجودی اول شب لاین سوخاری",
-   "statement": "شمارش موجودی اقلام لاین سوخاری در آغاز شب کاری.",
-   "data": {
-    "role": "log",
-    "cadence": "nightly",
-    "day_boundary": "01:15"
-   }
-  },
   {
    "skeleton": "S-rec-5d323801cf94",
    "action": "keep",
@@ -27,7 +15,7 @@
     "day_boundary": "01:15",
     "movement": {
      "to": {
-      "ref": "N-u-wb-fried-0"
+      "ref": "N-u-wb-fried-s2-0"
      },
      "reason": "باقی‌ماندهٔ اقلام لاین در پایان شب به انبار مرکزی برگردانده می‌شود."
     }

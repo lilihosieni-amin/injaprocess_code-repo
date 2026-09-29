@@ -1,0 +1,21 @@
+{
+ "schema_version": 1,
+ "unit": "u-wb-mavade_avalie-s12",
+ "attempt": 1,
+ "decisions": [
+  {
+   "skeleton": "S-rec-0f92162ffcfc",
+   "action": "keep",
+   "key": "mavad_personeli",
+   "title": "مواد اولیهٔ پرسنلی",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه پرسنلی در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  }
+ ]
+}

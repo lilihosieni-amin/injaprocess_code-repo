@@ -1,4 +1,4 @@
-"""The v2 §17 cooking acceptance, re-expressed over three frozen unit outputs
+"""The v2 §17 cooking acceptance, re-expressed over the frozen unit outputs
 (v3 §7): the fixture's own build, the units' documents folded in by `assemble`,
 then `apply` and the owner's `report.md`."""
 import json
@@ -24,7 +24,7 @@ def _delta(tmp_path):
         out.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
         # The stage the real chain runs between the unit and `assemble` (§2.3,
         # QF-51): a document `validate facts-unit` refuses is re-dispatched,
-        # never folded in — so the frozen three have to pass it here too.
+        # never folded in — so the frozen documents have to pass it here too.
         assert validate_unit(root, run, out) == [], path.stem
     assemble(root, run)
     return root, run, json.loads((run / "facts-delta.json")

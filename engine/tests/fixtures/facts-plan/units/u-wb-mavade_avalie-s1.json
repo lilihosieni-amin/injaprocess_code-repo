@@ -1,0 +1,21 @@
+{
+ "schema_version": 1,
+ "unit": "u-wb-mavade_avalie-s1",
+ "attempt": 1,
+ "decisions": [
+  {
+   "skeleton": "S-rec-58512a0deeb4",
+   "action": "keep",
+   "key": "mavad_pitza_amrikaei",
+   "title": "مواد اولیهٔ پیتزا امریکایی",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه پیتزا امریکایی در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  }
+ ]
+}

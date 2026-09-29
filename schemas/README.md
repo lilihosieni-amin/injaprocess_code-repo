@@ -19,6 +19,7 @@ these); kept in `code-repo` so runtime (INV-2) cannot weaken validation.
 | `facts.schema.json` | the facts store — envelope (`home`, `home_detached`) + four kinds (quantitative-facts design §6/§7; tables-as-the-spine 2026-09-16) | merge facts | ui-backend, UI, later runs |
 | `facts-delta.schema.json` | agent-proposed changes to the facts store (design §4) | facts extract agent | merge facts |
 | `facts-unit.schema.json` | one unit's decisions over its candidates (v3 design §2.5) | quantify agent (unit/review mode) | `validate facts-unit`, `facts-plan assemble` |
+| `photo-groups.schema.json` | which of a department's form photos show one table — spec 2026-09-29 §6 | quantify agent (group mode, Stage G) | `facts-plan build`, `facts-plan status` |
 | `facts-patch.schema.json` | one chat instruction's operations on one entry — v3.7 §2.2 | facts chat agent | `merge facts edit` |
 | `facts-index.schema.json` | flattened, filterable rows over the facts store (design §7) | merge facts | ui-backend, UI |
 | `facts-idseq.schema.json` | facts id sequence counter state | allocate-id | allocate-id |

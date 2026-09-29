@@ -1,0 +1,21 @@
+{
+ "schema_version": 1,
+ "unit": "u-wb-mavade_avalie-s2",
+ "attempt": 1,
+ "decisions": [
+  {
+   "skeleton": "S-rec-00a1c269f6e5",
+   "action": "keep",
+   "key": "mavad_pitza_italiaei",
+   "title": "مواد اولیهٔ پیتزا ایتالیایی",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه پیتزا ایتالیایی در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  }
+ ]
+}

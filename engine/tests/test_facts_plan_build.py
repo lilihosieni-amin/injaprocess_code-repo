@@ -277,19 +277,22 @@ def test_photos_get_their_own_units_and_every_input_is_read_once(
                    for p in unit["inputs"])
 
 
-def test_attachments_pack_to_the_budget_and_a_huge_one_goes_alone():
-    """Packed in input order; one too big for any unit is its own unit, sent
+def test_each_attachment_is_a_unit_and_a_huge_one_is_named():
+    """With no grouping, every attachment is its own unit, in input order — no
+    packing (spec 2026-09-29 §5.2); one too big for any unit is still sent,
     with an `oversized` issue naming it rather than dropped."""
     size = {"a.txt": 100, "b.txt": 100, "huge.txt": IN_BUDGET * 3, "c.txt": 100}
     render = lambda u: "x" * sum(size[p] for p in u["inputs"])   # noqa: E731
     skeleton = {"candidates": [], "instances": []}
 
-    units = plan_units(skeleton, {}, [], list(size), render=render)
+    units = plan_units(skeleton, {}, [], list(size), render=render,
+                       attachment_groups=None)
 
     assert [(u["id"], u["type"], u["inputs"]) for u in units] == [
-        ("u-att-1", "attachment", ["a.txt", "b.txt"]),
-        ("u-att-2", "attachment", ["huge.txt"]),
-        ("u-att-3", "attachment", ["c.txt"])]
+        ("u-att-1", "attachment", ["a.txt"]),
+        ("u-att-2", "attachment", ["b.txt"]),
+        ("u-att-3", "attachment", ["huge.txt"]),
+        ("u-att-4", "attachment", ["c.txt"])]
     assert [(i["kind"], i["target"]) for i in skeleton["issues"]] == \
         [("oversized", "huge")]
 

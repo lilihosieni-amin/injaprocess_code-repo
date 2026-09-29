@@ -9,7 +9,9 @@ from facts_plan.build import (
     MAX_LINE,
     MAX_LINES,
     OUT_BUDGET,
+    attachment_groups,
     build,
+    candidate_instances,
     estimate_tokens,
     group_key,
     label_of,
@@ -22,6 +24,7 @@ from facts_plan.build import (
     write_plan,
 )
 from facts_plan_helpers import estate
+from test_facts_plan_fixture import _build
 
 
 def _wb(short, directory, twin=None, reference=()):
@@ -276,11 +279,17 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
                                      "candidates", "nodes", "est_tokens_in",
                                      "est_tokens_out"}
 
-    # the fixed grouping: each branch pair one unit, the BOM and the mirroring
-    # book their own, named after the group's lowest short.
+    # the fixed grouping: each branch pair one group, the BOM and the mirroring
+    # book their own, named after the group's lowest short — and every group
+    # split by the tab its candidates sit on, one table per unit (spec
+    # 2026-09-29 §5.2; `-s0` is the script rule, which sits on no tab).
     assert [u["id"] for u in plan["units"] if u["type"] == "workbook"] == [
-        "u-wb-gozareshat", "u-wb-mini_bom", "u-wb-mini_kanter_ch",
-        "u-wb-mini_pitza_ch"]
+        "u-wb-gozareshat-s2", "u-wb-gozareshat-s6", "u-wb-gozareshat-s7",
+        "u-wb-gozareshat-s8", "u-wb-mini_bom-s1", "u-wb-mini_bom-s2",
+        "u-wb-mini_kanter_ch-s1", "u-wb-mini_kanter_ch-s2",
+        "u-wb-mini_pitza_ch-s0", "u-wb-mini_pitza_ch-s1",
+        "u-wb-mini_pitza_ch-s4", "u-wb-mini_pitza_ch-s5",
+        "u-wb-mini_pitza_ch-s6"]
     assert {u["type"] for u in plan["units"]} == {"workbook", "transcript"}
     assert out == {"units": len(plan["units"]),
                    "candidates": {"record": sum(c["kind"] == "record"
@@ -330,12 +339,12 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
 
     # §2.3's context row: the bodies of the functions this unit's own
     # candidates call, and no such section for a unit that calls none.
-    pitza = (run_dir / "units" / "u-wb-mini_pitza_ch" / "input.md").read_text(
+    pitza = (run_dir / "units" / "u-wb-mini_pitza_ch-s1" / "input.md").read_text(
         encoding="utf-8")
     assert "getTotalFoodsIngredient" in pitza and "getIngredientValue(foodIds[i]" in pitza
-    bom = next(u for u in plan["units"] if u["id"] == "u-wb-mini_bom")
-    assert "## توابع" not in (run_dir / "units" / bom["id"] / "input.md").read_text(
-        encoding="utf-8")
+    for bom in ("u-wb-mini_bom-s1", "u-wb-mini_bom-s2"):
+        assert "## توابع" not in (run_dir / "units" / bom / "input.md").read_text(
+            encoding="utf-8")
 
 
 def test_refresh_inputs_rewrites_the_inputs_and_touches_nothing_else(
@@ -558,3 +567,78 @@ def test_a_rule_candidate_names_what_each_parameter_reads():
     # has, and «?» threw it away.
     assert "    cell_1 → CN" in text
     assert "    ref_9 → ?" in text
+
+
+def _photos(root, department, names):
+    adir = root / "departments" / department / "attachments"
+    (adir / ".text").mkdir(parents=True, exist_ok=True)
+    for name in names:
+        (adir / f"{name}.jpg").write_bytes(b"jpg-" + name.encode())
+    return [f"departments/{department}/attachments/{n}.jpg" for n in names]
+
+
+def _sidecars(department, names):
+    return [f"departments/{department}/attachments/.text/{n}.image.md" for n in names]
+
+
+def test_every_workbook_unit_holds_one_tab(tmp_path):
+    _root, _run, skeleton, plan = _build(tmp_path)
+    sheet_of = {i["key"]: i["sheetId"] for i in skeleton["instances"]}
+    by_id = {c["id"]: c for c in skeleton["candidates"]}
+    for unit in plan["units"]:
+        if unit["type"] != "workbook":
+            continue
+        tabs = {min((sheet_of.get(k, 0) for k in candidate_instances(by_id[c])),
+                    default=0) for c in unit["candidates"]}
+        assert len(tabs) == 1, unit["id"]
+
+
+def test_photos_are_grouped_as_the_grouping_says(tmp_path):
+    photos = _photos(tmp_path, "preparation", ["a", "b", "c"])
+    texts = _sidecars("preparation", "abc") + [
+        "departments/preparation/attachments/.text/f.pdf.md"]
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "photo-groups.json").write_text(json.dumps({"schema_version": 1, "groups": [
+        {"photos": photos[:2], "why": "یک جدول"}, {"photos": photos[2:]}]}),
+        encoding="utf-8")
+    assert attachment_groups(tmp_path, "preparation", run, texts) == \
+        [texts[:2], [texts[2]], [texts[3]]]
+
+
+@pytest.mark.parametrize("groups", [None, "{", [["a"], ["a", "b", "c"]],
+                                     [["a", "b"]], [["a", "b", "c", "x"]]])
+def test_an_unusable_grouping_gives_every_photo_its_own_unit(tmp_path, groups, capsys):
+    _photos(tmp_path, "preparation", ["a", "b", "c"])
+    texts = _sidecars("preparation", "abc")
+    run = tmp_path / "run"
+    run.mkdir()
+    if groups == "{":
+        (run / "photo-groups.json").write_text("{", encoding="utf-8")
+    elif groups is not None:
+        (run / "photo-groups.json").write_text(json.dumps({"schema_version": 1, "groups": [
+            {"photos": [f"departments/preparation/attachments/{n}.jpg" for n in g]}
+            for g in groups]}), encoding="utf-8")
+    assert attachment_groups(tmp_path, "preparation", run, texts) == [[t] for t in texts]
+    assert "one unit per photo" in capsys.readouterr().err
+
+
+def test_build_plans_a_photo_group_as_one_unit(tmp_path):
+    """`build` hands the run's grouping to `plan_units`: two photos of one
+    table are read by one unit."""
+    import hashlib
+
+    def setup(root):
+        photos = _photos(root, "cooking", ["a", "b"])
+        for rel, side in zip(photos, _sidecars("cooking", "ab")):
+            (root / side).write_text("عکس یک فرم", encoding="utf-8")
+            (root / (side + ".sha256")).write_text(
+                hashlib.sha256((root / rel).read_bytes()).hexdigest() + "\n",
+                encoding="utf-8")
+        (root / "runs" / "facts" / "cooking" / "20260906-101500"
+         / "photo-groups.json").write_text(json.dumps(
+             {"schema_version": 1, "groups": [{"photos": photos}]}),
+             encoding="utf-8")
+    _root, _run, _skeleton, plan = _build(tmp_path, setup)
+    assert [(u["id"], u["inputs"]) for u in plan["units"]
+            if u["type"] == "attachment"] == [("u-att-1", _sidecars("cooking", "ab"))]

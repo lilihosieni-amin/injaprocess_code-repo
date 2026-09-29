@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "photo-groups.schema.json",
+  "title": "Photo groups — which of a department's form photos show one table (spec 2026-09-29 §6)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "groups"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["photos"],
+        "properties": {
+          "photos": {
+            "type": "array", "minItems": 1, "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^departments/[a-z]+/attachments/[^/]" }
+          },
+          "why": { "type": "string" }
+        }
+      }
+    }
+  }
+}

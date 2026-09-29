@@ -205,10 +205,19 @@ def _stale(root, plan):
     return False
 
 
-def _stage(run_dir, plan, states):
+def _needs_groups(root, run_dir):
+    """Stage G (spec 2026-09-29 §6): the department has photos and the run no
+    grouping yet. The department is the run directory's parent's name."""
+    from facts_plan.build import PHOTO_GROUPS, department_photos
+    department = pathlib.Path(run_dir).resolve().parent.name
+    return (bool(department_photos(root, department))
+            and not (pathlib.Path(run_dir) / PHOTO_GROUPS).is_file())
+
+
+def _stage(root, run_dir, plan, states):
     """The resume ladder of §6, by artefact presence — nothing is recorded."""
     if plan is None:
-        return "P"
+        return "G" if _needs_groups(root, run_dir) else "P"
     if any(s["state"] in ("pending", "waiting") or s.get("retry")
            for s in states):
         return "U"
@@ -246,7 +255,7 @@ def status(root, run_dir, *, new_turn=False):
             print(f"facts-plan: phase-2 inputs not rendered: {exc}",
                   file=sys.stderr)
     elapsed = _epoch() - started
-    return {"stage": _stage(run_dir, plan, states), "units": states,
+    return {"stage": _stage(root, run_dir, plan, states), "units": states,
             "phase": phase, "plan_stale": _stale(root, plan),
             "elapsed_s": elapsed, "yield": elapsed > YIELD_AFTER_S}
 

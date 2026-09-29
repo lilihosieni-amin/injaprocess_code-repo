@@ -537,3 +537,15 @@ def test_reconciled_against_cell_is_local_not_a_ref(validate):
     e["data"]["reconciled_against"][0]["cell"] = {"ref": "F-00002",
                                                   "field": "start_stock"}
     assert validate("facts.schema.json", _wrap(e)) != []
+
+
+def test_photo_groups_documents_validate(validate):
+    good = {"schema_version": 1, "groups": [
+        {"photos": ["departments/preparation/attachments/a.jpg",
+                    "departments/preparation/attachments/b.jpg"], "why": "یک جدول"},
+        {"photos": ["departments/preparation/attachments/c.jpg"]}]}
+    assert validate("photo-groups.schema.json", good) == []
+    assert validate("photo-groups.schema.json",
+                    {"schema_version": 1, "groups": [{"photos": ["/abs/a.jpg"]}]}) != []
+    assert validate("photo-groups.schema.json",
+                    {"schema_version": 1, "groups": [{"photos": []}]}) != []
