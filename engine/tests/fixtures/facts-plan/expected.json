@@ -19,11 +19,13 @@
   "script": 250,
   "record_base": 150,
   "record_per_field": 60,
-  "transcript_ratio": 0.4,
+  "transcript_ratio": 0.15,
   "in_budget": 50000,
   "out_budget": 20000,
   "max_lines": 4500,
-  "max_line": 1900
+  "max_line": 1900,
+  "transcript_chunk": 70000,
+  "phase2_in_budget": 210000
  },
  "units": [
   {
@@ -248,7 +250,7 @@
    "type": "transcript",
    "candidates": 0,
    "est_tokens_in": 14320,
-   "est_tokens_out": 3412
+   "est_tokens_out": 1279
   }
  ],
  "candidate_ids": [

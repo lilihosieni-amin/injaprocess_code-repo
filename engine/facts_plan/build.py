@@ -1520,7 +1520,11 @@ EST_OUT = {"rule": 250, "script": 250}
 #: §3's phase 1 reads the forms — the workbooks and the photographed paper —
 #: beside the corrected processes (spec 2026-09-29 §5.3); phase 2 reads the
 #: transcripts knowing what phase 1 recorded.
-RECORDED_BUDGET = 20000
+#: Spec 2026-09-29 §5.4: phase 2 fills gaps in 2–3 units, not 10 — an excerpt
+#: of 70K, a unit that writes little, and a budget of its own that holds the
+#: excerpt and phase 1's entries whole.
+TRANSCRIPT_CHUNK, TRANSCRIPT_OUT_RATIO = 70000, 0.15
+PHASE2_IN_BUDGET, RECORDED_BUDGET = 210000, 120000
 RECORDED_HEADING = "## آنچه تا کنون ثبت شده"
 PHASE_OF = {"workbook": 1, "attachment": 1, "transcript": 2}
 
@@ -1568,7 +1572,7 @@ def workbook_groups(manifest, department, reference_only=(),
     return groups
 
 
-def transcript_chunks(text, budget=42000):
+def transcript_chunks(text, budget=TRANSCRIPT_CHUNK):
     """Line-aligned chunks under `budget` (§2.3). The rendered input carries the
     cards and the slices too, so a chunk's own budget is below the unit's."""
     lines = text.splitlines()
@@ -1594,7 +1598,7 @@ def est_tokens_out(candidates, est_tokens_in, is_transcript):
             total += 150 + 60 * len(c["payload"].get("fields") or [])
         else:
             total += EST_OUT[c["kind"]]
-    return total + (int(est_tokens_in * 0.4) if is_transcript else 0)
+    return total + (int(est_tokens_in * TRANSCRIPT_OUT_RATIO) if is_transcript else 0)
 
 
 def _view(candidate):
@@ -1626,8 +1630,12 @@ def candidate_instances(candidate):
 
 
 def fits(unit, text):
+    """A form unit against the 50K core, a transcript unit against its own
+    budget (spec 2026-09-29 §5.4); the output cap and the Read tool's line
+    bounds hold for both."""
+    budget = PHASE2_IN_BUDGET if unit["type"] == "transcript" else IN_BUDGET
     lines = text.split("\n")
-    return (estimate_tokens(text) <= IN_BUDGET
+    return (estimate_tokens(text) <= budget
             and unit["est_tokens_out"] <= OUT_BUDGET
             and len(lines) <= MAX_LINES and max(map(len, lines)) <= MAX_LINE)
 
@@ -2452,35 +2460,46 @@ def transcripts(root, recordings):
     return out
 
 
+def _recorded_lines(entry):
+    """One phase-1 entry as a transcript unit reads it — whole (spec
+    2026-09-29 §5.4): its handle line, its statement, and for a table where it
+    is kept, who fills and approves it, how often, and every column."""
+    data = entry.get("data") or {}
+    lines = [" · ".join(p for p in [entry["handle"], entry["kind"],
+                                    entry.get("key") or "", entry.get("title") or ""] if p)]
+    if entry.get("statement"):
+        lines += _wrap(f'  {entry["statement"]}')
+    if entry["kind"] == "record":
+        # §3's medium/location line: without it two records with like titles
+        # are one paper form and one tab, and the unit cannot tell which the
+        # meeting meant.
+        location = data.get("location") or {}
+        where = [str(v) for v in [data.get("medium")]
+                 + [location.get(k) for k in ("sheet", "system", "kept_at", "holder")] if v]
+        if where:
+            lines.append("  " + " · ".join(where))
+        for label, key in (("پرکننده", "filled_by"), ("تأییدکننده", "approved_by"),
+                           ("تناوب", "cadence")):
+            if data.get(key):
+                lines.append(f"  {label}: {data[key]}")
+        for field in data.get("fields") or []:
+            unit = f'، {field["unit"]}' if field.get("unit") else ""
+            desc = f' — {field["description"]}' if field.get("description") else ""
+            lines += _wrap(f'  ستون {field.get("key")} ({field.get("title") or ""}{unit}){desc}')
+    return lines
+
+
 def recorded_slice(entries, store_rows, budget=RECORDED_BUDGET):
-    """Spec §3 phase 2: what phase 1 recorded, every entry with its handle and
-    — for a record — its columns; then the store's rows as `reuse_slice`
-    prints them. Cut at `budget`, phase-1 entries first."""
+    """Spec §3 phase 2, whole since 2026-09-29: every phase-1 entry as
+    `_recorded_lines` prints it, then the store's rows as `reuse_slice` prints
+    them. Cut at `budget` by whole entries, phase-1 entries first."""
     lines, spent = [], 0
-    for e in entries:
-        parts = [e["handle"], e["kind"], e.get("key") or "", e.get("title") or ""]
-        data = e.get("data") or {}
-        if e["kind"] == "record":
-            # §3's medium/location line: the tab for a sheet, the cupboard and
-            # its holder for paper, the system for an external one. Without it
-            # two records with like titles are one paper form and one tab and
-            # the transcript unit cannot tell which the meeting meant.
-            location = data.get("location") or {}
-            parts += [str(v) for v in [data.get("medium")]
-                      + [location.get(k) for k in
-                         ("sheet", "system", "kept_at", "holder")] if v]
-        if e["kind"] == "record" and data.get("fields"):
-            cols = " · ".join(f'{f.get("key")} ({f.get("title") or ""}'
-                              + (f'، {f["unit"]}' if f.get("unit") else "") + ")"
-                              for f in data["fields"])
-            parts.append(f"ستون‌ها: {cols}")
-        elif e.get("statement"):
-            parts.append(e["statement"][:200])
-        line = " · ".join(p for p in parts if p)
-        cost = estimate_tokens(line) + 1
+    for entry in entries:
+        block = _recorded_lines(entry)
+        cost = estimate_tokens("\n".join(block)) + len(block)
         if spent + cost > budget:
             break
-        lines.append(line)
+        lines += block
         spent += cost
     for row in store_rows:
         cost = estimate_tokens(row) + 1

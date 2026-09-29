@@ -11,8 +11,8 @@ import pathlib
 import shutil
 
 from facts_plan.build import (EST_OUT, IN_BUDGET, MAX_LINE, MAX_LINES,
-                              OUT_BUDGET, _is_mirror, build, est_tokens_out,
-                              load_estate)
+                              OUT_BUDGET, PHASE2_IN_BUDGET, TRANSCRIPT_CHUNK,
+                              _is_mirror, build, est_tokens_out, load_estate)
 
 FIX = pathlib.Path(__file__).parent / "fixtures" / "facts-plan"
 EXPECTED = json.loads((FIX / "expected.json").read_text(encoding="utf-8"))
@@ -99,6 +99,8 @@ def test_the_fixture_freezes_the_engines_own_estimator():
     assert {k: limits[k] for k in EST_OUT} == EST_OUT
     assert (limits["in_budget"], limits["out_budget"], limits["max_lines"],
             limits["max_line"]) == (IN_BUDGET, OUT_BUDGET, MAX_LINES, MAX_LINE)
+    assert (limits["phase2_in_budget"], limits["transcript_chunk"]) == \
+        (PHASE2_IN_BUDGET, TRANSCRIPT_CHUNK)
     # the three the estimator spells inline, read back through it
     record = {"kind": "record", "payload": {"fields": [{}, {}]}}
     assert est_tokens_out([record], 0, False) == \
@@ -112,7 +114,9 @@ def test_every_unit_is_under_both_budgets_and_the_line_bound(tmp_path):
     for unit in plan["units"]:
         text = (run / "units" / unit["id"] / "input.md").read_text(encoding="utf-8")
         lines = text.split("\n")
-        assert unit["est_tokens_in"] <= limits["in_budget"], unit["id"]
+        budget = limits["phase2_in_budget"] if unit["type"] == "transcript" \
+            else limits["in_budget"]
+        assert unit["est_tokens_in"] <= budget, unit["id"]
         assert unit["est_tokens_out"] <= limits["out_budget"], unit["id"]
         assert len(lines) <= limits["max_lines"], unit["id"]
         assert max(map(len, lines)) <= limits["max_line"], unit["id"]

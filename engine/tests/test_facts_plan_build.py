@@ -11,6 +11,7 @@ from facts_plan.build import (
     PHASE_OF,
     RECORDED_BUDGET,
     RECORDED_HEADING,
+    TRANSCRIPT_CHUNK,
     build,
     code_key,
     estimate_tokens,
@@ -320,15 +321,15 @@ def test_an_input_no_unit_reads_exits_2_naming_it(monkeypatch, capsys):
 
 def test_the_budgets_are_the_owners_2026_09_15():
     assert (IN_BUDGET, OUT_BUDGET, MAX_LINES) == (50000, 20000, 4500)
-    assert RECORDED_BUDGET == 20000
+    assert RECORDED_BUDGET == 120000
 
 
-def test_a_transcript_chunk_stays_under_the_core_budget_with_the_cards_room():
+def test_a_transcript_chunk_stays_under_the_phase_two_chunk_with_the_cards_room():
     text = "\n".join("این یک خط گفت‌وگو دربارهٔ فرم تبدیل است." * 3
                      for _ in range(6000))
     for first, last in transcript_chunks(text):
         assert estimate_tokens(
-            "\n".join(text.splitlines()[first - 1:last])) <= 42000
+            "\n".join(text.splitlines()[first - 1:last])) <= TRANSCRIPT_CHUNK
 
 
 def test_every_unit_carries_its_phase():
@@ -377,10 +378,12 @@ def test_a_transcript_units_recorded_section_replaces_the_reuse_slice():
         {"handle": "N-u-att-1-3", "kind": "note", "key": "khamir",
          "title": "خمیر", "statement": "خمیر هر روز صبح آماده می‌شود"}],
         ["F-00001 · record · units · واحدها"])
-    assert lines[0] == "S-rec-1 · record · bazdehi · بازدهی تولید · ستون‌ها: vorudi (ورودی، kg)"
-    assert lines[1].startswith("N-u-att-1-2 · rule · saqf · سقف ضایعات · ضایعات از ده")
-    assert lines[2] == "N-u-att-1-3 · note · khamir · خمیر · " \
-                       "خمیر هر روز صبح آماده می‌شود"
+    assert lines[:2] == ["S-rec-1 · record · bazdehi · بازدهی تولید",
+                         "  ستون vorudi (ورودی، kg)"]
+    assert lines[2:4] == ["N-u-att-1-2 · rule · saqf · سقف ضایعات",
+                          "  ضایعات از ده درصد بیشتر نمی‌شود"]
+    assert lines[4:6] == ["N-u-att-1-3 · note · khamir · خمیر",
+                          "  خمیر هر روز صبح آماده می‌شود"]
     assert lines[-1] == "F-00001 · record · units · واحدها"
     # §3: the same slot, under the heading that says what it now holds.
     from facts_plan.build import render_input
@@ -405,9 +408,11 @@ def test_a_recorded_record_says_what_it_is_and_where_it_is_kept():
          "data": {"medium": "paper",
                   "location": {"kept_at": "آشپزخانه", "holder": "سرآشپز شب"}}}],
         [])
-    assert lines[0].endswith("sheet · بازدهی تولید · ستون‌ها: vorudi (ورودی، kg)")
-    assert lines[1] == ("N-u-att-1-0 · record · tahvil · فرم تحویل مرغ · "
-                        "paper · آشپزخانه · سرآشپز شب")
+    assert lines[:3] == ["S-rec-1 · record · bazdehi · بازدهی",
+                         "  sheet · بازدهی تولید",
+                         "  ستون vorudi (ورودی، kg)"]
+    assert lines[3:5] == ["N-u-att-1-0 · record · tahvil · فرم تحویل مرغ",
+                          "  paper · آشپزخانه · سرآشپز شب"]
 
 
 def test_each_attachment_text_is_headed_by_its_name_and_its_path(tmp_path):
@@ -474,3 +479,30 @@ def test_no_item_unit_is_planned_and_the_coded_tab_is_still_a_record(tmp_path):
     assert not [c for c in skeleton["candidates"] if c["kind"] == "item"]
     assert [c for c in skeleton["candidates"]
             if c["kind"] == "record" and c["payload"].get("rows")]
+
+
+def test_a_transcript_unit_is_held_to_its_own_budget():
+    from facts_plan.build import fits
+    body = "ا" * 1400
+    text = "\n".join([body] * 160)            # ≈ 150K tokens by the estimator
+    assert fits({"type": "transcript", "est_tokens_out": 0}, text)
+    assert not fits({"type": "workbook", "est_tokens_out": 0}, text)
+
+
+def test_the_recorded_section_prints_every_phase_one_entry_whole():
+    entries = [
+        {"handle": "S-rec-000000000001", "kind": "record", "key": "list_morgh",
+         "title": "لیست مرغ", "statement": "برگهٔ انبار " * 40,
+         "data": {"medium": "paper",
+                  "location": {"kept_at": "کمد انبار", "holder": "انباردار"},
+                  "filled_by": "انباردار", "cadence": "روزانه",
+                  "fields": [{"key": "vazn", "title": "وزن", "unit": "kg",
+                              "description": "وزن تحویلی"}]}},
+        {"handle": "N-u-att-1-0", "kind": "rule", "key": "r", "title": "قاعده",
+         "statement": "متن کامل قاعده " * 30, "data": {}}]
+    text = "\n".join(recorded_slice(entries, []))
+    assert entries[0]["statement"].strip() in text        # not cut at 200 characters
+    assert "پرکننده: انباردار" in text and "تناوب: روزانه" in text
+    assert "کمد انبار" in text
+    assert "ستون vazn (وزن، kg) — وزن تحویلی" in text
+    assert entries[1]["statement"].strip() in text

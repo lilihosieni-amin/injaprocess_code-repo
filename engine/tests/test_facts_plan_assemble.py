@@ -2125,8 +2125,9 @@ def test_the_phase_two_input_prints_a_phase_one_entry_by_handle_and_location(
     assert render_phase2_inputs(root, run) == ["u-tr-m-l1"]
     text = (run / "units" / "u-tr-m-l1" / "input.md").read_text(encoding="utf-8")
     assert RECORDED_HEADING in text
-    assert ("N-u-att-1-0 · record · form_tahvil · فرم تحویل · paper · "
-            "آشپزخانه · سرپرست · ستون‌ها: vazn (وزن)") in text
+    assert "N-u-att-1-0 · record · form_tahvil · فرم تحویل" in text
+    assert "  paper · آشپزخانه · سرپرست" in text
+    assert "  ستون vazn (وزن)" in text
 
 
 # --------------------------------------------------------------------------
