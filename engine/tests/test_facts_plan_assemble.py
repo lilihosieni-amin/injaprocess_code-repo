@@ -2069,46 +2069,39 @@ def test_the_digest_names_each_entrys_source_kinds(tmp_path):
 # What a unit may cite of the talk it was handed (spec 2026-09-29 §8: its own
 # excerpt, and nothing else).
 
-TR_REL = "meetings/transcripts/c.txt"
+#: A table the meeting names on a sheet tab, as the transcript unit writes it
+#: up: `location` anchors the entry to the sheet, so what the unit cites of
+#: its excerpt is a source of its own and not the excerpt `_unit_sources`
+#: already cites — a `voice` member lost on the way is then missing, not folded.
+SHEET_FORM = {**FORM, "data": {**FORM["data"], "medium": "sheet",
+                               "location": {"spreadsheetId": "SID",
+                                            "sheet": "پیتزا"}}}
 
 
-def _plan_with_excerpt():
-    """The run's plan with `u-a` handed one excerpt, L213–L252 — `build`'s own
-    record of what that unit could read, and the only thing the gate checks
-    against."""
-    plan = _plan()
-    plan["hashes"] = {TR_REL: "x", "meetings/transcripts/other.txt": "y"}
-    plan["units"][0]["inputs"] = [f"{TR_REL}#L213-L252"]
-    return plan
-
-
-def _voice(lines="220-230", ref=TR_REL):
+def _voice(lines="2-3", ref=TALK):
     return {"type": "voice", "ref": ref, "lines": lines}
 
 
-def _delta_entry(tmp_path, over, plan=None):
-    """One assembled record entry, its decision carrying `over`."""
-    root = _root(tmp_path)
-    _seed_units(root)
-    record = _record_out()
-    record["decisions"][0].update(over)
-    run_dir = _run(root, {"u-a": record, "u-b": _rule_out()},
-                   plan=plan or _plan_with_excerpt())
+def _delta_entry(tmp_path, over):
+    """One assembled record entry: `SHEET_FORM` carrying `over`, written by the
+    transcript unit `u-tr-m-l1`, whose own excerpt is `TALK#L1-L3`."""
+    root, run_dir = _two_unit_run(tmp_path, att_new=[],
+                                  tr_new=[{**SHEET_FORM, **over}])
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     validate("facts-delta.schema.json", delta)
     return root, run_dir, next(e for e in delta["entries"]
-                               if e["key"] == "gozaresh_shabane_pitza")
+                               if e["key"] == SHEET_FORM["key"])
 
 
 def test_a_voice_source_joins_the_form_on_the_entry(tmp_path):
     """C2 — what the talk filled in is cited as the meeting, after the sheet:
     the form stays the anchor and F6 still reads the record off a form."""
     root, run_dir, entry = _delta_entry(tmp_path, {
-        "voice": [_voice("220-230")], "data": {"cadence": "nightly"}})
+        "voice": [_voice("2-3")],
+        "data": {**SHEET_FORM["data"], "cadence": "nightly"}})
     assert [s["type"] for s in entry["source"]] == ["sheet", "voice"]
-    assert entry["source"][1] == {"type": "voice", "ref": TR_REL,
-                                  "lines": "220-230"}
+    assert entry["source"][1] == {"type": "voice", "ref": TALK, "lines": "2-3"}
     assert "منابع: sheet · voice" in digest(root, run_dir).read_text(
         encoding="utf-8")
     # F6 marks a table nothing but speech shows; this one has a tab.
@@ -2118,7 +2111,7 @@ def test_a_voice_source_joins_the_form_on_the_entry(tmp_path):
 def test_a_voice_source_outside_the_shown_passages_is_dropped(tmp_path):
     """Outside the unit's own excerpt, or with no lines at all — silently."""
     _root_, _run_, entry = _delta_entry(tmp_path, {"voice": [
-        _voice("1-9"), {"type": "voice", "ref": TR_REL}]})
+        _voice("1-9"), {"type": "voice", "ref": TALK}]})
     assert [s["type"] for s in entry["source"]] == ["sheet"]
 
 
@@ -2554,6 +2547,10 @@ def test_an_account_a_unit_writes_is_dropped_by_the_gate(tmp_path):
     record["decisions"][0]["accounts"] = [account]
     rule["decisions"][0]["accounts"] = [dict(account, path="statement")]
     run_dir = _run(root, {"u-a": record, "u-b": rule})
+    # A7 drops an engine-owned member as a REPAIR: no refusal, no note.
+    for unit in ("u-a", "u-b"):
+        assert validate_unit(root, run_dir,
+                             run_dir / "units" / unit / "out.1.json") == []
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     assert all("accounts" not in e for e in delta["entries"])

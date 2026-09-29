@@ -1139,7 +1139,7 @@ def _pseudo(entry, unit, n):
                    # `_judge_doc` and read by `_entry` off the decision: a
                    # member left off this list is gated and then silently lost.
                    if k in ("key", "title", "statement", "aliases", "branches",
-                            "home", "processes", "accounts", "voice", "from",
+                            "home", "processes", "voice", "from",
                             "extra", "_notes")}}
     return handle, candidate, decision
 

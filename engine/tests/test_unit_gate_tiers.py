@@ -16,7 +16,7 @@ from facts_plan.assemble import _judge, assemble, materialise, report, validate_
 from facts_plan.cli import unit_states
 from merge_facts import tiers
 from test_facts_plan_assemble import _plan as _a_plan
-from test_facts_plan_assemble import FORM, PHOTO, TALK, _two_unit_run
+from test_facts_plan_assemble import FORM, PHOTO, SHEET_FORM, TALK, _two_unit_run
 from test_facts_plan_assemble import _record_out, _rule_out, _second_record
 from test_facts_plan_assemble import _root as _a_root
 from test_facts_plan_assemble import _run as _a_run
@@ -688,25 +688,58 @@ def test_an_entry_with_no_from_still_cites_every_photo_of_its_unit(tmp_path):
                                {"type": "photo", "ref": PHOTO_2}]
 
 
+# --------------------------------------------------------------------------
+# The talk a unit may cite is its own excerpt (spec 2026-09-29 §8).
+
+#: A transcript unit of the real run, and the one meeting excerpt it was
+#: handed whole.
+TR_UNIT = "u-tr-preparation-1405-05-28-02-l1"
+TR_EXCERPT = "meetings/transcripts/preparation-1405-05-28-02.txt"
+
+
+def test_a_form_unit_is_shown_no_talk_and_a_transcript_unit_its_excerpt():
+    """A workbook unit's inputs are `.xlsx` and a photo unit's `.text/`
+    sidecars, so nothing of theirs is a meeting — and a `talk` list an older
+    plan carries no longer counts. A transcript unit's `#L…` span is every line
+    it read."""
+    from facts_plan.assemble import _shown
+    assert _shown({"inputs": ["attachments/sheets/A/A.xlsx"],
+                   "talk": [{"rel": TR_EXCERPT, "first": 213, "last": 252}]}) == []
+    assert _shown({"inputs": ["departments/x/attachments/.text/p.image.md"]}) == []
+    assert _shown({"inputs": [f"{TR_EXCERPT}#L1-L117"]}) == \
+        [{"rel": TR_EXCERPT, "first": 1, "last": 117}]
+
+
+def test_a_transcript_units_voice_in_its_own_excerpt_is_cited_once(tmp_path):
+    """`_unit_sources` already cites the excerpt a transcript unit read whole,
+    so a `voice` member inside it is the same meeting again: the entry carries
+    that meeting once, not twice."""
+    root, run_dir = _prep_root(tmp_path)
+    path = run_dir / "units" / TR_UNIT / "out.1.json"
+    doc = read_json(path)
+    doc["new"][0]["voice"] = [{"ref": TR_EXCERPT, "lines": "10-20"}]
+    write_json_atomic(path, doc)
+    entry = next(e for e in _built(root, run_dir, path)
+                 if e["key"] == doc["new"][0]["key"])
+    assert [s for s in entry["source"] if s["type"] == "voice"] == \
+        [{"type": "voice", "ref": TR_EXCERPT, "lines": "1-117"}]
+    assert _refused(validate_unit(root, run_dir, path)) == []
+
+
 def test_a_new_entrys_voice_citation_reaches_its_sources(tmp_path):
     """The fix wave of 2026-09-15 gated `voice` on a `new[]` entry and then lost
     it: `_pseudo` copies a whitelist of members onto the synthetic decision, and
-    `voice` was not on it. A photo unit cites no transcript of its own, so the
-    meeting it names is only in `source[]` if the member survived the round
-    trip.
-
-    Spec 2026-09-29 §8: a unit cites only talk it was handed as an input, so
-    the unit is handed the excerpt; `from` keeps the photo the entry's own
-    read-off source, else the excerpt would already be cited and the `voice`
-    member folded into it unseen."""
-    root, run = _two_unit_run(tmp_path, att_new=[
-        {**FORM, "from": [PHOTO], "voice": [{"ref": TALK, "lines": "1-3"}]}],
-        tr_new=[])
-    plan = read_json(run / "plan.json")
-    plan["units"][0]["inputs"].append(f"{TALK}#L1-L3")
-    write_json_atomic(run / "plan.json", plan)
-    path = run / "units" / "u-att-1" / "out.1.json"
+    `voice` was not on it. The transcript unit's entry is anchored to a sheet
+    (`SHEET_FORM`), so the meeting it names is only in `source[]` if the member
+    survived the round trip."""
+    root, run = _two_unit_run(tmp_path, att_new=[], tr_new=[
+        {**SHEET_FORM, "voice": [{"ref": TALK, "lines": "2-3"}]}])
+    path = run / "units" / "u-tr-m-l1" / "out.1.json"
     entry = _built(root, run, path)[0]
-    assert entry["source"] == [{"type": "photo", "ref": PHOTO},
-                               {"type": "voice", "ref": TALK, "lines": "1-3"}]
+    assert entry["source"] == [
+        {"type": "sheet", "ref": "attachments/sheets/Pitza/pitza.xlsx",
+         "sheet": "پیتزا"},
+        {"type": "voice", "ref": TALK, "lines": "2-3"}]
     assert not _refused(_judge(root, run, path)[1])
+
+

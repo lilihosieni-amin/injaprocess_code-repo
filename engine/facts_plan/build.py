@@ -2728,7 +2728,7 @@ def _renderer(root, department, estate, skeleton, rendered,
 
 
 #: The one place a recording's stem and its transcript file meet — `transcripts`
-#: spells the same relative path forward, this reads it back.
+#: spells the same relative path forward, `assemble._shown` reads it back.
 TRANSCRIPT_DIR, TRANSCRIPT_EXT = "meetings/transcripts/", ".txt"
 
 
@@ -2737,29 +2737,6 @@ def _input_text(run_dir, unit_id):
     empty: a run whose file was deleted is re-rendered, not crashed."""
     path = pathlib.Path(run_dir) / "units" / unit_id / "input.md"
     return path.read_text(encoding="utf-8") if path.is_file() else ""
-
-
-def _plan_recordings(plan):
-    """The run's chosen recordings in the owner's own order — `build` was handed
-    it and `refresh_inputs` has only the plan to ask.
-
-    The transcript units, not `hashes`: `_chunks` walks the recordings in the
-    order the owner named them, so the units sit in the plan in that order and
-    a recording's first appearance among their inputs is where it belongs.
-    `hashes` is written sorted, so two meetings named out of alphabetical
-    order would have come back swapped.
-    """
-    out = []
-    for unit in plan.get("units") or []:
-        for ref in unit.get("inputs") or []:
-            rel = ref.partition("#")[0]
-            if not (rel.startswith(TRANSCRIPT_DIR)
-                    and rel.endswith(TRANSCRIPT_EXT)):
-                continue
-            recording = rel[len(TRANSCRIPT_DIR):-len(TRANSCRIPT_EXT)]
-            if recording not in out:
-                out.append(recording)
-    return out
 
 
 def _recorded_slices(root, run_dir, plan, department, units):
