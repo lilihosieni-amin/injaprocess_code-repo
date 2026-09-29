@@ -350,6 +350,23 @@ def test_the_role_at_writing_decides_not_the_role_now(world):
     assert see(author) and not see(star_admin)
 
 
+def test_an_admin_is_not_counted_an_editor_s_comment_they_cannot_see(world):
+    """`pending_count` is the badge over the list behind it (D68): a comment
+    written as an Editor that reaches the pool — its author a Reader since, who
+    edited it — must not be counted for an Admin who cannot open it."""
+    app, cc = world
+    admin = mk(app, "admin", "admin", "dept:dining")
+    author = mk(app, "author", "editor", "*")
+    cid = post(app, cc, author)
+    re_role(app, author, "reader")
+    S.event(cc, cid, kind="edited", now=NOW, user_id=author, user_name="author",
+            role="reader")
+    R.submit(app, cc, cid, now=NOW)
+    assert S.get(cc, cid)["stage"] == "pool"
+    assert not R.can_see(app, cc, users.by_id(app, admin), S.get(cc, cid))
+    assert R.pending_count(app, cc, users.by_id(app, admin)) == 0
+
+
 def test_actions(world):
     app, cc = world
     admin = mk(app, "admin", "admin", "*")

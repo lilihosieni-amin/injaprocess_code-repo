@@ -273,6 +273,26 @@ def test_the_badge(people):
     assert people["viewer"].get("/api/auth/me").json()["pendingApprovals"] == 0
 
 
+def test_the_badge_never_counts_an_editor_s_comment_for_an_admin(people):
+    """Written as an Editor, its author a Reader since, edited: it climbs to
+    the pool (routing reads the author's kind now) — but stays out of every
+    Admin's sight (2026-09-29 addendum, §5), so the badge must not count what
+    the list behind it cannot show."""
+    cid = _new(people, "editor")
+    conn = db.connect(people["editor"].app_db)
+    try:
+        conn.execute("UPDATE users SET role_id = (SELECT id FROM roles WHERE name = 'reader')"
+                     " WHERE display_name = 'editor'")
+    finally:
+        conn.close()
+    r = people["editor"].put(f"/api/comments/{cid}", json={"text": "y"})
+    assert r.status_code == 200, r.text
+    assert r.json()["waitingWith"] == {"kind": "pool"}
+    waiting = people["admin"].get("/api/comments/inbox?tab=waiting").json()["items"]
+    assert waiting == []
+    assert people["admin"].get("/api/auth/me").json()["pendingApprovals"] == 0
+
+
 def test_disabling_the_supervisor_moves_the_comment(people):
     cid = _new(people)
     head_id = _user_id(people, "head")

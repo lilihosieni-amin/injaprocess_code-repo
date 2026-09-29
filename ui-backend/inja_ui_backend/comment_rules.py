@@ -236,6 +236,11 @@ def pending_count(app, cc, viewer: sqlite3.Row) -> int:
         " AND approver_id = ?", (viewer["id"],)).fetchone()[0]
     if k != "admin":
         return reader_hops
+    # Only what the viewer may see (D66): a comment written as an Editor that
+    # climbed back to the pool (its author a Reader since, who edited it) is
+    # not an Admin's to count, since the waiting tab behind this count hides it.
+    where, wp = visible_sql(app, viewer)
     pool = [r["department"] for r in cc.execute(
-        "SELECT department FROM comments WHERE state = 'awaiting' AND stage = 'pool'")]
+        "SELECT c.department FROM comments c WHERE c.state = 'awaiting'"
+        f" AND c.stage = 'pool' AND {where}", wp)]
     return reader_hops + sum(1 for d in pool if covers(app, viewer, d))
