@@ -164,11 +164,16 @@ passes the Admin pool (decision A), so Admins have no part in its life.
   the inbox tabs, the drawers and the badges on steps, processes and
   departments all follow. The pending count (D68) had counted the Admin pool
   without asking `visible_sql`; it now asks.
-- **The activity record is unchanged.** Its «مسیر کامنت‌ها» tab still lists
-  such a comment to an Admin whose `view_audit` covers its department — its
-  `CMT-n`, department, author, state and stage, never its text (D44) — and a
-  `*` holder's one-user page still shows the Editor's `comment.*` events with
-  their `CMT-n`. Left for the owner to decide.
+- **The activity record's comment tab follows it; the audit does not.** At the
+  owner's decision (2026-09-29), «مسیر کامنت‌ها» and the summary's awaiting count
+  derived from it no longer list an Editor's comment to anyone who is not an
+  Editor. The tab is about where comments are on their way, and an Editor's
+  comment has no way that runs through an Admin. It asks
+  `comment_rules.AS_EDITOR` — the same fragment the inbox asks — so the tab and
+  the inbox cannot disagree about which comments those are. Each person's own
+  activity page is left whole, deliberately: it is the audit of what one person
+  did, it never shows a comment's text, and removing rows from an audit is how an
+  audit stops being trustworthy. Every `comment.*` event is still recorded.
 - **Schema:** none changed, in `comments.db` or `app.db`. Only a comment whose
   latest pass records `editor` changes visibility, and the server refused
   Editor authors until decision A.
