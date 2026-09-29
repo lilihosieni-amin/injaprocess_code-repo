@@ -147,8 +147,9 @@ def present(request: Request, viewer, c, *, trail: bool = False,
     addressed = next((e for e in reversed(evs) if e["kind"] == "addressed"), None)
     actions = R.actions(app, cc, viewer, c)
     # Offered only where sending again would get through: `restore` refuses by
-    # this same check. Asked only of the viewer's own withdrawn comments, and
-    # `_orphan` has already cached the process read.
+    # this same check. Asked only of the viewer's own withdrawn comments, and it
+    # shares `docs` with `_orphan` below, so whichever runs first reads the
+    # process file and the other finds it cached.
     actions["restore"] = actions["restore"] and _stands(
         request, viewer, c["anchor_kind"], c["anchor_id"], docs)
     out = {
@@ -419,8 +420,10 @@ def restore(ref: str, request: Request, user=Depends(require_session)):
     first approver, an Admin's or an Editor's lands approved again.
 
     The anchor must still stand and be served to the author, exactly as when the
-    comment was created (`_anchor`'s 404) — a comment on a process tombstoned
-    since is not sent back to the Editors. Asked after `actions` has allowed the
+    comment was created (`_anchor`'s 404) — so a Reader's or an Admin's comment
+    on a process tombstoned since is not sent back, while an Editor's is, since
+    `may_serve` serves Editors a tombstone and creating on one is allowed to them
+    too. The two answers match by construction. Asked after `actions` has allowed the
     send, so an author who may no longer comment here gets its 403 instead."""
     app = request.app.state.db
 

@@ -91,8 +91,10 @@ approver, an Admin's or an Editor's lands `approved` again.
 - Sending again is commenting again, so it asks what creating asked: `comment`
   on the department (403 and `access.denied` when refused, as for `edit`), and
   the anchor must still stand and be served to the author — the same check,
-  run by the same code, as creating (404 when it does not). A comment on a
-  process tombstoned since is not sent back to the Editors.
+  run by the same code, as creating (404 when it does not). A Reader's or an
+  Admin's comment on a process tombstoned since is therefore not sent back;
+  an Editor's is, because `Disclosure.may_serve` serves Editors a tombstoned
+  process and creating a comment on one is allowed to them for the same reason.
 - **Comments already `withdrawn` when this ships become sendable again by
   their authors.** Intended: the rule reads the state, not when the withdrawal
   happened.
