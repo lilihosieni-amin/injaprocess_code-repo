@@ -1310,30 +1310,131 @@ def reuse_slice(own, index, department, tokens, cap=40):
     return lines
 
 
-def process_index(root, department):
-    """`{process, node, label}` for every labelled node of the department's
-    processes — the whole index a citation is checked against; the unit sees a
-    ranked slice of it (§2.3).
+#: A step's four IDEF0 lists, in the order and the words a unit reads them.
+ICOM_FA = (("inputs", "ورودی"), ("controls", "کنترل"),
+           ("outputs", "خروجی"), ("mechanisms", "سازوکار"))
 
-    A tombstoned process contributes nothing (I3): it is history, not content,
-    and the first real v3 run cited three of them because this index still
-    carried their nodes. `merge.tombstone` is the only writer of the flag and
-    `order.active` already reads it the same way.
-    """
+#: `{run_dir}/processes/<department>.md` (spec 2026-09-29 §5.1).
+PROCESSES_DIR = "processes"
+
+
+def process_departments(root):
+    """Every department that has a `processes/` directory, sorted — the
+    registry is not asked, so a department the owner has not named yet still
+    has its steps read."""
+    base = pathlib.Path(root) / "departments"
+    if not base.is_dir():
+        return []
+    return sorted(p.name for p in base.iterdir() if (p / "processes").is_dir())
+
+
+def process_docs(root, department):
+    """The department's process documents, by file name — a half-written file
+    is no department's stop, and a tombstoned process is history, not content
+    (I3; `merge.tombstone` is the only writer of the flag)."""
     out = []
     directory = pathlib.Path(root) / "departments" / department / "processes"
     for path in sorted(directory.glob("*.json")):
         try:
             doc = read_json(path)
         except (OSError, ValueError):
-            continue                  # a half-written file is no department's stop
-        if doc.get("tombstoned"):
             continue
-        for node in doc.get("nodes") or []:
-            if node.get("label"):
-                out.append({"process": doc["id"], "node": node["id"],
-                            "label": node["label"]})
+        if not doc.get("tombstoned"):
+            out.append(doc)
     return out
+
+
+def process_index(root, department=None):
+    """`{process, node, label}` for every labelled step — of one department,
+    or of every department when `department` is None, which is what a
+    citation is checked against since a unit may read any department's
+    processes (spec 2026-09-29 §8)."""
+    departments = [department] if department else process_departments(root)
+    return [{"process": doc["id"], "node": node["id"], "label": node["label"]}
+            for d in departments for doc in process_docs(root, d)
+            for node in doc.get("nodes") or [] if node.get("label")]
+
+
+def department_names(root):
+    """`{code: Persian name}` off the registry; `{}` when it cannot be read —
+    a missing name falls back to the code, never stops a build."""
+    try:
+        registry = read_json(pathlib.Path(root) / "departments" / "registry.json")
+    except (OSError, ValueError):
+        return {}
+    return {d["code"]: d["name"] for d in registry.get("departments") or []
+            if d.get("code") and d.get("name")}
+
+
+def render_process_file(docs):
+    """One department's corrected processes as a unit reads them whole (spec
+    2026-09-29 §5.1): per process its name and summary; per step its id and
+    label, who does it, the description, the non-empty ICOM lists, and one
+    `بعدی:` line per outgoing edge with the edge's condition — the diagram the
+    process engineer corrected. Positions, layout and sources are left out."""
+    out = []
+    for doc in docs:
+        out += [f'# {doc["id"]} · {doc.get("name") or ""}'.rstrip(), ""]
+        if doc.get("summary"):
+            out += _wrap(doc["summary"]) + [""]
+        nodes = doc.get("nodes") or []
+        label = {n["id"]: n.get("label") or n["id"] for n in nodes}
+        outgoing = collections.defaultdict(list)
+        for edge in doc.get("edges") or []:
+            outgoing[edge.get("from")].append(edge)
+        for node in nodes:
+            out.append(f'## {node["id"]} · {node.get("label") or ""}'.rstrip())
+            if node.get("actor"):
+                out.append(f'مجری: {node["actor"]}')
+            if node.get("description"):
+                out += _wrap(node["description"])
+            icom = node.get("icom") or {}
+            parts = [f'{fa}: {"، ".join(map(str, icom[key]))}'
+                     for key, fa in ICOM_FA if icom.get(key)]
+            if parts:
+                out += _wrap("  ".join(parts))
+            for edge in outgoing.get(node["id"], []):
+                target = label.get(edge.get("to"), edge.get("to"))
+                out.append(f"بعدی: «{target}»"
+                           + (f' — {edge["label"]}' if edge.get("label") else ""))
+            out.append("")
+    return "\n".join(out)
+
+
+def _shown_path(root, path):
+    """A run file as a unit is told it: relative to the data root when it lies
+    under it (the playbook's `runs/facts/…`), else as given."""
+    try:
+        return str(pathlib.Path(path).resolve()
+                   .relative_to(pathlib.Path(root).resolve()))
+    except ValueError:
+        return str(path)
+
+
+def write_process_files(root, run_dir):
+    """Spec 2026-09-29 §5.1 — every department's file into the run, a file of
+    a department with no active process removed, and the mapping a unit's
+    `## فرایندها` section prints."""
+    directory = pathlib.Path(run_dir) / PROCESSES_DIR
+    written = {}
+    for department in process_departments(root):
+        docs = process_docs(root, department)
+        if not docs:
+            continue
+        path = directory / f"{department}.md"
+        write_text_atomic(path, render_process_file(docs))
+        written[department] = _shown_path(root, path)
+    for stale in directory.glob("*.md") if directory.is_dir() else []:
+        if stale.stem not in written:
+            stale.unlink()
+    return written
+
+
+def process_file_map(root, run_dir):
+    """What `write_process_files` left in the run, read back — for a re-render
+    that must not rewrite a file a unit may already be reading."""
+    directory = pathlib.Path(run_dir) / PROCESSES_DIR
+    return {p.stem: _shown_path(root, p) for p in sorted(directory.glob("*.md"))}
 
 
 def _script_functions(text):
