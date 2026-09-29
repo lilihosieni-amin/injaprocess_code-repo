@@ -140,26 +140,31 @@ not a `*` one. Readers never did. Every other row of D66 stands.
 *Why:* an Editor's comment lands `approved` in the Editors' inbox and never
 passes the Admin pool (decision A), so Admins have no part in its life.
 
-- **Written as an Editor** is the author's kind when they wrote it — the role
-  D62 snapshots into the `detail` of the comment's one `submitted` event — not
-  their kind now. An Editor made an Admin later keeps seeing their own comment
-  (the author check comes first) and does not open it to the other Admins. A
-  `submitted` event with no role recorded reads as not an Editor's.
+- **Written as an Editor** means the latest of the comment's passes —
+  `submitted`, `edited` or `restored` — records the role `editor` (D62
+  snapshots the author's kind into each event's `detail`). Not the author's
+  kind now: an Editor made an Admin later keeps seeing their own comment (the
+  author check comes first) and does not open their untouched comments to the
+  other Admins. A pass with no role recorded reads as not an Editor's.
+- *Why the latest pass, not only `submitted`:* every pass goes through
+  `submit()`, which routes by the author's kind at that moment, so the latest
+  pass's role is the one the comment's current path was decided on. A
+  comment waiting on someone must be visible to them. Keyed on `submitted`
+  alone, an Editor made a Reader who edited or sent their comment again sent
+  it up the chain into an Admin pool whose Admins could not see it, and
+  nobody could ever approve it. The reverse follows too: a Reader made an
+  Editor who edits their comment makes it an Editor's, as it then lands
+  `approved` without the pool.
 - `can_see` and `visible_sql` state it — D66's one rule, stated twice — so the
   detail (the same 404 as any comment the caller may not see, no audit row),
   the inbox tabs, the drawers and the badges on steps, processes and
   departments all follow. The pending count (D68) had counted the Admin pool
   without asking `visible_sql`; it now asks.
-- **Known limitation — one way back to the pool.** Routing reads the author's
-  kind *now* (D63.1). An Editor made a Reader who then edits or sends their
-  comment again sends it up the chain, and it can reach an Admin pool whose
-  Admins cannot see it. It is not counted for them, and nobody can approve it:
-  it waits there. Not addressed here; the owner decides.
 - **The activity record is unchanged.** Its «مسیر کامنت‌ها» tab still lists
   such a comment to an Admin whose `view_audit` covers its department — its
   `CMT-n`, department, author, state and stage, never its text (D44) — and a
   `*` holder's one-user page still shows the Editor's `comment.*` events with
   their `CMT-n`. Left for the owner to decide.
 - **Schema:** none changed, in `comments.db` or `app.db`. Only a comment whose
-  `submitted` event records `editor` changes visibility, and the server refused
+  latest pass records `editor` changes visibility, and the server refused
   Editor authors until decision A.
