@@ -11,9 +11,6 @@ from facts_plan.build import (
     PHASE_OF,
     RECORDED_BUDGET,
     RECORDED_HEADING,
-    TALK_BUDGET,
-    TALK_HEADING,
-    anchor_tokens,
     build,
     code_key,
     estimate_tokens,
@@ -23,9 +20,7 @@ from facts_plan.build import (
     record_templates,
     recorded_slice,
     reference_rows,
-    related_talk,
     strip_branch,
-    talk_section,
     template_signature,
     transcript_chunks,
 )
@@ -275,9 +270,9 @@ def test_photos_get_their_own_units_and_every_input_is_read_once(
     for unit in attachment_units:
         text = (run / "units" / unit["id"] / "input.md").read_text(
             encoding="utf-8")
-        # the budget binds the core; the talk about the forms rides in its own
-        # section under a budget of its own (2026-09-15).
-        assert estimate_tokens(_talk_and_core(text)[1]) <= IN_BUDGET
+        # the budget binds the whole input: the processes are files of their
+        # own (spec 2026-09-29 §5.3), and no talk rides beside the core.
+        assert estimate_tokens(text) <= IN_BUDGET
         assert all(f"عکس {photos.index(p) + 1}\n" in text
                    for p in unit["inputs"])
 
@@ -317,12 +312,12 @@ def test_an_input_no_unit_reads_exits_2_naming_it(monkeypatch, capsys):
 
 
 # --------------------------------------------------------------------------
-# form-anchored units (2026-09-15) — the budgets, the phases, the related talk
-# and the recorded-so-far slice.
+# form-anchored units (2026-09-15) — the budgets, the phases and the
+# recorded-so-far slice.
 
 def test_the_budgets_are_the_owners_2026_09_15():
     assert (IN_BUDGET, OUT_BUDGET, MAX_LINES) == (50000, 20000, 4500)
-    assert (TALK_BUDGET, RECORDED_BUDGET) == (80000, 20000)
+    assert RECORDED_BUDGET == 20000
 
 
 def test_a_transcript_chunk_stays_under_the_core_budget_with_the_cards_room():
@@ -343,113 +338,12 @@ def test_every_unit_carries_its_phase():
     assert PHASE_OF == {"workbook": 1, "attachment": 1, "transcript": 2}
 
 
-LINES_A = ["سلام، امروز دربارهٔ فرم تبدیل برگر حرف می‌زنیم"] + ["حرف‌های دیگر"] * 30 + \
-          ["بازدهی خروجی هر روز توی جدول بازدهی نوشته می‌شه", "ورودی کیلو رو هم ثبت کنید"] + \
-          ["حرف‌های دیگر"] * 60
-LINES_B = ["دربارهٔ مرخصی پرسنل"] * 50
-TR = [("prep-1405-06-01", "meetings/transcripts/prep-1405-06-01.txt", LINES_A),
-      ("prep-1405-06-02", "meetings/transcripts/prep-1405-06-02.txt", LINES_B)]
-TOKENS = {"بازدهی", "خروجی", "ورودی", "کیلو", "فرم", "تبدیل", "برگر"}
-
-
-def test_related_talk_takes_the_windows_that_name_the_form_and_merges_touching_ones():
-    passages = related_talk(TOKENS, TR, budget=80000, window=40, step=20)
-    assert [p["rel"] for p in passages] == [TR[0][1]]          # transcript B scores 0 everywhere
-    # both hits, one merged passage
-    assert passages[0]["first"] == 1 and passages[0]["last"] >= 33
-    assert "جدول بازدهی" in passages[0]["text"]
-
-
-def test_a_zero_score_window_is_never_taken_even_under_budget():
-    assert related_talk({"واژه‌ای"}, TR) == []
-
-
-def test_related_talk_is_cut_at_the_budget_best_window_first():
-    long = [("m", "meetings/transcripts/m.txt", ["فرم تبدیل برگر و بازدهی خروجی"] * 400)]
-    passages = related_talk(TOKENS, long, budget=2500)
-    assert sum(estimate_tokens(p["text"]) for p in passages) <= 2500
-    # equal scores → the first windows, merged; the first costs its 40 lines
-    # and every later one only the 20 it adds, so 2500 buys 140 lines.
-    assert passages == [dict(passages[0], first=1, last=140)]
-
-
-def test_the_talk_budget_is_not_halved_by_overlapping_windows():
-    """At step 20 a window overlaps its neighbour by half. Charging each its own
-    40 lines spent the budget twice on the same talk and delivered half of it;
-    a window is priced on the lines it adds, so the budget is nearly filled."""
-    long = [("m", "meetings/transcripts/m.txt",
-             ["فرم تبدیل برگر و بازدهی خروجی"] * 4000)]
-    passages = related_talk(TOKENS, long, budget=40000)
-    spent = sum(estimate_tokens(p["text"]) for p in passages)
-    assert 40000 - 700 <= spent <= 40000            # within one window of it
-
-
-def test_the_talk_section_heads_each_passage_with_the_date_and_lines():
-    section = talk_section([{"recording": "prep-1405-06-01", "rel": TR[0][1],
-                             "first": 1, "last": 33, "text": "x"}])
-    assert section.startswith(TALK_HEADING)
-    assert "۱۴۰۵/۰۶/۰۱ · L1–L33" in section
-    assert talk_section([]) == ""
-
-
-def test_anchor_tokens_come_from_titles_columns_aliases_and_attachment_heads():
-    skeleton = {"candidates": [{"id": "S-rec-1", "kind": "record", "payload": {
-        "instances": [{"key": "b__s1", "sheet": "بازدهی", "spreadsheetId": "x"}],
-        "aliases": ["بازده تولید"],
-        "fields": [{"key": "c_b", "title": "ورودی (کیلو)"}]},
-        # the row labels a meeting calls the table's rows by live in `render`,
-        # never in `payload` — `_view` is the only place both are visible.
-        "render": {"row_labels": {"b__s1": {"4": "شنبه", "5": "یکشنبه"}}}}],
-        "instances": []}
-    unit = {"id": "u-wb-b", "type": "workbook", "candidates": ["S-rec-1"], "inputs": []}
-    assert {"بازدهی", "بازده", "تولید", "ورودی", "کیلو",
-            "شنبه", "یکشنبه"} <= anchor_tokens(unit, skeleton, {})
-    att = {"id": "u-att-1", "type": "attachment", "candidates": [],
-           "inputs": ["d/attachments/.text/p.image.md"]}
-    texts = {"d/attachments/.text/p.image.md": "# فرم تحویل مرغ\nستون: وزن\n"}
-    assert {"فرم", "تحویل", "مرغ"} <= anchor_tokens(att, skeleton, texts)
-
-
 def _tiny_estate(tmp_path):
     """The module's own mini estate, under a root of its own so a run directory
     beside it is not part of the estate."""
     root = tmp_path / "e"
     make_estate(root)
     return root
-
-
-def _talk_and_core(text):
-    """`input.md` split in two: the talk block, and everything else — the core
-    the budget is checked on. The talk sits mid-document (§3: beside the tables
-    it is about), so it ends at the next `## ` heading; its own passage
-    headings are `### `, which that never matches."""
-    head, sep, rest = text.partition(TALK_HEADING)
-    if not sep:
-        return "", text
-    body, found, tail = rest.partition("\n## ")
-    return body, head + ("## " + tail if found else "")
-
-
-def test_a_form_units_input_ends_with_the_talk_and_the_fit_check_ignores_it(tmp_path):
-    # a workbook unit whose core is under budget and whose talk would be over it
-    root = _tiny_estate(tmp_path)
-    (root / "meetings" / "transcripts").mkdir(parents=True)
-    (root / "meetings" / "transcripts" / "prep-1405-06-01.txt").write_text(
-        "\n".join(["شمارش موجودی پیتزا و پنیر را هر روز در جدول می‌نویسیم"] * 9000),
-        encoding="utf-8")
-    run = tmp_path / "run"
-    build(root, "cooking", run, ["prep-1405-06-01"])
-    plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
-    wb = next(u for u in plan["units"] if u["type"] == "workbook")
-    text = (run / "units" / wb["id"] / "input.md").read_text(encoding="utf-8")
-    talk, core = _talk_and_core(text)
-    assert talk and estimate_tokens(core) <= IN_BUDGET
-    assert estimate_tokens(talk) <= TALK_BUDGET + 500       # the heading lines
-    # §3: beside the tables, and the contract cards stay closest to the answer.
-    assert text.index(TALK_HEADING) < text.index("## زمینه")
-    assert text.index(TALK_HEADING) < text.index("Expression card")
-    # no split by talk
-    assert not [u for u in plan["units"] if u["id"].startswith(wb["id"] + "-s")]
 
 
 def test_two_builds_are_byte_identical(tmp_path):
@@ -466,7 +360,7 @@ def test_two_builds_are_byte_identical(tmp_path):
     for p in (tmp_path / "r1" / "units").rglob("input.md"):
         q = tmp_path / "r2" / "units" / p.relative_to(tmp_path / "r1" / "units")
         assert p.read_bytes() == q.read_bytes()
-    # `plan.json` carries the passages now, and it names no run directory.
+    # `plan.json` names no run directory.
     assert (tmp_path / "r1" / "plan.json").read_bytes() == \
         (tmp_path / "r2" / "plan.json").read_bytes()
 
@@ -494,59 +388,6 @@ def test_a_transcript_units_recorded_section_replaces_the_reuse_slice():
     assert "## ورودی‌های قابل استفادهٔ مجدد" not in text
     assert "## ورودی‌های قابل استفادهٔ مجدد" in render_input(
         unit, skeleton, {"reuse": lines})
-
-
-def test_a_passage_heading_names_the_transcript_an_account_must_cite():
-    """C1 — the gate admits an account only for the transcript the heading
-    prints, so the heading has to print one (§3)."""
-    section = talk_section([{"recording": "prep-1405-06-01", "rel": TR[0][1],
-                             "first": 213, "last": 252, "text": "x"}])
-    assert f'### ۱۴۰۵/۰۶/۰۱ · L213–L252 · {TR[0][1]}' in section
-
-
-def test_the_plan_records_the_passages_each_unit_was_shown(tmp_path):
-    """I5 — `plan.json` is the record of what a unit could see, so the gate can
-    check a citation against it; a phase-2 unit was shown none."""
-    root = _tiny_estate(tmp_path)
-    (root / "meetings" / "transcripts").mkdir(parents=True)
-    (root / "meetings" / "transcripts" / "prep-1405-06-01.txt").write_text(
-        "\n".join(["شمارش موجودی پیتزا و پنیر را هر روز در جدول می‌نویسیم"] * 20),
-        encoding="utf-8")
-    run = tmp_path / "run"
-    build(root, "cooking", run, ["prep-1405-06-01"])
-    plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
-    wb = next(u for u in plan["units"] if u["type"] == "workbook")
-    assert wb["talk"] == [{"rel": "meetings/transcripts/prep-1405-06-01.txt",
-                           "first": 1, "last": 20}]
-    text = (run / "units" / wb["id"] / "input.md").read_text(encoding="utf-8")
-    assert f'L1–L20 · {wb["talk"][0]["rel"]}' in text
-    assert all(u["talk"] == [] for u in plan["units"] if u["type"] == "transcript")
-
-
-def test_each_part_of_a_split_form_unit_gets_its_own_talk(tmp_path, monkeypatch):
-    """§7 — the talk rides outside the fit check, so both halves of a workbook
-    that splits by tab are still shown the meetings about them."""
-    import facts_plan.build as B
-    root = _tiny_estate(tmp_path)
-    (root / "meetings" / "transcripts").mkdir(parents=True)
-    (root / "meetings" / "transcripts" / "prep-1405-06-01.txt").write_text(
-        "\n".join(["شمارش موجودی پیتزا و پنیر را در جدول مغایرت می‌نویسیم"] * 20),
-        encoding="utf-8")
-    # just under the pizza book's own core, so that book — and only it —
-    # splits. It tracks the shape card: 5100 before the `home` line grew the
-    # card by ~770 tokens on 2026-09-16.
-    monkeypatch.setattr(B, "IN_BUDGET", 5870)
-    run = tmp_path / "run"
-    build(root, "cooking", run, ["prep-1405-06-01"])
-    plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
-    parts = [u for u in plan["units"] if u["id"].startswith("u-wb-mini_pitza_ch-")]
-    assert len(parts) > 1
-    with_talk = [p for p in parts if p["talk"]]
-    assert len(with_talk) > 1                 # each part selects its own talk
-    for part in parts:
-        text = (run / "units" / part["id"] / "input.md").read_text(encoding="utf-8")
-        assert (TALK_HEADING in text) is bool(part["talk"])
-        assert estimate_tokens(_talk_and_core(text)[1]) <= B.IN_BUDGET
 
 
 def test_a_recorded_record_says_what_it_is_and_where_it_is_kept():

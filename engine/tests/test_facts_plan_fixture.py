@@ -18,7 +18,7 @@ FIX = pathlib.Path(__file__).parent / "fixtures" / "facts-plan"
 EXPECTED = json.loads((FIX / "expected.json").read_text(encoding="utf-8"))
 
 
-def _build(tmp_path):
+def _build(tmp_path, setup=None):
     root = tmp_path / "data"
     shutil.copytree(FIX / "dump", root / "attachments" / "sheets" / ".dump")
     # The `.gs` bodies the manifest points at sit beside `.dump`, not inside
@@ -36,13 +36,15 @@ def _build(tmp_path):
     # reads its row keys as the run's `unit_symbols[]`.
     shutil.copytree(FIX / "facts", root / "facts")
     (root / "departments" / "cooking" / "processes").mkdir(parents=True)
-    # `build` never reads the registry; `gate_b` and `report` name the
-    # department by it, so the acceptance run needs it here.
+    # `build` names the other departments' process files by it; `gate_b` and
+    # `report` name the department by it, so the acceptance run needs it here.
     (root / "departments" / "registry.json").write_text(json.dumps(
         {"departments": [{"code": "cooking", "name": "آشپزخانه"}]},
         ensure_ascii=False), encoding="utf-8")
     run = root / "runs" / "facts" / "cooking" / "20260906-101500"
     run.mkdir(parents=True)
+    if setup:
+        setup(root)
     build(root, "cooking", run, ["transcript"])
     return root, run, json.loads((run / "skeleton.json").read_text(encoding="utf-8")), \
         json.loads((run / "plan.json").read_text(encoding="utf-8"))

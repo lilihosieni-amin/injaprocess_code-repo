@@ -21,8 +21,8 @@ from dataclasses import replace
 from engine_common import (LINE_CAP, read_json, schema_dir, validate,
                            write_json_atomic, write_text_atomic)
 from merge_facts import (KIND_ORDER, _sheet_identities,
-                         canonical_scope, get_path, iter_ref_objects,
-                         load_store, null_paths, path_exists, set_path, tiers)
+                         canonical_scope, iter_ref_objects,
+                         load_store, null_paths, set_path, tiers)
 from merge_facts.apply import _derive_row_keys
 from merge_facts.audit import flags_over
 from merge_facts.content import _check_prose, check_document
@@ -211,8 +211,8 @@ def _repair(item, where, ctx):
             if node in ctx["node_ids"]:
                 kept.append(citation)
             else:
-                notes.append((f'node {citation.get("node")} is in no process of '
-                              f'{ctx["department"]}; citation dropped', None,
+                notes.append((f'node {citation.get("node")} is in no active '
+                              'process; citation dropped', None,
                               "issue", FA_CITATION))
         item["processes"] = kept
     if decision:
@@ -431,13 +431,15 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
     # note, and nothing disappears in silence.
     ignored = _drop_items(doc, items) if "contract" not in plan else set()
     doc["_items_ignored"] = len(ignored)
-    nodes = process_index(root, skeleton["department"])
+    # Every department's steps: a unit reads any department's processes
+    # (spec 2026-09-29 §8).
+    nodes = process_index(root)
     unit = next((u for u in plan.get("units") or []
                  if u.get("id") == doc["unit"]), None)
-    ctx = {"candidates": candidates, "department": skeleton["department"],
-           # INV-3 — the meeting passages this unit was shown, as `build`
-           # recorded them: the only talk it may cite, never a path or a line
-           # range it invented. A unit the plan does not name was shown none.
+    ctx = {"candidates": candidates,
+           # INV-3 — the meeting lines this unit was handed, its own excerpt:
+           # the only talk it may cite, never a path or a line range it
+           # invented. A unit the plan does not name was shown none.
            "talk": _shown(unit),
            # …and the same for files: the paths `build` printed to this unit,
            # which are the only ones a `from` citation may name.
@@ -457,10 +459,6 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
                 found.append(refuse(f"{where}[{n}]", "is not an object"))
                 unshaped.add((where, n))
                 continue
-            # Held over the A7 drop `_repair` does and over the schema probe,
-            # which sees the contract's own closed vocabulary: what comes back
-            # is the engine's account, not the unit's copy of one.
-            accounts = _unit_accounts(item, ctx["talk"])
             voices = _unit_voices(item, ctx["talk"])
             froms = _unit_froms(item, ctx["inputs"])
             notes = _repair(item, where, ctx)
@@ -474,8 +472,6 @@ def _judge_doc(root, run_dir, path, doc, semantics=True):
                 unshaped.add((where, n))
             else:
                 passed.append((where, n, label))
-                if accounts:
-                    item["accounts"] = accounts
                 if voices:
                     item["voice"] = voices
                 if froms:
@@ -939,16 +935,11 @@ def _account(field, side):
 
 
 def _shown(unit):
-    """Every stretch of meeting this unit was handed, as `{rel, first, last}`:
-    the passages `build` recorded on it (`talk`, a phase-1 form unit) **and**
-    its own transcript inputs (a phase-2 unit reads one excerpt whole, and
-    `#L<first>-L<last>` is exactly that bound — spec §3 phase 2 lets it write
-    an account against a listed value, and the talk it heard is its own input).
-
-    Without the second half a transcript unit's every account was dropped in
-    silence, including one citing the very lines it was reading.
-    """
-    out = [dict(p) for p in (unit or {}).get("talk") or []]
+    """The stretch of meeting this unit was handed, as `{rel, first, last}`: a
+    transcript unit may cite only lines of its own excerpt (spec 2026-09-29
+    §8), and `#L<first>-L<last>` is exactly that bound. A form unit is shown
+    no talk."""
+    out = []
     for ref in (unit or {}).get("inputs") or []:
         rel, _, span = ref.partition("#")
         bounds = re.fullmatch(r"L([0-9]+)-L([0-9]+)", span)
@@ -982,33 +973,11 @@ def _cited(src, passages):
         for p in passages)
 
 
-def _unit_accounts(node, passages):
-    """Spec 2026-09-15: a unit may write an account only for what it heard — a
-    scalar with a `voice` source citing a passage it was shown (`_cited`).
-    Anything else is dropped as A7 drops every engine-owned member (REPAIR, no
-    note).
-
-    The kept members come out in the shape the store contract speaks (`field`,
-    `statement`), which is the one `_cross_unit` already writes: the unit
-    spells the QF-7 leaf `path`, because that is what §2.5 calls it everywhere
-    else a unit writes one.
-    """
-    out = []
-    for account in node.get("accounts") or []:
-        if (isinstance(account, dict)
-                and _cited(account.get("source"), passages)
-                and isinstance(account.get("path"), str)
-                and account.get("value") is not None
-                and not isinstance(account["value"], (dict, list))):
-            out.append(_account(account["path"], account))
-    return out
-
-
 def _unit_voices(node, passages):
-    """Spec §3 phase 1: what the talk filled in that the form does not state is
-    cited as the meeting. One `voice[]` member per passage used, gated by the
-    same predicate the accounts are — `_entry` appends them to `source[]`
-    beside the sheet, never instead of it."""
+    """What the talk filled in that the form does not state is cited as the
+    meeting. One `voice[]` member per passage used, gated by `_cited` — the
+    unit's own excerpt only — and `_entry` appends them to `source[]` beside
+    the sheet, never instead of it."""
     return [{"type": "voice", "ref": v["ref"], "lines": v["lines"]}
             for v in node.get("voice") or []
             if isinstance(v, dict) and _cited(dict(v, type="voice"), passages)]
@@ -1586,13 +1555,14 @@ def _source_of(instance, paths):
             "sheet": instance["sheet"]}
 
 
-def _process_sources(written, department):
-    """§2.5's `processes[]` citations as `source[]` members."""
+def _process_sources(written):
+    """§2.5's `processes[]` citations as `source[]` members, each under its own
+    department (spec 2026-09-29 §8: `warehouse-005` → `departments/warehouse/…`)."""
     out = []
     for citation in written.get("processes") or []:
         source = {"type": "process",
-                  "ref": f'departments/{department}/processes/'
-                         f'{citation["process"]}.json',
+                  "ref": f'departments/{citation["process"].rsplit("-", 1)[0]}/'
+                         f'processes/{citation["process"]}.json',
                   "node": citation["node"]}
         if citation.get("quote"):
             source["quote"] = citation["quote"]
@@ -1852,7 +1822,7 @@ def _entry(candidate, decision, state, part=None):
     # `splitPart` has no `processes`), so both parts of a split inherit them.
     # Owner ruling 2026-09-15: they sit beside the real origin, never instead
     # of it — until then a process citation replaced the meeting or sheet.
-    sources += _process_sources(decision, state["department"])
+    sources += _process_sources(decision)
     sources = sources or [{"type": "chat", "ref": None}]
     kind = KIND_OF.get(candidate["kind"], candidate["kind"])
     if kind == "record" and not any(s.get("type") in READ_OFF_A_FORM for s in sources):
@@ -1878,34 +1848,6 @@ def _entry(candidate, decision, state, part=None):
                                     _kind_of(state))
     if written.get("aliases"):
         entry["aliases"] = written["aliases"]
-    if written.get("accounts"):
-        # The form's value stays the entry's; what the unit heard instead is an
-        # open account beside it, and `_cross_unit` appends to the same list.
-        # ponytail: a split's accounts hang off the decision, so they reach
-        # neither part — no rule says which part the disputed leaf landed in.
-        entry["accounts"] = copy.deepcopy(written["accounts"])
-        for account in entry["accounts"]:
-            # The unit spells the leaf by the column key its input printed
-            # (`c_b`); `_rename_fields` has since given that field the key the
-            # unit itself chose. An account addressing the provisional key
-            # names nothing on the stored entry, so `resolve` could not settle
-            # it and the form's side below could not be found at all.
-            segs = account["field"].split("/")
-            if len(segs) > 2 and segs[:2] == ["data", "fields"]:
-                segs[2] = renames.get(segs[2], segs[2])
-                account["field"] = "/".join(segs)
-        # …and the form's own reading is the other side, exactly as step 7
-        # writes two for a cross-unit disagreement. `resolve` sets the chosen
-        # account's value at the field, so without this side the owner's only
-        # answer is to adopt the speech and the entry can never be confirmed.
-        for account in list(entry["accounts"]):
-            if not path_exists(entry, account["field"]):
-                continue
-            mine = get_path(entry, account["field"])
-            if mine != account["value"]:
-                entry["accounts"].append(
-                    _account(account["field"],
-                             {"value": mine, "source": sources[0]}))
     extra = {**(decision.get("extra") or {}), **((part or {}).get("extra") or {})}
     if extra:
         entry["extra"] = extra                                      # A6

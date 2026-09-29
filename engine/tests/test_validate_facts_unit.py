@@ -542,7 +542,7 @@ def test_a_citation_into_a_tombstoned_process_is_in_no_index(tmp_path):
     doc = _doc()
     doc["decisions"][0]["processes"] = [{"process": "cooking-002",
                                          "node": "n001", "quote": "شمارش"}]
-    assert "decisions[0] S-r-000000000001: node n001 is in no process of cooking; " \
+    assert "decisions[0] S-r-000000000001: node n001 is in no active process; " \
         "citation dropped" in validate_unit(root, run_dir, _write(run_dir, doc))
 
 
@@ -562,8 +562,8 @@ def test_a_source_into_a_process_tombstoned_after_the_build_is_cut_at_the_gate(t
     _process(root, "cooking-002", tombstoned=True)
     found = _findings(root, run_dir, _write(run_dir, doc, "out.2.json"))
     assert tiers.refusals(found) == []
-    assert tiers.lines(found) == ["new[0] mande_shab: node n001 is in no process "
-                                  "of cooking; citation dropped"]
+    assert tiers.lines(found) == ["new[0] mande_shab: node n001 is in no active "
+                                  "process; citation dropped"]
 
 
 def _materialised(root, run_dir, doc, key):

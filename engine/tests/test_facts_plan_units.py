@@ -272,7 +272,7 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
     assert plan["schema_version"] == 1 and plan["department"] == "cooking"
     assert all(h.startswith("sha256:") for h in plan["hashes"].values())
     assert any(rel.endswith("cooking-1405-05-26.txt") for rel in plan["hashes"])
-    assert set(plan["units"][0]) == {"id", "type", "phase", "inputs", "talk",
+    assert set(plan["units"][0]) == {"id", "type", "phase", "inputs",
                                      "candidates", "nodes", "est_tokens_in",
                                      "est_tokens_out"}
 
@@ -292,8 +292,11 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
     assert sorted(placed) == sorted(c["id"] for c in skeleton["candidates"])
     assert all(c["unit"] for c in skeleton["candidates"])
 
-    # the ranked process nodes the unit was actually shown
-    assert plan["units"][0]["nodes"] == ["cooking-030-n001"]
+    # the processes are a file of the run the unit reads whole, not a ranked
+    # slice of labels (spec 2026-09-29 §5.3)
+    assert plan["units"][0]["nodes"] == []
+    assert "شمارش موجودی آخر شب" in (run_dir / "processes" / "cooking.md") \
+        .read_text(encoding="utf-8")
 
     for unit in plan["units"]:
         text = (run_dir / "units" / unit["id"] / "input.md").read_text(
@@ -303,6 +306,7 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
         assert unit["est_tokens_out"] <= OUT_BUDGET
         assert len(lines) <= MAX_LINES and max(map(len, lines)) <= MAX_LINE
         assert "Expression card" in text and "Style card" in text
+        assert "runs/facts/cooking/20260906-101500/processes/cooking.md" in text
         # §3.2: every unit is shown the closed payload contract, and it fits
         # inside the same budget the rest of the input does.
         assert "Shape card" in text and "medium=paper: holder*، kept_at*" in text

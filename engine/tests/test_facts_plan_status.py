@@ -5,7 +5,6 @@ import json
 import pytest
 from facts_plan.build import (
     RECORDED_HEADING,
-    TALK_HEADING,
     build,
     refresh_inputs,
     render_input,
@@ -216,11 +215,10 @@ def test_the_cli_prints_a_waiting_unit_like_any_other(planned_run, monkeypatch,
     assert lines[2].startswith("stage U · ")
 
 
-def test_a_refresh_keeps_the_talk_and_what_phase_one_recorded(tmp_path):
-    """§4 — `--refresh-inputs` re-renders a run already planned, and the two
-    sections §3 added are part of what it re-renders: the phase-1 talk, whose
-    recordings it reads back off `plan.json`, and a phase-2 unit's recorded
-    section once `status` has written one."""
+def test_a_refresh_keeps_what_phase_one_recorded(tmp_path):
+    """§4 — `--refresh-inputs` re-renders a run already planned, and a phase-2
+    unit's recorded section, once `status` has written one, is part of what it
+    re-renders; a form unit's input comes back unchanged."""
     from fixtures.facts_plan.make_dump import make_estate
     root = tmp_path / "e"
     make_estate(root)
@@ -235,7 +233,6 @@ def test_a_refresh_keeps_the_talk_and_what_phase_one_recorded(tmp_path):
     chunk = next(u["id"] for u in plan["units"] if u["type"] == "transcript")
 
     before = (run / "units" / form / "input.md").read_text(encoding="utf-8")
-    assert TALK_HEADING in before
     refresh_inputs(root, run)
     assert (run / "units" / form / "input.md").read_text(encoding="utf-8") \
         == before
@@ -248,10 +245,11 @@ def test_a_refresh_keeps_the_talk_and_what_phase_one_recorded(tmp_path):
         == recorded
 
 
-def test_a_refresh_keeps_the_owners_order_of_two_tied_meetings(tmp_path):
-    """`related_talk` breaks a tie by transcript order, so a refresh has to
-    recover the order the owner named the meetings in — which is the order the
-    transcript units sit in the plan, not `plan.json`'s sorted hashes."""
+def test_the_plan_gives_back_the_owners_order_of_two_meetings(tmp_path):
+    """The order the owner named the meetings in is recovered from the plan —
+    the order its transcript units sit in, not `plan.json`'s sorted hashes —
+    and a refresh leaves a form unit's input as `build` wrote it."""
+    from facts_plan.build import _plan_recordings
     from fixtures.facts_plan.make_dump import make_estate
     root = tmp_path / "e"
     make_estate(root)
@@ -261,17 +259,16 @@ def test_a_refresh_keeps_the_owners_order_of_two_tied_meetings(tmp_path):
         (root / "meetings" / "transcripts" / f"{stem}.txt").write_text(
             "\n".join([line] * 20), encoding="utf-8")
     run = tmp_path / "run"
-    # named out of alphabetical order, and saying the same thing, so every
-    # window ties and only the order decides which passage prints first
+    # named out of alphabetical order
     build(root, "cooking", run, ["zeta-1405-06-02", "alpha-1405-06-01"])
     plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
     assert [rel for rel in plan["hashes"] if "transcripts" in rel] == \
         ["meetings/transcripts/alpha-1405-06-01.txt",
          "meetings/transcripts/zeta-1405-06-02.txt"]        # hashes are sorted
+    assert _plan_recordings(plan) == ["zeta-1405-06-02", "alpha-1405-06-01"]
 
     form = next(u["id"] for u in plan["units"] if u["type"] == "workbook")
     before = (run / "units" / form / "input.md").read_text(encoding="utf-8")
-    assert before.index("۱۴۰۵/۰۶/۰۲") < before.index("۱۴۰۵/۰۶/۰۱")
     refresh_inputs(root, run)
     assert (run / "units" / form / "input.md").read_text(encoding="utf-8") \
         == before

@@ -1518,11 +1518,9 @@ MAX_LINES, MAX_LINE = 4500, 1900
 EST_OUT = {"rule": 250, "script": 250}
 
 #: §3's phase 1 reads the forms — the workbooks and the photographed paper —
-#: with the meeting passages about each beside it; phase 2 reads the
+#: beside the corrected processes (spec 2026-09-29 §5.3); phase 2 reads the
 #: transcripts knowing what phase 1 recorded.
-TALK_BUDGET, RECORDED_BUDGET = 80000, 20000
-TALK_WINDOW, TALK_STEP = 40, 20
-TALK_HEADING = "## گفت‌وگوهای مرتبط"
+RECORDED_BUDGET = 20000
 RECORDED_HEADING = "## آنچه تا کنون ثبت شده"
 PHASE_OF = {"workbook": 1, "attachment": 1, "transcript": 2}
 
@@ -2374,6 +2372,25 @@ def _render_candidate(candidate, skeleton):
             f'{"، ".join(payload.get("labels") or [])}')
 
 
+PROCESSES_HEADING = "## فرایندها"
+
+
+def processes_section(department, files, names, others=True):
+    """Spec 2026-09-29 §5.3 — where a unit reads the corrected processes: its
+    own department's file whole; another department's when the table's items
+    or columns appear there (a phase-2 unit is given its own only)."""
+    lines = [PROCESSES_HEADING, ""]
+    own = files.get(department)
+    lines += (["فرایندهای این بخش — همه را کامل بخوانید:", f"  {own}"] if own
+              else ["این بخش هنوز فرایند فعالی ندارد."])
+    rest = [d for d in sorted(files) if d != department]
+    if others and rest:
+        lines += ["فرایندهای بخش‌های دیگر — اگر اقلام یا ستون‌های این جدول در آن‌ها "
+                  "آمده، بخوانید:"]
+        lines += [f"  {files[d]} · {names.get(d, d)}" for d in rest]
+    return lines
+
+
 def render_input(unit, skeleton, extras, conventions=DEFAULT_CONVENTIONS,
                  recorded=False):
     """`units/<u>/input.md` — everything the unit is allowed to know (§2.3). It
@@ -2387,11 +2404,6 @@ def render_input(unit, skeleton, extras, conventions=DEFAULT_CONVENTIONS,
     out += [_render_candidate(by_id[c], skeleton) for c in unit["candidates"]] or ["—"]
     if extras.get("text"):
         out += ["", "## متن", "", extras["text"]]
-    # §3: what the meetings said about these tables goes beside the tables —
-    # after the text, before the context sections, and well before the cards,
-    # which stay closest to the answer.
-    if extras.get("talk"):
-        out += ["", talk_section(extras["talk"])]
     if extras.get("functions"):
         # No section at all when the unit's candidates call nothing — an empty
         # heading is one more thing to read and nothing to decide.
@@ -2401,12 +2413,13 @@ def render_input(unit, skeleton, extras, conventions=DEFAULT_CONVENTIONS,
     reuse_heading = RECORDED_HEADING if recorded \
         else "## ورودی‌های قابل استفادهٔ مجدد"
     for title, key in (("## زمینه", "context"), ("## جدول‌های مرتبط", "field_tables"),
-                       (reuse_heading, "reuse"),
-                       ("## گره‌های فرایند", "processes")):
+                       (reuse_heading, "reuse")):
         rows = [r if isinstance(r, str)
                 else f'{r["kind"]} · {r["sheet"]}!{r["where"]} · {r["text"]}'
                 for r in extras.get(key) or []]
         out += ["", title, ""] + (rows or ["—"])
+    if extras.get("processes"):
+        out += [""] + list(extras["processes"])
     # §3.2: the contract goes after the expression card and before the style
     # card — how to write the value, then what the shape may be, then how the
     # prose beside it reads.
@@ -2423,23 +2436,9 @@ def render_input(unit, skeleton, extras, conventions=DEFAULT_CONVENTIONS,
 # place that reads the estate and writes the run directory.
 
 
-def _fa(n):
-    return str(n).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
-
-
-def _recording_label(recording):
-    """`prep-1405-06-01-02` → `۱۴۰۵/۰۶/۰۱ (۲)`; a stem with no date is shown as
-    is — an owner name, never a path."""
-    m = re.search(r"([0-9]{4})-([0-9]{2})-([0-9]{2})(?:-0*([0-9]+))?$", recording)
-    if not m:
-        return recording
-    label = "/".join(_fa(m.group(i)) for i in (1, 2, 3))
-    return label + (f" ({_fa(m.group(4))})" if m.group(4) else "")
-
-
 def transcripts(root, recordings):
     """`[(recording, rel, lines)]` — every chosen transcript that exists, in
-    the owner's order; `_chunks` and `related_talk` both read this."""
+    the owner's order; only `_chunks` reads this."""
     out = []
     for recording in recordings:
         rel = f"meetings/transcripts/{recording}.txt"
@@ -2450,101 +2449,6 @@ def transcripts(root, recordings):
         out.append((recording, rel,
                     path.read_text(encoding="utf-8").splitlines()))
     return out
-
-
-def anchor_tokens(unit, skeleton, texts):
-    """The words a form unit is about — its candidates' labels, titles,
-    aliases, column titles and row labels; an attachment's headings and first
-    twelve lines. `_tokens` folds and drops the short words."""
-    by_id = {c["id"]: c for c in skeleton["candidates"]}
-    words = []
-    for cid in unit["candidates"]:
-        c = by_id[cid]
-        # `_view`, not `payload`: a record's row labels — the month and weekday
-        # names a meeting calls its rows by — live in `render`, and a table
-        # spoken of only by its rows was found by nothing without them.
-        payload = _view(c)
-        words += [label_of(c), payload.get("title") or "",
-                  payload.get("output") or ""]
-        words += list(payload.get("aliases") or [])
-        words += [f.get("title") or "" for f in payload.get("fields") or []]
-        words += [str(v) for row in payload.get("rows") or [] if isinstance(row, dict)
-                  for v in row.values() if isinstance(v, str)]
-        words += [str(label)
-                  for mapping in (payload.get("row_labels") or {}).values()
-                  for label in mapping.values()]
-    if unit["type"] == "attachment":
-        for ref in unit["inputs"]:
-            lines = texts.get(ref.partition("#")[0], "").splitlines()
-            words += lines[:12] + [ln for ln in lines if ln.startswith("#")]
-    return _tokens(" ".join(words))
-
-
-def related_talk(tokens, transcripts, budget=TALK_BUDGET, window=TALK_WINDOW,
-                 step=TALK_STEP):
-    """Spec §3 phase 1: the transcript windows that share the most words with
-    the unit, best first until `budget`, touching windows merged, printed in
-    transcript order. A window sharing nothing is never taken. Deterministic:
-    ties fall to transcript order, then position."""
-    scored = []
-    for order, (recording, rel, lines) in enumerate(transcripts):
-        for first in range(1, max(len(lines), 1) + 1, step):
-            last = min(first + window - 1, len(lines))
-            text = "\n".join(lines[first - 1:last])
-            score = len(tokens & _tokens(text))
-            if score:
-                scored.append((-score, order, first, last, recording, rel))
-            if last == len(lines):
-                break
-    # A window is priced on the lines it ADDS, not on its own 40: at step 20
-    # every window but the first overlaps its neighbour by half, and charging
-    # the overlap twice spent the 80K on 40K of talk.
-    taken, spent, covered = [], 0, collections.defaultdict(set)
-    for neg, order, first, last, recording, rel in sorted(scored):
-        fresh = [n for n in range(first, last + 1) if n not in covered[order]]
-        if not fresh:
-            continue                     # already printed: it costs nothing
-        cost = estimate_tokens("\n".join(transcripts[order][2][n - 1]
-                                        for n in fresh))
-        if spent + cost > budget:
-            continue
-        spent += cost
-        covered[order].update(fresh)
-        taken.append((order, first, last, recording, rel))
-    passages = []
-    for order, first, last, recording, rel in sorted(taken):
-        if passages and passages[-1]["rel"] == rel and first <= passages[-1]["last"] + 1:
-            passages[-1]["last"] = max(passages[-1]["last"], last)
-        else:
-            passages.append({"recording": recording, "rel": rel,
-                             "first": first, "last": last, "text": ""})
-    by_rel = {rel: lines for _, rel, lines in transcripts}
-    for p in passages:
-        p["text"] = "\n".join(by_rel[p["rel"]][p["first"] - 1:p["last"]])
-    return passages
-
-
-def talk_section(passages):
-    """`TALK_HEADING` and every passage under its own date, line range and
-    transcript path — what a form unit is shown of the meetings that named it
-    (§3). Empty when nothing was said about the form: an empty heading is one
-    more thing to read and nothing to decide.
-
-    The path, not only the date: the gate admits an account or a `voice` source
-    only for the transcript it cites (INV-3), so the unit has to be told which
-    file it is reading. `input.md` is the model's, never the owner's — it
-    already prints unit ids and `S-` ids — and the date alone cannot tell two
-    meetings of one day apart.
-    """
-    if not passages:
-        return ""
-    out = [TALK_HEADING, ""]
-    for p in passages:
-        out += [f'### {_recording_label(p["recording"])} · '
-                f'L{p["first"]}–L{p["last"]} · {p["rel"]}', "",
-                "\n".join(w for line in p["text"].splitlines()
-                           for w in _wrap(line)), ""]
-    return "\n".join(out)
 
 
 def recorded_slice(entries, store_rows, budget=RECORDED_BUDGET):
@@ -2698,8 +2602,8 @@ def _unit_text(root, unit):
     wrapped and otherwise verbatim. A workbook unit's `inputs`
     name `.xlsx` files, which are not text and are never read.
 
-    Every `.text/` sidecar is headed like a talk passage — the file's own name
-    (`_input_label`) and the path a citation has to spell. Until 2026-09-16 a
+    Every `.text/` sidecar is headed by the file's own name (`_input_label`)
+    and the path a citation has to spell. Until 2026-09-16 a
     unit's photos were concatenated nameless, so it could tell neither which
     form it was reading nor which one an entry came off, and the assembly cited
     all fourteen photos of the unit on each of its thirteen entries. A
@@ -2783,44 +2687,31 @@ def _hashes(root, estate, texts):
 
 
 def _renderer(root, department, estate, skeleton, rendered,
-              conventions=DEFAULT_CONVENTIONS, recordings=()):
-    """`render(unit, *, recorded=None) -> input.md`, closed over the estate, the
-    process index and the store slice so `plan_units` can re-render a unit it
-    splits without reading any of them again.
-
-    `render` is the **core** input — what `fits` is checked on. `render.full`
-    is what a unit is actually handed: for a phase-1 form unit the core plus
-    the meeting passages about its tables (§3), which ride outside the fit
-    check because the budget they are cut at is their own.
-
-    `build` and `refresh_inputs` share it: the second re-runs it over a plan
-    already on disk, which is the only way a card added mid-run reaches a run
-    whose units have started (§4).
-    """
+              conventions=DEFAULT_CONVENTIONS, process_files=None):
+    """`render(unit, *, recorded=None) -> input.md`, closed over the estate,
+    the store slice and the run's process files so `plan_units` can re-render
+    a unit it splits without reading any of them again. What `fits` checks is
+    exactly what the unit is handed: the process files are files of their own
+    (spec 2026-09-29 §5.3), never part of `input.md`."""
     index = _store_slice(root)
-    nodes = process_index(root, department)
+    names = department_names(root)
+    files = process_files or {}
     sections = library_sections(estate)
     own = [{"id": c["id"], "kind": c["kind"], "label": label_of(c)}
            for c in skeleton["candidates"] if c["kind"] == "record"]
     instance_by_key = {i["key"]: i for i in skeleton["instances"]}
     by_id = {c["id"]: c for c in skeleton["candidates"]}
 
-    talk_input = transcripts(root, recordings)
-
-    def render(unit, *, recorded=None, talk=None):
+    def render(unit, *, recorded=None):
         mine = [by_id[c] for c in unit["candidates"] if c in by_id]
         sids = sorted({instance_by_key[k]["spreadsheetId"]
                        for c in mine for k in candidate_instances(c)
                        if k in instance_by_key})
         text = _unit_text(root, unit)
         tokens = _tokens(" ".join([label_of(c) for c in mine] + [text]))
-        ranked = rank(nodes, tokens, 40, lambda n: n["label"])
-        # `nodes[]` records the slice the unit was actually shown, so a
-        # citation can be read back against what it could see (§2.3).
-        unit["nodes"] = [n["node"] for n in ranked]
+        phase = unit.get("phase", PHASE_OF[unit["type"]])
         rendered[unit["id"]] = render_input(unit, skeleton, {
             "text": text,
-            "talk": talk,
             "functions": called_bodies(
                 sections, {name for c in mine
                            for name in (c.get("render") or {}).get("calls") or []}),
@@ -2828,32 +2719,11 @@ def _renderer(root, department, estate, skeleton, rendered,
             "field_tables": _field_tables(unit, skeleton),
             "reuse": (recorded if recorded is not None
                       else reuse_slice(own, index, department, tokens)),
-            "processes": [f'{n["process"]} · {n["node"]} · {n["label"]}'
-                          for n in ranked]}, conventions,
+            "processes": processes_section(department, files, names,
+                                           others=phase == 1)}, conventions,
             recorded=recorded is not None)
         return rendered[unit["id"]]
 
-    def render_full(unit):
-        """What the unit is handed: the core, and for a form unit the talk
-        about its tables in its own section beside them. `fits` is checked on
-        `render(unit)` without the talk — the talk is cut at a budget of its
-        own and may never split a unit.
-
-        Side effect, like `render`'s `nodes[]`: the unit records the passages
-        it was shown, so `plan.json` is the auditable record of them and the
-        gate can refuse a citation to talk this unit never read (I5)."""
-        if unit.get("phase", PHASE_OF[unit["type"]]) != 1:
-            unit["talk"] = []
-            return render(unit)
-        att = {ref.partition("#")[0]: _unit_text(root, {"inputs": [ref]})
-               for ref in unit["inputs"]
-               if ref.partition("#")[0].endswith((".txt", ".md"))}
-        passages = related_talk(anchor_tokens(unit, skeleton, att), talk_input)
-        unit["talk"] = [{"rel": p["rel"], "first": p["first"], "last": p["last"]}
-                        for p in passages]
-        return render(unit, talk=passages)
-
-    render.full = render_full
     return render
 
 
@@ -2876,9 +2746,8 @@ def _plan_recordings(plan):
     The transcript units, not `hashes`: `_chunks` walks the recordings in the
     order the owner named them, so the units sit in the plan in that order and
     a recording's first appearance among their inputs is where it belongs.
-    `hashes` is written sorted, and `related_talk` breaks a tie by transcript
-    order — so two meetings named out of alphabetical order would have come
-    back swapped and a refresh would have rewritten talk `build` had placed.
+    `hashes` is written sorted, so two meetings named out of alphabetical
+    order would have come back swapped.
     """
     out = []
     for unit in plan.get("units") or []:
@@ -2924,10 +2793,11 @@ def render_phase2_inputs(root, run_dir):
     skeleton = read_json(run_dir / "skeleton.json")
     recorded = _recorded_slices(root, run_dir, plan, skeleton["department"],
                                 todo)
-    # No recordings: a phase-2 unit is shown no related talk — it is reading
-    # the meeting itself.
+    # The files `build` wrote, read back, not rewritten: a phase-1 unit may
+    # still be reading them.
     render = _renderer(root, skeleton["department"], load_estate(root),
-                       skeleton, {}, load_conventions(root), recordings=[])
+                       skeleton, {}, load_conventions(root),
+                       process_file_map(root, run_dir))
     for unit in todo:
         write_text_atomic(run_dir / "units" / unit["id"] / "input.md",
                           render(unit, recorded=recorded[unit["id"]]))
@@ -2949,12 +2819,11 @@ def refresh_inputs(root, run_dir):
     skeleton = read_json(run_dir / "skeleton.json")
     plan = read_json(run_dir / "plan.json")
     units = plan["units"]
-    # The run's own recordings, not none: the talk beside a form unit's tables
-    # is part of what it was handed (§3), and re-rendering without them would
-    # quietly strip the section out from under a unit already running.
+    # The process files are rewritten like every input (spec 2026-09-29 §5.1):
+    # a process corrected mid-run reaches the units this way.
     render = _renderer(root, skeleton["department"], load_estate(root),
                        skeleton, {}, load_conventions(root),
-                       _plan_recordings(plan))
+                       write_process_files(root, run_dir))
     # A phase-2 unit keeps the section it has: once `status` has told it what
     # phase 1 recorded, a refresh rebuilds that slice rather than reverting it
     # to the store's reusable rows.
@@ -2962,24 +2831,14 @@ def refresh_inputs(root, run_dir):
         root, run_dir, plan, skeleton["department"],
         [u for u in units if u.get("phase") == 2
          and RECORDED_HEADING in _input_text(run_dir, u["id"])])
-    over, talk_before = [], [u.get("talk") for u in units]
+    over = []
     for unit in units:
-        if unit.get("phase", PHASE_OF[unit["type"]]) == 1:
-            # `fits` is checked on the core, as `plan_units` checks it: the
-            # talk rides outside the budget and may never split a unit (§3).
-            check, text = render(unit), render.full(unit)
-        else:
-            check = text = render(unit, recorded=recorded.get(unit["id"]))
+        text = render(unit, recorded=recorded.get(unit["id"]))
         write_text_atomic(run_dir / "units" / unit["id"] / "input.md", text)
-        if not fits(unit, check):
+        if not fits(unit, text):
             over.append(unit["id"])
             print(f'facts-plan: {unit["id"]} input over budget '
-                  f'({estimate_tokens(check)})', file=sys.stderr)
-    # The plan's record of the passages has to say what the unit now holds —
-    # a card added mid-run changes the anchor words and so the talk. Written
-    # only when it moved, so a refresh that changes nothing changes no file.
-    if [u.get("talk") for u in units] != talk_before:
-        write_json_atomic(run_dir / "plan.json", plan)
+                  f'({estimate_tokens(text)})', file=sys.stderr)
     return {"refreshed": len(units), "over_budget": over}
 
 
@@ -3020,9 +2879,10 @@ def build(root, department, run_dir, recordings, *, rebuild=False):
     skeleton = {"unit_symbols": unit_symbols(root), "candidates": candidates,
                 "instances": instances, "imports": imports}
 
+    process_files = write_process_files(root, run_dir)
     rendered = {}
     render = _renderer(root, department, estate, skeleton, rendered,
-                       conventions, recordings)
+                       conventions, process_files)
 
     chunks = _chunks(root, recordings)
     units = plan_units(skeleton, workbook_groups(manifest, department, [
@@ -3039,14 +2899,8 @@ def build(root, department, run_dir, recordings, *, rebuild=False):
                    candidates, instances, imports, issues)
     write_text_atomic(run_dir / "functions.md", function_library(estate))
     for unit in units:
-        # `render.full`, not the cached core: what `plan_units` checked against
-        # the budget is the core, and what the unit reads is the core plus the
-        # talk about its tables (§3).
         write_text_atomic(run_dir / "units" / unit["id"] / "input.md",
-                          render.full(unit))
-    # After the inputs, not before: `render.full` is what records each unit's
-    # passages, and `plan.json` has to carry them for the gate to check a
-    # citation against what the unit was actually shown (I5).
+                          render(unit))
     write_plan(run_dir, department,
                _hashes(root, estate, [rel for _, rel, _, _ in chunks] + attachments),
                units)

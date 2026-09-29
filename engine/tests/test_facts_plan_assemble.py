@@ -2065,46 +2065,20 @@ def test_the_digest_names_each_entrys_source_kinds(tmp_path):
     assert "منابع: photo" in text and "منابع: voice" in text
 
 
-def test_a_units_account_reaches_the_delta_and_apply_takes_it(tmp_path):
-    """The other half of the contradiction rule: what the unit heard travels
-    to the store as an open account, whose id `apply` mints (INV-1)."""
-    root = _root(tmp_path)
-    _seed_units(root)
-    record = _record_out()
-    record["decisions"][0]["accounts"] = [
-        {"path": "data/cadence", "value": "weekly",
-         "source": {"type": "voice", "ref": "meetings/transcripts/c.txt",
-                    "lines": "3-9"}}]
-    plan = _plan()
-    plan["hashes"] = {"meetings/transcripts/c.txt": "x"}
-    # what `build` printed to this unit: the citation has to sit inside it
-    plan["units"][0]["talk"] = [{"rel": "meetings/transcripts/c.txt",
-                                 "first": 1, "last": 20}]
-    run_dir = _run(root, {"u-a": record, "u-b": _rule_out()}, plan=plan)
-    assemble(root, run_dir)
-    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
-    entry = next(e for e in delta["entries"] if e["key"] == "gozaresh_shabane_pitza")
-    assert entry["data"]["cadence"] == "nightly"          # the form's value stays
-    assert [(a["field"], a["value"], a["status"]) for a in entry["accounts"]] == \
-        [("data/cadence", "weekly", "open"),
-         ("data/cadence", "nightly", "open")]             # I1: the form's side
-    assert all("id" not in a for a in entry["accounts"])
-    validate("facts-delta.schema.json", delta)
-    assert tiers.refusals(simulate(root, run_dir / "facts-delta.json", run_dir)[1]) == []
-
-
 # --------------------------------------------------------------------------
-# What a unit may cite of the talk it was shown (spec §3, C1/C2/I1/I5).
+# What a unit may cite of the talk it was handed (spec 2026-09-29 §8: its own
+# excerpt, and nothing else).
 
 TR_REL = "meetings/transcripts/c.txt"
 
 
-def _plan_with_talk(passages=({"rel": TR_REL, "first": 213, "last": 252},)):
-    """The run's plan with `u-a` shown one passage — `build`'s own record of
-    what that unit could read, and the only thing the gate checks against."""
+def _plan_with_excerpt():
+    """The run's plan with `u-a` handed one excerpt, L213–L252 — `build`'s own
+    record of what that unit could read, and the only thing the gate checks
+    against."""
     plan = _plan()
     plan["hashes"] = {TR_REL: "x", "meetings/transcripts/other.txt": "y"}
-    plan["units"][0]["talk"] = [dict(p) for p in passages]
+    plan["units"][0]["inputs"] = [f"{TR_REL}#L213-L252"]
     return plan
 
 
@@ -2119,41 +2093,12 @@ def _delta_entry(tmp_path, over, plan=None):
     record = _record_out()
     record["decisions"][0].update(over)
     run_dir = _run(root, {"u-a": record, "u-b": _rule_out()},
-                   plan=plan or _plan_with_talk())
+                   plan=plan or _plan_with_excerpt())
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     validate("facts-delta.schema.json", delta)
     return root, run_dir, next(e for e in delta["entries"]
                                if e["key"] == "gozaresh_shabane_pitza")
-
-
-def test_an_account_is_kept_when_it_cites_a_passage_the_unit_was_shown(tmp_path):
-    """C1 — the passage heading prints the transcript path, so the citation the
-    agent text asks for is one the unit can actually spell."""
-    _root_, _run_, entry = _delta_entry(tmp_path, {"accounts": [
-        {"path": "data/cadence", "value": "weekly", "source": _voice("220-230")}]})
-    assert ("data/cadence", "weekly") in [(a["field"], a["value"])
-                                          for a in entry["accounts"]]
-
-
-@pytest.mark.parametrize("account,plan", [
-    # a line range that leaves the passage — half of it was never shown
-    ({"path": "data/cadence", "value": "weekly", "source": _voice("200-230")},
-     None),
-    # a transcript of the run the unit was shown no line of
-    ({"path": "data/cadence", "value": "weekly",
-      "source": _voice("220-230", "meetings/transcripts/other.txt")}, None),
-    # a unit shown no passage at all (a phase-2 unit, or a silent meeting)
-    ({"path": "data/cadence", "value": "weekly", "source": _voice("220-230")},
-     _plan_with_talk(())),
-])
-def test_an_account_citing_talk_the_unit_never_read_is_dropped(tmp_path, account,
-                                                               plan):
-    """I5 — INV-3 at passage level: the engine selects, the unit never searches,
-    so a citation to a line it was not handed is dropped (REPAIR, no note)."""
-    _root_, _run_, entry = _delta_entry(tmp_path, {"accounts": [account]},
-                                        plan=plan)
-    assert "accounts" not in entry
 
 
 def test_a_voice_source_joins_the_form_on_the_entry(tmp_path):
@@ -2171,35 +2116,10 @@ def test_a_voice_source_joins_the_form_on_the_entry(tmp_path):
 
 
 def test_a_voice_source_outside_the_shown_passages_is_dropped(tmp_path):
-    """Gated exactly like an account — and, like it, silently."""
+    """Outside the unit's own excerpt, or with no lines at all — silently."""
     _root_, _run_, entry = _delta_entry(tmp_path, {"voice": [
         _voice("1-9"), {"type": "voice", "ref": TR_REL}]})
     assert [s["type"] for s in entry["source"]] == ["sheet"]
-
-
-def test_a_units_account_is_two_sided_so_the_owner_may_keep_the_form(tmp_path):
-    """I1 — `resolve` writes the chosen account's value at the field, so the
-    form's own reading has to be one of the choices; otherwise the owner's only
-    answer is to adopt the speech."""
-    from merge_facts import load_store
-    from merge_facts.apply import apply
-    from merge_facts.verbs import resolve
-    from facts_helpers import _run_dir
-    root, run_dir, entry = _delta_entry(tmp_path, {"accounts": [
-        {"path": "data/cadence", "value": "weekly", "source": _voice("220-230")}]})
-    assert sorted(a["value"] for a in entry["accounts"]) == ["nightly", "weekly"]
-    assert [a["source"]["type"] for a in entry["accounts"]] == ["voice", "sheet"]
-    apply(root, run_dir / "facts-delta.json", run_dir)
-    stored = next(e for e in load_store(root)["record"]["entries"]
-                  if e["key"] == "gozaresh_shabane_pitza")
-    assert all(a.get("id") for a in stored["accounts"])      # INV-1: apply mints
-    form = next(a for a in stored["accounts"] if a["value"] == "nightly")
-    resolve(root, stored["id"], "data/cadence", form["id"], _run_dir(root, "9"))
-    kept = next(e for e in load_store(root)["record"]["entries"]
-                if e["id"] == stored["id"])
-    assert kept["data"]["cadence"] == "nightly"              # the form stands
-    assert {a["value"]: a["status"] for a in kept["accounts"]} == \
-        {"nightly": "chosen", "weekly": "rejected"}
 
 
 def test_the_phase_two_input_prints_a_phase_one_entry_by_handle_and_location(
@@ -2600,3 +2520,40 @@ def test_a_photographed_form_and_its_rule_cite_one_photo_through_assemble(tmp_pa
     by_key = {e["key"]: e for e in delta["entries"]}
     assert [s["ref"] for s in by_key["form_tahvil"]["source"]] == [_photo(1)]
     assert [s["ref"] for s in by_key["tavan_tahvil"]["source"]] == [_photo(1)]
+
+
+def test_a_citation_to_another_departments_step_is_kept_with_its_own_path(tmp_path):
+    root = _root(tmp_path)
+    directory = root / "departments" / "warehouse" / "processes"
+    directory.mkdir(parents=True)
+    (directory / "warehouse-005.json").write_text(json.dumps(
+        {"id": "warehouse-005", "edges": [],
+         "nodes": [{"id": "warehouse-005-n002", "label": "ثبت تحویل"}]},
+        ensure_ascii=False), encoding="utf-8")
+    record = _record_out()
+    record["decisions"][0]["processes"] = [
+        {"process": "warehouse-005", "node": "warehouse-005-n002", "quote": "ثبت تحویل"}]
+    run_dir = _run(root, {"u-a": record, "u-b": _rule_out()})
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    entry = next(e for e in delta["entries"] if e["key"] == "gozaresh_shabane_pitza")
+    cited = [{k: s[k] for k in ("type", "ref", "node") if k in s}
+             for s in entry["source"] if s["type"] == "process"]
+    assert cited == [{"type": "process", "node": "warehouse-005-n002",
+                      "ref": "departments/warehouse/processes/warehouse-005.json"}]
+
+
+def test_an_account_a_unit_writes_is_dropped_by_the_gate(tmp_path):
+    root = _root(tmp_path)
+    record, rule = _record_out(), _rule_out()
+    account = {"path": "data/cadence", "value": "shift",
+               "source": {"type": "voice", "ref": "meetings/transcripts/c.txt",
+                          "lines": "1-5"}}
+    # u-b's own excerpt is L1-L20: even an account citing lines the unit read
+    # is the engine's to write, never the unit's.
+    record["decisions"][0]["accounts"] = [account]
+    rule["decisions"][0]["accounts"] = [dict(account, path="statement")]
+    run_dir = _run(root, {"u-a": record, "u-b": rule})
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert all("accounts" not in e for e in delta["entries"])
