@@ -1566,7 +1566,7 @@ def _settle(entries, state):
             continue
         if decision["resolution"] == "fix":
             set_path(entry, decision["field"], decision["value"])
-        else:
+        elif judgeable(decision["field"]):
             entry.setdefault("accounts", []).extend(
                 _account(decision["field"], side) for side in flag["sides"])
         # By address, never by identity: `flag` came from the digest's own
@@ -2457,6 +2457,40 @@ def _homeless(entries):
     return out
 
 
+#: Spec 2026-09-29 §8 — what an entry was read off, strongest first: a form
+#: (and everything a sheet carries), then a process step, then the meeting or
+#: the chat.
+FORM_SOURCES = frozenset({"sheet", "script", "comment", "validation", "cf",
+                          "photo", "pdf", "docx"})
+
+
+def _keeper_order(entry):
+    """When two units mint one entry, the one read off a form is kept, then
+    one read off a process, then the rest; ties by unit id, then id — today's
+    order, which alone let a `u-tr-…` beat a `u-wb-…`."""
+    kind = ((entry.get("source") or [{}])[0] or {}).get("type")
+    rank = 0 if kind in FORM_SOURCES else 1 if kind == "process" else 2
+    return (rank, entry.get("_unit") or "", entry.get("id") or "")
+
+
+#: A leaf the owner cannot judge from a chat message (spec 2026-09-29 §8).
+UNJUDGEABLE_LEAVES = frozenset({"title", "type", "expr", "lang", "key"})
+FORMULA_MEMBERS = frozenset({"inputs", "outputs"})
+FORMULA_JUDGEABLE = frozenset({"value", "range", "unit", "per"})
+
+
+def judgeable(path):
+    """Whether a disagreement at `path` is worth the owner's answer: never a
+    title, a data type, a formula, its language or a key; inside a formula's
+    inputs and outputs only a value, a range, a unit or its basis."""
+    segs = path.split("/")
+    if segs[-1] in UNJUDGEABLE_LEAVES:
+        return False
+    if len(segs) > 2 and segs[0] == "data" and segs[1] in FORMULA_MEMBERS:
+        return any(s in FORMULA_JUDGEABLE for s in segs[3:])
+    return True
+
+
 def _cross_unit(root, entries, state):
     """Step 7 — two `keep`s minting one `(kind, key, scope)` are merged with the
     lowest unit's prose; a scalar the two disagree on becomes two accounts when
@@ -2467,7 +2501,7 @@ def _cross_unit(root, entries, state):
         groups.setdefault(_address(entry), []).append(entry)
     survivors, flags = [], []
     for members in groups.values():
-        members.sort(key=lambda e: (e["_unit"], e["id"]))
+        members.sort(key=_keeper_order)
         keeper = members[0]
         for other in members[1:]:
             entries.remove(other)
@@ -2478,6 +2512,8 @@ def _cross_unit(root, entries, state):
             for path, value in sorted(theirs.items()):
                 if path not in mine or mine[path] == value:
                     continue
+                if not judgeable(path):
+                    continue            # the keeper's reading stands; nothing is asked
                 kinds = {keeper["source"][0]["type"], other["source"][0]["type"]}
                 sides = [{"unit": holder["_unit"], "value": held,
                           "source": holder["source"][0]}

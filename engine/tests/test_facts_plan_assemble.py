@@ -2615,3 +2615,39 @@ def test_a_contradiction_the_engine_cannot_check_is_dropped(tmp_path, bad):
     rule = _rule_out()
     rule["contradicted"] = [dict(_claim(), **bad)]
     assert _assembled(root, rule)["contradicted"] == []
+
+
+@pytest.mark.parametrize("path,expected", [
+    ("title", False), ("data/fields/vazn/type", False), ("data/expr", False),
+    ("data/lang", False), ("data/outputs/vazn/title", False),
+    ("data/inputs/x/from/field", False), ("data/fields/vazn/key", False),
+    ("data/filled_by", True), ("data/cadence", True), ("statement", True),
+    ("data/outputs/vazn/range/min", True), ("data/outputs/vazn/value", True),
+    ("data/outputs/vazn/per", True), ("data/fields/vazn/unit", True)])
+def test_only_what_the_owner_can_judge_becomes_a_dispute(path, expected):
+    from facts_plan.assemble import judgeable
+    assert judgeable(path) is expected
+
+
+def test_the_keeper_is_the_form_then_the_process_then_the_meeting():
+    from facts_plan.assemble import _keeper_order
+
+    def entry(kind, unit):
+        return {"source": [{"type": kind}], "_unit": unit, "id": f"T-{unit}"}
+    entries = [entry("voice", "u-a"), entry("process", "u-b"),
+               entry("photo", "u-c"), entry("chat", "u-0")]
+    assert [e["_unit"] for e in sorted(entries, key=_keeper_order)] == \
+        ["u-c", "u-b", "u-0", "u-a"]
+
+
+def test_a_column_type_two_sources_read_differently_is_no_dispute(tmp_path):
+    root = _root(tmp_path)
+    rule = _rule_out()
+    rule["new"] = [_second_record(fields=[{"key": "masraf_elami", "title": "مصرف اعلامی",
+                                           "type": "integer", "unit": "kg"}])]
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule})
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    record = next(e for e in delta["entries"] if e["key"] == "gozaresh_shabane_pitza")
+    assert not record.get("accounts")
+    assert record["data"]["fields"][0]["type"] == "number"      # the keeper's reading
