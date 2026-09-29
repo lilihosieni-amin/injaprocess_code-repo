@@ -15,7 +15,7 @@ import { TextField } from '../ui/TextField'
 import { LoadFailedScreen, ScreenSkeleton } from '../ui/states'
 import { useToast } from '../write/ToastProvider'
 import { fromComment } from '../shell/back'
-import { AuthorActions, DRAFT_HINT, type AuthorLook } from './AuthorActions'
+import { AuthorActions, DRAFT_HINT, drafting, type AuthorLook } from './AuthorActions'
 import { DecisionModal, type Decision } from './DecisionModal'
 
 /** Reader L1999–2001. */
@@ -157,7 +157,7 @@ function InboxCard({ c, open, onToggle }: { c: Comment; open: boolean; onToggle:
   // context sits behind «جزئیات», and any open mode holds the card open.
   const own = c.author.isMe
   const hasMore = notes.length > 0 || !own || (c.state === 'awaiting' && (!!c.approvals || own)) || c.state === 'approved'
-  const expanded = open || mode !== null || draft !== null
+  const expanded = open || mode !== null || drafting(c, draft)
 
   const switchTo = (m: Mode) => { setMode(mode === m ? null : m); setText('') }
   const fail = (e: unknown) => toast.show((e instanceof ApiError && e.detail) || 'انجام نشد')
@@ -207,7 +207,7 @@ function InboxCard({ c, open, onToggle }: { c: Comment; open: boolean; onToggle:
           </Link>
         )}
 
-        {draft !== null
+        {drafting(c, draft)
           // Reader L761 (margin 12)
           ? <TextField multiline rows={4} label={DRAFT_HINT} placeholder={DRAFT_HINT} value={draft} onChange={setDraft}
               boxClassName={FIELD} className="mt-s6 [&>label]:sr-only" />

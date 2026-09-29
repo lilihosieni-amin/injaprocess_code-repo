@@ -19,6 +19,13 @@ export const STATUS: Record<CommentState, { label: string; bg: string; fg: strin
  */
 export const RESEND = 'ارسال دوباره'
 export const RESENT = 'دوباره فرستاده شد'
+/**
+ * The toast after an author changes their text, chosen by where it landed: an
+ * Admin's or an Editor's (or a Reader's with no Admin to pass, D63.6) is
+ * approved again at once, so only a comment back in the chain «starts over».
+ */
+export const EDITED = 'اصلاح شد'
+export const EDITED_RESTARTED = 'اصلاح شد و زنجیره از اول شروع شد'
 
 /** Panel design `ST` (Inja Panel.dc.html L3870) words two states differently. */
 const PANEL_LABEL: Partial<Record<CommentState, string>> = { addressed: 'رسیدگی‌شده', rejected: 'رد شده' }

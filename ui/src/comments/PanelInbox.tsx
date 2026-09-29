@@ -19,12 +19,21 @@ import { Timeline, type TimelineNode } from '../ui/Timeline'
 import { LoadFailedScreen, ScreenSkeleton } from '../ui/states'
 import { useToast } from '../write/ToastProvider'
 import { fromComment } from '../shell/back'
-import { AuthorActions, DRAFT_HINT, type AuthorLook } from './AuthorActions'
+import { AuthorActions, DRAFT_HINT, drafting, type AuthorLook } from './AuthorActions'
 import { DecisionModal, type Decision } from './DecisionModal'
 
-/** Panel L4192–4194. */
+/**
+ * Panel L4192–4194, and «کامنت‌های من» for the Editor too (lili, 2026-09-29):
+ * the design left it out because an Editor wrote no comments. Now they do, and
+ * without it a withdrawn one — where «ارسال دوباره» lives — is reachable only
+ * by paging «همه», where closed comments sort last.
+ */
 const TABS = {
-  editor: [{ id: 'waiting', label: 'رسیده به شما' }, { id: 'all', label: 'همه' }],
+  editor: [
+    { id: 'waiting', label: 'رسیده به شما' },
+    { id: 'own', label: 'کامنت‌های من' },
+    { id: 'all', label: 'همه' },
+  ],
   admin: [
     { id: 'waiting', label: 'در انتظار تأیید' },
     { id: 'own', label: 'کامنت‌های من' },
@@ -283,7 +292,7 @@ function Detail({ cref, onClose }: { cref: string; onClose: () => void }) {
           <div className="text-fs-xxs font-bold text-ink">{c.author.name}</div>
           {c.author.role && <div className="text-fs-xxs text-muted mt-half">{roleLabel(c.author.role)}</div>}
         </div>
-        {draft !== null
+        {drafting(c, draft)
           ? <TextField multiline rows={4} label={DRAFT_HINT} placeholder={DRAFT_HINT} value={draft} onChange={setDraft}
               boxClassName={FIELD} className="[&>label]:sr-only" />
           : <div className="text-fs-lg text-ink leading-loose whitespace-pre-line [text-wrap:pretty]">{c.text}</div>}

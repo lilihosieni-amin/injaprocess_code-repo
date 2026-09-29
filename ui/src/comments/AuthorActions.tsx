@@ -1,12 +1,20 @@
 import { useState } from 'react'
 import { useEditComment, useRestoreComment, useWithdrawComment, type Comment } from '../api/comments'
 import { ApiError } from '../api/client'
-import { RESEND, RESENT } from '../lib/comments'
+import { EDITED, EDITED_RESTARTED, RESEND, RESENT } from '../lib/comments'
 import { useToast } from '../write/ToastProvider'
 import { DecisionModal } from './DecisionModal'
 
 /** The draft's placeholder (Reader L761), on both surfaces. */
 export const DRAFT_HINT = 'حرفتان را ساده بنویسید…'
+
+/**
+ * Whether the draft is drawn: opened, and still the author's to save. A refetch
+ * can take `edit` away mid-draft (an Editor addresses the comment, a supervisor
+ * approves it); the text then comes back rather than a box nothing can save.
+ */
+export const drafting = (c: Comment, draft: string | null): draft is string =>
+  draft !== null && c.actions.edit
 
 /** Each inbox draws the row at its own design's metrics; the behaviour is this file's. */
 export interface AuthorLook { row: string; ghost: string; danger: string; send: string; cancel: string }
@@ -38,7 +46,8 @@ export function AuthorActions({ c, draft, onDraft, look }: {
   function save() {
     const text = draft?.trim()
     if (!text) { toast.show('متن خالی است'); return }
-    edit.mutate({ ref: c.id, text }, { onSuccess: done('اصلاح شد و زنجیره از اول شروع شد'), onError: fail })
+    edit.mutate({ ref: c.id, text }, {
+      onSuccess: (r) => done(r.state === 'approved' ? EDITED : EDITED_RESTARTED)(), onError: fail })
   }
 
   if (c.actions.restore) return (
@@ -50,7 +59,7 @@ export function AuthorActions({ c, draft, onDraft, look }: {
   if (!c.actions.edit && !c.actions.withdraw) return null
   return (
     <>
-      {draft !== null ? (
+      {drafting(c, draft) ? (
         <div data-r-cmtactions className={look.row}>
           <button type="button" onClick={save} disabled={busy} className={look.send}>دوباره بفرست</button>
           <button type="button" onClick={() => onDraft(null)} className={look.cancel}>انصراف</button>

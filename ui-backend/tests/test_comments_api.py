@@ -117,6 +117,21 @@ def test_inbox_tabs_and_paging(people):
     assert own["total"] == 12 and own["pages"] == 1
 
 
+def test_the_editor_s_own_tab_lists_their_comments_withdrawn_ones_included(people):
+    """Review item 6: the panel gives the Editor «کامنت‌های من»; the server's
+    `tab=own` already answers for them — pinned here, not assumed."""
+    def new(who):
+        return people[who].post("/api/comments", json={
+            "anchorKind": "process", "anchorId": "cooking-001", "text": "x"}).json()["id"]
+
+    kept, back = new("editor"), new("editor")
+    new("viewer")
+    people["editor"].post(f"/api/comments/{back}/withdraw")
+    own = people["editor"].get("/api/comments/inbox?tab=own").json()
+    assert [(c["id"], c["state"]) for c in own["items"]] == [(kept, "approved"), (back, "withdrawn")]
+    assert own["items"][1]["actions"]["restore"]
+
+
 def test_created_is_recorded(people):
     cid = people["viewer"].post("/api/comments", json={
         "anchorKind": "department", "anchorId": "cooking", "text": "x"}).json()["id"]

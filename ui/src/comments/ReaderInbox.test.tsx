@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { screen, fireEvent, within, waitFor, render } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { renderAt } from '../test/utils'
 import { HEAD, VIEWER } from '../test/sessions'
@@ -176,6 +176,24 @@ describe('reader inbox', () => {
     expect(url).toBe('/api/comments/CMT-2')
     expect(init!.method).toBe('PUT')
     expect(JSON.parse(String(init!.body))).toEqual({ text: 'متن تازه' })
+    // review 4: a Reader's edit really does restart the chain
+    expect(await screen.findByText('اصلاح شد و زنجیره از اول شروع شد')).toBeInTheDocument()
+  })
+
+  it('shows the text again when the draft stops being the author’s to save (review 3)', async () => {
+    const mine = cmt(2, { author: { name: 'سمیرا احمدی', isMe: true, role: 'reader' }, actions: { ...NO, edit: true, withdraw: true } })
+    const tabs = { own: [mine] }
+    stub(tabs)
+    open(VIEWER)
+    fireEvent.click(await screen.findByRole('button', { name: 'عوض کردن متن' }))
+    expect(screen.getByPlaceholderText('حرفتان را ساده بنویسید…')).toBeInTheDocument()
+    // the head approved it meanwhile; the next refetch says so
+    tabs.own = [{ ...mine, approvals: 1, actions: NO }]
+    focusManager.setFocused(false)
+    focusManager.setFocused(true)
+    focusManager.setFocused(undefined)
+    await waitFor(() => expect(screen.queryByPlaceholderText('حرفتان را ساده بنویسید…')).toBeNull())
+    expect(screen.getByText('متن نویسنده 2')).toBeInTheDocument()
   })
 
   it('shows the design’s empty line', async () => {
