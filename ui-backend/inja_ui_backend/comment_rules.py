@@ -205,6 +205,9 @@ def actions(app, cc, viewer: sqlite3.Row, c: sqlite3.Row) -> dict[str, bool]:
                      and not S.approvers_since_restart(cc, c["id"]))
     return {"approve": decide, "reject": decide, "edit": own_untouched,
             "withdraw": own_untouched,
+            # a withdrawal is the author's own act, so the author may undo it
+            # (decision C); a rejection is someone else's and stays final (D73)
+            "restore": c["author_id"] == viewer["id"] and c["state"] == "withdrawn",
             "address": c["state"] == "approved" and k == "editor"}
 
 

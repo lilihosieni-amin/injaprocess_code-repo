@@ -26,7 +26,7 @@ const PROCESS: Process = {
   edges: [{ from: 'n1', to: 'n2' }], pending: [],
 }
 
-const NO = { approve: false, reject: false, edit: false, withdraw: false, address: false }
+const NO = { approve: false, reject: false, edit: false, withdraw: false, restore: false, address: false }
 const AT = '2026-09-20T08:00:00Z'
 const ev = (kind: CommentTrailItem['kind'], name: string): CommentTrailItem =>
   ({ kind, name, note: null, reason: null, commit: null, role: 'reader', at: AT })
@@ -191,5 +191,29 @@ test('panel inbox — the editor resolves an approved comment', async ({ page })
   await modal.getByRole('button', { name: 'ثبت می‌کنم' }).click()
   expect(await body).toEqual({ note: 'گام استقبال جابه‌جا شد' })
   await expect(toast(page)).toHaveText('کامنت رسیدگی‌شده ثبت شد')
+  await expectEveryEndpointStubbed(page)
+})
+
+test('panel inbox — an admin sends their withdrawn comment again (2026-09-29 addendum, decision C)', async ({ page }) => {
+  await signedIn(page, ADMIN)
+  const back = cmt(7, {
+    state: 'withdrawn', stage: null, waitingWith: null,
+    author: { name: 'مهدی رجبی', isMe: true, role: 'admin' },
+    actions: { ...NO, restore: true },
+    trail: [{ ...ev('submitted', 'مهدی رجبی'), role: 'admin' }, { ...ev('withdrawn', 'مهدی رجبی'), role: 'admin' }],
+  })
+  await serve(page, {
+    '/api/departments': DEPARTMENTS,
+    '/api/pending': [],
+    '/api/comments/inbox?tab=waiting&page=1': { items: [], total: 0, page: 1, pages: 1 },
+    '/api/comments/CMT-7': back,
+    '/api/comments/CMT-7/restore': { ...back, state: 'approved', waitingWith: { kind: 'editors' }, actions: NO },
+  })
+  await page.goto('/comments?c=CMT-7')
+  const sent = nextWrite(page, '/api/comments/CMT-7/restore')
+  await page.getByRole('button', { name: 'ارسال دوباره' }).click()
+  await sent
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(toast(page)).toHaveText('دوباره فرستاده شد')
   await expectEveryEndpointStubbed(page)
 })

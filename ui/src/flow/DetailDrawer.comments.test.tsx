@@ -42,7 +42,7 @@ function cmt(n: number, nodeId: string | null): Comment {
     author: { name: 'سمیرا احمدی', isMe: true, role: 'reader' },
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     approvals: 0, notes: [], rejectReason: null, addressed: null,
-    actions: { approve: false, reject: false, edit: true, withdraw: true, address: false },
+    actions: { approve: false, reject: false, edit: true, withdraw: true, restore: false, address: false },
   }
 }
 

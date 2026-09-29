@@ -40,7 +40,8 @@ CATALOGUE: dict[str, str] = {
     "supervisor.changed": "governance", "supervisor_flag.changed": "governance",
     "visibility.policy.changed": "governance",
     "comment.created": "governance", "comment.edited": "governance",
-    "comment.withdrawn": "governance", "comment.approved": "governance",
+    "comment.withdrawn": "governance", "comment.restored": "governance",
+    "comment.approved": "governance",
     "comment.noted": "governance", "comment.rejected": "governance",
     "comment.addressed": "governance", "projection.discontinuity": "governance",
 }

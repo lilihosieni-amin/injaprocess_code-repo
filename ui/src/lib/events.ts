@@ -18,7 +18,8 @@ export const EVENT_LABEL: Record<string, string> = {
   'supervisor.changed': 'تغییر سرپرست', 'supervisor_flag.changed': 'تغییر پرچم سرپرست‌شدن',
   'visibility.policy.changed': 'تغییر سیاست نمایش',
   'comment.created': 'ثبت کامنت', 'comment.edited': 'ویرایش کامنت',
-  'comment.withdrawn': 'پس‌گرفتن کامنت', 'comment.approved': 'تأیید کامنت',
+  'comment.withdrawn': 'پس‌گرفتن کامنت', 'comment.restored': 'ارسال دوبارهٔ کامنت',
+  'comment.approved': 'تأیید کامنت',
   'comment.noted': 'یادداشت روی کامنت', 'comment.rejected': 'رد کامنت',
   'comment.addressed': 'رسیدگی به کامنت', 'projection.discontinuity': 'گسست در تاریخچهٔ داده',
 }

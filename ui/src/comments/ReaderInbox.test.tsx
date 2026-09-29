@@ -16,7 +16,7 @@ afterEach(() => vi.restoreAllMocks())
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
 
-const NO = { approve: false, reject: false, edit: false, withdraw: false, address: false }
+const NO = { approve: false, reject: false, edit: false, withdraw: false, restore: false, address: false }
 
 function cmt(n: number, over: Partial<Comment> = {}): Comment {
   return {
@@ -304,6 +304,16 @@ describe('reader inbox', () => {
     open(VIEWER)
     expect(await screen.findByText('متن نویسنده 8')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'جزئیات' })).toBeNull()
+  })
+
+  it('«ارسال دوباره» sends a withdrawn comment again, without asking (2026-09-29 addendum, decision C)', async () => {
+    const spy = stub({ own: [cmt(8, { state: 'withdrawn', author: { name: 'سمیرا احمدی', isMe: true, role: 'reader' }, actions: { ...NO, restore: true } })] })
+    open(VIEWER)
+    fireEvent.click(await screen.findByRole('button', { name: 'ارسال دوباره' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await waitFor(() => expect(posted(spy)).toHaveLength(1))
+    expect(posted(spy)[0][0]).toBe('/api/comments/CMT-8/restore')
+    expect(await screen.findByText('دوباره فرستاده شد')).toBeInTheDocument()
   })
 
   it('«پس گرفتن» asks first, and posts only on «پس می‌گیرم»', async () => {

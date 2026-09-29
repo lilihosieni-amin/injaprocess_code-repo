@@ -20,7 +20,7 @@ afterEach(() => vi.restoreAllMocks())
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
 
-const NO = { approve: false, reject: false, edit: false, withdraw: false, address: false }
+const NO = { approve: false, reject: false, edit: false, withdraw: false, restore: false, address: false }
 const AT = '2026-09-20T08:00:00Z'
 const ev = (kind: CommentTrailItem['kind'], name: string, over: Partial<CommentTrailItem> = {}): CommentTrailItem =>
   ({ kind, name, note: null, reason: null, commit: null, role: kind === 'pooled' || kind === 'delivered' ? null : 'reader', at: AT, ...over })
@@ -313,6 +313,21 @@ describe('panel inbox', () => {
     expect(screen.getByRole('button', { name: 'ثبت به‌عنوان رسیدگی‌شده' })).toBeInTheDocument()
   })
 
+  it('gives the author of a withdrawn comment «ارسال دوباره», and draws the resend in the chain', async () => {
+    const back = mine(12, { state: 'withdrawn', waitingWith: null, actions: { ...NO, restore: true },
+      trail: [ev('submitted', 'مهدی رجبی', { role: 'admin' }), ev('withdrawn', 'مهدی رجبی', { role: 'admin' }),
+        ev('restored', 'مهدی رجبی', { role: 'admin' }), ev('withdrawn', 'مهدی رجبی', { role: 'admin' })] })
+    const spy = stub({ own: [back] }, [back])
+    open(ADMIN, '/comments?c=CMT-12')
+    const trail = await screen.findByRole('list', { name: 'زنجیرهٔ تأیید' })
+    const rows = within(trail).getAllByText(/^(پس گرفته شد|دوباره فرستاده شد)/).map((e) => e.textContent!.split(' · ')[0])
+    expect(rows).toEqual(['پس گرفته شد', 'دوباره فرستاده شد', 'پس گرفته شد'])
+    expect(screen.queryByRole('button', { name: 'عوض کردن متن' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'ارسال دوباره' }))
+    await waitFor(() => expect(posted(spy)).toHaveLength(1))
+    expect(posted(spy)[0][0]).toBe('/api/comments/CMT-12/restore')
+  })
+
   it('offers no author control on someone else’s comment', async () => {
     const pool = cmt(11, { actions: { ...NO, approve: true, reject: true } })
     stub({ waiting: [pool] }, [pool])
@@ -320,6 +335,7 @@ describe('panel inbox', () => {
     expect(await screen.findByRole('button', { name: 'تأیید و ارسال به بالا' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'عوض کردن متن' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'پس گرفتن' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'ارسال دوباره' })).toBeNull()
   })
 
   it('marks the open comment’s row as selected; the others stay plain', async () => {

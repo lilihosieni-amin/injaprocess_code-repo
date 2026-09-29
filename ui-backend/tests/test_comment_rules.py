@@ -349,6 +349,39 @@ def test_a_reader_comment_delivered_with_nobody_acting_stays_the_authors(world):
     assert a["edit"] and a["withdraw"]
 
 
+def test_the_author_of_a_withdrawn_comment_may_send_it_again(world):
+    """2026-09-29 addendum, decision C: `withdrawn` is no longer final for its
+    author — and only for its author."""
+    app, cc = world
+    admin = mk(app, "admin", "admin", "*")
+    head = mk(app, "head", "reader", "dept:dining", can_sup=True)
+    viewer = mk(app, "viewer", "reader", "dept:dining", sup=head)
+    cid = post(app, cc, viewer)
+
+    def act(uid):
+        return R.actions(app, cc, users.by_id(app, uid), S.get(cc, cid))
+
+    assert not act(viewer)["restore"]
+    S.set_state(cc, cid, state="withdrawn", now=NOW)
+    assert act(viewer)["restore"]
+    assert not act(viewer)["edit"] and not act(viewer)["withdraw"]
+    assert not act(admin)["restore"] and not act(head)["restore"]
+    S.set_state(cc, cid, state="rejected", now=NOW)
+    assert not act(viewer)["restore"]                       # D73: rejected stays closed
+
+
+def test_sending_again_restarts_the_pass(world):
+    """`restored` resets the approvals that count, as `submitted` and `edited` do."""
+    app, cc = world
+    head = mk(app, "head", "reader", "dept:dining", can_sup=True)
+    viewer = mk(app, "viewer", "reader", "dept:dining", sup=head)
+    cid = post(app, cc, viewer)
+    S.event(cc, cid, kind="approved", now=NOW, user_id=head, user_name="head")
+    assert S.approvers_since_restart(cc, cid) == [head]
+    S.event(cc, cid, kind="restored", now=NOW, user_id=viewer, user_name="viewer")
+    assert S.approvers_since_restart(cc, cid) == []
+
+
 def test_rejected_is_closed_to_its_author(world):
     app, cc = world
     viewer = mk(app, "viewer", "reader", "dept:dining")

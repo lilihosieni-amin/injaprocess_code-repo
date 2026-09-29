@@ -152,6 +152,33 @@ def test_an_editor_author_withdraws_their_own_and_nobody_else_may(people, second
     assert _events(people["editor"], "comment.withdrawn")[-1]["target"] == cid
 
 
+def test_a_withdrawn_comment_is_sent_again_from_the_start(people):
+    """2026-09-29 addendum, decision C: back to the first approver, a new pass (D69)."""
+    cid = _new(people)
+    people["viewer"].post(f"/api/comments/{cid}/withdraw")
+    assert people["admin"].post(f"/api/comments/{cid}/restore").status_code == 403
+    assert _events(people["admin"], "access.denied")[-1]["target"] == cid
+    assert people["other"].post(f"/api/comments/{cid}/restore").status_code == 404
+    r = people["viewer"].post(f"/api/comments/{cid}/restore")
+    assert r.status_code == 200, r.text
+    c = r.json()
+    assert (c["state"], c["waitingWith"]) == ("awaiting", {"kind": "person", "name": "head"})
+    assert [t["kind"] for t in c["trail"]] == [
+        "submitted", "assigned", "withdrawn", "restored", "assigned"]
+    assert c["actions"]["edit"] and c["actions"]["withdraw"] and not c["actions"]["restore"]
+    assert [e["target"] for e in _events(people["viewer"], "comment.restored")] == [cid]
+    assert people["viewer"].post(f"/api/comments/{cid}/restore").status_code == 403
+
+
+@pytest.mark.parametrize("who", ["admin", "editor"])
+def test_an_admin_or_editor_comment_sent_again_lands_approved(people, who):
+    cid = _new(people, who)
+    people[who].post(f"/api/comments/{cid}/withdraw")
+    r = people[who].post(f"/api/comments/{cid}/restore")
+    assert r.status_code == 200, r.text
+    assert (r.json()["state"], r.json()["waitingWith"]) == ("approved", {"kind": "editors"})
+
+
 def test_two_admins_racing_only_one_wins(people, second_admin):
     cid = _new(people)
     people["head"].post(f"/api/comments/{cid}/approve", json={})

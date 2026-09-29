@@ -7,7 +7,7 @@ import {
 import { ApiError } from '../api/client'
 import { can } from '../auth/session'
 import { useSession } from '../auth/useSession'
-import { STATUS, ageText, deptLabel, roleLabel, statusLabel } from '../lib/comments'
+import { RESENT, STATUS, ageText, deptLabel, roleLabel, statusLabel } from '../lib/comments'
 import { jalali, toFa } from '../lib/format'
 import { Icon } from '../ui/Icon'
 import { IdBadge } from '../ui/IdBadge'
@@ -160,6 +160,8 @@ function chain(c: CommentDetail, viewerEdits: boolean, now: Date = new Date()): 
     else if (e.kind === 'addressed') push({ name: e.name, state: 'done', mark: '✓', stateLabel: 'رسیدگی شد' })
     else if (e.kind === 'skipped') push({ name: e.name, state: 'pending', mark: '·', stateLabel: 'از روی او گذشت — غیرفعال', tone: muted })
     else if (e.kind === 'withdrawn') push({ name: e.name, state: 'pending', mark: '·', stateLabel: 'پس گرفته شد', tone: muted })
+    // Unlike `edited`, drawn: after «پس گرفته شد» the chain must say it came back.
+    else if (e.kind === 'restored') push({ name: e.name, state: 'done', mark: '✓', stateLabel: RESENT, tone: 'text-violet' })
     else if (e.kind === 'pooled' && e.reason === 'cycle') push({ name: 'سامانه', state: 'done', mark: '✓', stateLabel: 'زنجیره شکست — دور', tone: muted })
     else if (e.kind === 'delivered') push({ name: 'سامانه', state: 'done', mark: '✓', stateLabel: 'ادمینی نبود — مستقیم به ادیتور', tone: muted })
   })

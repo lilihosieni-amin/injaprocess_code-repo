@@ -8,7 +8,7 @@ const base = {
   id: 'CMT-1', text: 't', state: 'awaiting', stage: 'reader', waitingWith: null,
   author: { name: 'x', isMe: true, role: 'reader' }, createdAt: '', updatedAt: '', approvals: 0, notes: [],
   rejectReason: null, addressed: null,
-  actions: { approve: false, reject: false, edit: false, withdraw: false, address: false },
+  actions: { approve: false, reject: false, edit: false, withdraw: false, restore: false, address: false },
 } as const
 const anchor = { id: 'dining-003-n020', processId: 'dining-003', department: 'dining',
   departmentName: 'سالن', processName: 'سرو غذا', nodeLabel: 'کنترل دما', orphan: false }

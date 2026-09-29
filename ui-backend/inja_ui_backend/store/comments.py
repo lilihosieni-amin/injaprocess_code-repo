@@ -52,10 +52,12 @@ def set_text(cc: sqlite3.Connection, cid: int, *, text: str, now: int) -> None:
 
 
 def approvers_since_restart(cc: sqlite3.Connection, cid: int) -> list[int]:
-    """Who approved since the last submit or edit — the current pass (D36, D63)."""
+    """Who approved since the last submit, edit or send-again — the current pass
+    (D36, D63; `restored` is the 2026-09-29 addendum's decision C)."""
     last = cc.execute(
         "SELECT COALESCE(MAX(id), 0) FROM comment_events"
-        " WHERE comment_id = ? AND kind IN ('submitted', 'edited')", (cid,)).fetchone()[0]
+        " WHERE comment_id = ? AND kind IN ('submitted', 'edited', 'restored')",
+        (cid,)).fetchone()[0]
     return [r[0] for r in cc.execute(
         "SELECT user_id FROM comment_events WHERE comment_id = ? AND kind = 'approved'"
         " AND id > ? AND user_id IS NOT NULL ORDER BY id", (cid, last))]

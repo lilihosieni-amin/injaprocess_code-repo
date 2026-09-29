@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { useEditComment, useWithdrawComment, type Comment } from '../api/comments'
+import { useEditComment, useRestoreComment, useWithdrawComment, type Comment } from '../api/comments'
 import { ApiError } from '../api/client'
+import { RESEND, RESENT } from '../lib/comments'
 import { useToast } from '../write/ToastProvider'
 import { DecisionModal } from './DecisionModal'
 
@@ -15,7 +16,9 @@ export interface AuthorLook { row: string; ghost: string; danger: string; send: 
  * Panel's detail alike, since every author controls their comment until someone
  * else acts on it (D36 as amended by the 2026-09-29 addendum, decision B).
  * «عوض کردن متن» opens a draft the caller draws in place of the text (Reader
- * L761): `draft` is that text, null while nobody is editing.
+ * L761): `draft` is that text, null while nobody is editing. A withdrawn
+ * comment offers «ارسال دوباره» instead (decision C), without asking — it is
+ * the way back from «پس گرفتن», which did ask.
  */
 export function AuthorActions({ c, draft, onDraft, look }: {
   c: Comment
@@ -26,8 +29,9 @@ export function AuthorActions({ c, draft, onDraft, look }: {
   const toast = useToast()
   const edit = useEditComment()
   const withdraw = useWithdrawComment()
+  const restore = useRestoreComment()
   const [asking, setAsking] = useState(false)
-  const busy = edit.isPending || withdraw.isPending
+  const busy = edit.isPending || withdraw.isPending || restore.isPending
   const fail = (e: unknown) => toast.show((e instanceof ApiError && e.detail) || 'انجام نشد')
   const done = (msg: string) => () => { toast.show(msg); onDraft(null); setAsking(false) }
 
@@ -37,6 +41,12 @@ export function AuthorActions({ c, draft, onDraft, look }: {
     edit.mutate({ ref: c.id, text }, { onSuccess: done('اصلاح شد و زنجیره از اول شروع شد'), onError: fail })
   }
 
+  if (c.actions.restore) return (
+    <div data-r-cmtactions className={look.row}>
+      <button type="button" disabled={busy} className={look.send}
+        onClick={() => restore.mutate(c.id, { onSuccess: done(RESENT), onError: fail })}>{RESEND}</button>
+    </div>
+  )
   if (!c.actions.edit && !c.actions.withdraw) return null
   return (
     <>

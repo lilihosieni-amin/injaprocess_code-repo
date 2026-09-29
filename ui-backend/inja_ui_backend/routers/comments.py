@@ -381,6 +381,23 @@ def withdraw(ref: str, request: Request, user=Depends(require_session)):
     return out
 
 
+@router.post("/{ref}/restore")
+def restore(ref: str, request: Request, user=Depends(require_session)):
+    """Send a withdrawn comment again (2026-09-29 addendum, decision C). A new
+    pass from its author, routed as an edit is: a Reader's goes back to the
+    first approver, an Admin's or an Editor's lands approved again."""
+    app = request.app.state.db
+
+    def go(cc, c, now):
+        S.event(cc, c["id"], kind="restored", now=now, user_id=user["id"],
+                user_name=user["display_name"], role=R.kind_of(app, user))
+        R.submit(app, cc, c["id"], now=now)
+
+    out = _act(request, user, ref, "restore", go)
+    _audit(request, user, "comment.restored", out)
+    return out
+
+
 @router.post("/{ref}/address")
 def address(ref: str, body: AddressBody, request: Request, user=Depends(require_session)):
     note = _note(body.note)

@@ -12,6 +12,14 @@ export const STATUS: Record<CommentState, { label: string; bg: string; fg: strin
   withdrawn: { label: 'پس گرفته شد', bg: 'bg-tile-dead', fg: 'text-muted' },
 }
 
+/**
+ * Sending a withdrawn comment again (2026-09-29 addendum, decision C): the
+ * control, and the trail row it leaves (also its toast). lili's wording — the
+ * comment really does start its journey over, and the words say so.
+ */
+export const RESEND = 'ارسال دوباره'
+export const RESENT = 'دوباره فرستاده شد'
+
 /** Panel design `ST` (Inja Panel.dc.html L3870) words two states differently. */
 const PANEL_LABEL: Partial<Record<CommentState, string>> = { addressed: 'رسیدگی‌شده', rejected: 'رد شده' }
 
