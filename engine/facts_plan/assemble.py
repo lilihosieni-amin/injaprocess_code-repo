@@ -2512,8 +2512,6 @@ def _cross_unit(root, entries, state):
             for path, value in sorted(theirs.items()):
                 if path not in mine or mine[path] == value:
                     continue
-                if not judgeable(path):
-                    continue            # the keeper's reading stands; nothing is asked
                 kinds = {keeper["source"][0]["type"], other["source"][0]["type"]}
                 sides = [{"unit": holder["_unit"], "value": held,
                           "source": holder["source"][0]}
@@ -2531,6 +2529,8 @@ def _cross_unit(root, entries, state):
                                             "scope": keeper["scope"]},
                                   "field": path, "sides": sides})
                     continue
+                if not judgeable(path):
+                    continue            # the keeper's reading stands; nothing is asked of the owner
                 for side in sides:
                     keeper.setdefault("accounts", []).append(_account(path, side))
         survivors.append(keeper)

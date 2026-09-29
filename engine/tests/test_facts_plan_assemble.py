@@ -2651,3 +2651,36 @@ def test_a_column_type_two_sources_read_differently_is_no_dispute(tmp_path):
     record = next(e for e in delta["entries"] if e["key"] == "gozaresh_shabane_pitza")
     assert not record.get("accounts")
     assert record["data"]["fields"][0]["type"] == "number"      # the keeper's reading
+
+
+def _titled_drift_run(tmp_path):
+    """Two units of one transcript read one output's title two ways — a leaf
+    the owner cannot judge."""
+    root = _root(tmp_path)
+    record, rule = _record_out(), _rule_out()
+    a, b = _tol_new(6), _tol_new(6)
+    b["data"]["outputs"][0]["title"] = "حد مجاز دیگر"
+    record["new"], rule["new"] = [a], [b]
+    plan = _plan()
+    plan["units"][0]["inputs"] = ["meetings/transcripts/c.txt#L1-L20"]
+    return root, _run(root, {"u-a": record, "u-b": rule}, plan=plan)
+
+
+def test_same_kind_drift_on_an_unjudgeable_leaf_still_reaches_the_reviewer(tmp_path):
+    root, run_dir = _titled_drift_run(tmp_path)
+    text = digest(root, run_dir).read_text(encoding="utf-8")
+    assert any(line.startswith("unit_drift · rule tol · data/outputs/v/title")
+               for line in text.splitlines())
+    assemble(root, run_dir)
+    assert "accounts" not in _tol(run_dir)
+
+
+def test_an_account_resolution_on_an_unjudgeable_leaf_asks_nothing(tmp_path):
+    root, run_dir = _titled_drift_run(tmp_path)
+    digest(root, run_dir)
+    _write_review(run_dir, [_contradiction(resolution="account",
+                                           field="data/outputs/v/title")])
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
+    rule = _tol(run_dir)
+    assert "accounts" not in rule
+    assert rule["data"]["outputs"][0]["title"] == "حد مجاز"
