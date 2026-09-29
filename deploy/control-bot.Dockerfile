@@ -13,7 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ADRs 0002-0007. Bump this version deliberately, then rebuild + re-verify.
 # NODE_OPTIONS: Node 20's happy-eyeballs gives each connect attempt 250ms, which a
 # slow (VPN) link never meets, so the install dies with ETIMEDOUT. Off for this line only.
-RUN NODE_OPTIONS=--no-network-family-autoselection npm install -g @anthropic-ai/claude-code@2.1.220
+# 2.1.284 is the first pin that knows claude-opus-5-5 (native 1M, 128K output — probe 2026-09-29).
+RUN NODE_OPTIONS=--no-network-family-autoselection npm install -g @anthropic-ai/claude-code@2.1.284
 
 # uv, for the pinned tool install. Installed from PyPI (the astral.sh install
 # script host is not reachable from the build network); uv lands on the default
