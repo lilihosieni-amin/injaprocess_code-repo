@@ -154,13 +154,23 @@ def _received(cc: sqlite3.Connection, cid: int, user_id: int) -> bool:
         " AND user_id = ? LIMIT 1", (cid, user_id)).fetchone() is not None
 
 
+#: Written as an Editor (2026-09-29 addendum, §5): an Admin has no part in such
+#: a comment's life, so does not see it. The kind is the one `submitted`
+#: snapshotted (D62), never the author's now — an Editor made an Admin since
+#: must not open their old comments to the Admins. One `submitted` per comment;
+#: an edit is `edited`, a send-again `restored`.
+_AS_EDITOR = ("EXISTS (SELECT 1 FROM comment_events e WHERE e.comment_id = c.id"
+              " AND e.kind = 'submitted' AND json_extract(e.detail, '$.role') = 'editor')")
+
+
 def can_see(app, cc, viewer: sqlite3.Row, c: sqlite3.Row) -> bool:
     """D66, for one comment. `visible_sql` is the same rule for a listing."""
     k = kind_of(app, viewer)
     if k == "editor" or c["author_id"] == viewer["id"]:
         return True
     if k == "admin":
-        return covers(app, viewer, c["department"])
+        return covers(app, viewer, c["department"]) and not cc.execute(
+            f"SELECT {_AS_EDITOR} FROM comments c WHERE c.id = ?", (c["id"],)).fetchone()[0]
     return _received(cc, c["id"], viewer["id"])
 
 
@@ -177,11 +187,11 @@ def visible_sql(app, viewer: sqlite3.Row) -> tuple[str, list]:
         depts: set[str] = set()
         for s in access.scopes_of(app, viewer):
             if s == "*":
-                return "1", []
+                return f"(c.author_id = ? OR NOT {_AS_EDITOR})", [viewer["id"]]
             if scopes.SCOPE_RE.fullmatch(s) and "/" not in s:
                 depts.add(scopes.dept_of(s))
         marks = ",".join("?" * len(depts)) or "NULL"
-        return (f"(c.author_id = ? OR c.department IN ({marks}))",
+        return (f"(c.author_id = ? OR (c.department IN ({marks}) AND NOT {_AS_EDITOR}))",
                 [viewer["id"], *sorted(depts)])
     return ("(c.author_id = ? OR EXISTS (SELECT 1 FROM comment_events e"
             " WHERE e.comment_id = c.id AND e.kind = 'assigned' AND e.user_id = ?))",

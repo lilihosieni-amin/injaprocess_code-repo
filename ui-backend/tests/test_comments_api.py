@@ -8,6 +8,8 @@ other (a Reader off the path).
 import json
 import sqlite3
 
+from fastapi.testclient import TestClient
+from inja_ui_backend import db
 from inja_ui_backend.tests_helpers import audit_events as _events
 
 NODE = "cooking-001-n010"
@@ -229,3 +231,80 @@ def test_closed_comments_leave_the_anchor_lists_but_not_the_inbox(people):
         ["awaiting", "approved", "addressed", "rejected", "withdrawn"] * 2)
     for st in ("addressed", "rejected", "withdrawn"):
         assert people["viewer"].get(f"/api/comments/{ids['process', st]}").json()["state"] == st
+
+
+def _seed_editor(people):
+    """The seed's own Editor, signed in over the same app: a second Editor."""
+    client = TestClient(people["editor"].app, base_url="https://testserver")
+    r = client.post("/api/auth/login",
+                    json={"username": "09120000000", "password": "test-password"})
+    assert r.status_code == 200, r.text
+    client.app_db = people["editor"].app_db
+    return client
+
+
+def _audit_rows(client) -> int:
+    conn = db.connect(client.app_db)
+    try:
+        return conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0]
+    finally:
+        conn.close()
+
+
+def _everything_listed(client) -> set[str]:
+    """Every comment id `client` is shown anywhere: both anchor lists the
+    badges and drawers count from, and every inbox tab."""
+    got = {c["id"] for c in client.get("/api/comments?process=cooking-001").json()}
+    for d in ("cooking", "cashier"):
+        got |= {c["id"] for c in client.get(f"/api/comments?department={d}").json()}
+    for tab in ("waiting", "own", "all"):
+        got |= {c["id"] for c in client.get(f"/api/comments/inbox?tab={tab}").json()["items"]}
+    return got
+
+
+def test_an_editor_s_comment_is_for_editors_only(people):
+    """2026-09-29 addendum, §5. No Admin sees it — not one covering its
+    department exactly (cadmin, dept:cashier), not a `*` one — on any surface;
+    what else each Admin sees is unchanged."""
+    def new(who, kind, anchor):
+        r = people[who].post("/api/comments", json={
+            "anchorKind": kind, "anchorId": anchor, "text": "x"})
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    by_editor = {new("editor", "process", "cooking-001"), new("editor", "department", "cashier")}
+    by_reader = new("viewer", "process", "cooking-001")
+    cadmin_own = new("cadmin", "department", "cashier")
+    missing = people["admin"].get("/api/comments/CMT-999999")
+
+    for who, sees in (("admin", {by_reader, cadmin_own}), ("cadmin", {cadmin_own}),
+                      ("viewer", {by_reader})):
+        before = _audit_rows(people[who])
+        for cid in by_editor:
+            r = people[who].get(f"/api/comments/{cid}")
+            assert (r.status_code, r.json()) == (404, missing.json()), (who, cid)
+        assert _audit_rows(people[who]) == before, who
+        assert _everything_listed(people[who]) == sees, who
+        assert people[who].get("/api/comments/inbox?tab=all").json()["total"] == len(sees)
+
+    for editor in (people["editor"], _seed_editor(people)):
+        assert by_editor <= _everything_listed(editor)
+        assert all(editor.get(f"/api/comments/{c}").status_code == 200 for c in by_editor)
+
+
+def test_an_editor_made_an_admin_still_sees_their_comment_other_admins_do_not(people):
+    """The role recorded at writing decides, not the author's role now."""
+    author = _seed_editor(people)
+    cid = author.post("/api/comments", json={
+        "anchorKind": "process", "anchorId": "cooking-001", "text": "x"}).json()["id"]
+    conn = db.connect(author.app_db)
+    try:
+        conn.execute("UPDATE users SET role_id = (SELECT id FROM roles WHERE name = 'admin')"
+                     " WHERE username = '09120000000'")
+    finally:
+        conn.close()
+    assert author.get("/api/auth/me").json()["role"] == "admin"
+    assert author.get(f"/api/comments/{cid}").status_code == 200
+    assert cid in _everything_listed(author)
+    assert people["admin"].get(f"/api/comments/{cid}").status_code == 404
+    assert cid not in _everything_listed(people["admin"])

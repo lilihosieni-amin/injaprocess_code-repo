@@ -35,12 +35,20 @@ def editor_id(app):
 
 
 def post(app, cc, author_id, dept="dining"):
+    """As `create_comment` does it, the `submitted` event and its role included."""
     author = users.by_id(app, author_id)
     cid = S.insert(cc, author=author, anchor_kind="department", anchor_id=dept,
                    process_id=None, department=dept,
                    snapshot={"department_name": "سالن"}, text="متن", now=NOW)
+    S.event(cc, cid, kind="submitted", now=NOW, user_id=author_id,
+            user_name=author["display_name"], role=R.kind_of(app, author))
     R.submit(app, cc, cid, now=NOW)
     return cid
+
+
+def re_role(app, uid, role):
+    rid = app.execute("SELECT id FROM roles WHERE name = ?", (role,)).fetchone()[0]
+    app.execute("UPDATE users SET role_id = ? WHERE id = ?", (rid, uid))
 
 
 def kinds(cc, cid):
@@ -282,6 +290,7 @@ def test_visible_sql_agrees_with_can_see(world):
     other = mk(app, "other", "reader", "dept:dining")
     cid = post(app, cc, viewer)
     post(app, cc, admin)
+    post(app, cc, editor_id(app))                           # Editors only
     S.event(cc, cid, kind="approved", now=NOW, user_id=head, user_name="head")
     R.advance(app, cc, cid, from_user_id=head, now=NOW)     # → top; head keeps seeing it
     for uid in (star_admin, admin, cashier_admin, report_admin, top, head, viewer, other,
@@ -292,6 +301,53 @@ def test_visible_sql_agrees_with_can_see(world):
         by_py = {r["id"] for r in cc.execute("SELECT * FROM comments")
                  if R.can_see(app, cc, u, r)}
         assert by_sql == by_py, uid
+
+
+def test_an_editor_s_comment_is_seen_by_editors_only(world):
+    """2026-09-29 addendum, §5: Admins have no part in an Editor's comment's
+    life, so they do not see it — `*` or covering its department alike."""
+    app, cc = world
+    star_admin = mk(app, "star admin", "admin", "*")
+    dining_admin = mk(app, "dining admin", "admin", "dept:dining")
+    second_editor = mk(app, "second editor", "editor", "*")
+    viewer = mk(app, "viewer", "reader", "dept:dining")
+    by_editor = post(app, cc, editor_id(app))
+    by_reader, by_admin = post(app, cc, viewer), post(app, cc, dining_admin)
+
+    def seen(uid):
+        u = users.by_id(app, uid)
+        where, params = R.visible_sql(app, u)
+        by_sql = {r[0] for r in cc.execute(f"SELECT c.id FROM comments c WHERE {where}",
+                                           params)}
+        by_py = {r["id"] for r in cc.execute("SELECT * FROM comments")
+                 if R.can_see(app, cc, u, r)}
+        assert by_sql == by_py, uid
+        return by_py
+
+    assert by_editor in seen(editor_id(app)) and by_editor in seen(second_editor)
+    assert seen(star_admin) == {by_reader, by_admin}
+    assert seen(dining_admin) == {by_reader, by_admin}      # the rest of D66 unchanged
+    assert seen(viewer) == {by_reader}
+
+
+def test_the_role_at_writing_decides_not_the_role_now(world):
+    """An Editor made an Admin since keeps their own comment (the author check
+    comes first) and does not open it to the other Admins."""
+    app, cc = world
+    star_admin = mk(app, "star admin", "admin", "*")
+    author = mk(app, "author", "editor", "*")
+    cid = post(app, cc, author)
+    re_role(app, author, "admin")
+
+    def see(uid):
+        u = users.by_id(app, uid)
+        where, params = R.visible_sql(app, u)
+        in_sql = cc.execute(f"SELECT 1 FROM comments c WHERE c.id = ? AND {where}",
+                            [cid, *params]).fetchone() is not None
+        assert in_sql == R.can_see(app, cc, u, S.get(cc, cid)), uid
+        return in_sql
+
+    assert see(author) and not see(star_admin)
 
 
 def test_actions(world):

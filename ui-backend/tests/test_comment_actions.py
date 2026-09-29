@@ -147,7 +147,12 @@ def test_an_admin_author_edits_and_withdraws_until_it_is_addressed(people):
 
 def test_an_editor_author_withdraws_their_own_and_nobody_else_may(people, second_admin):
     cid = _new(people, "editor")
-    assert second_admin.post(f"/api/comments/{cid}/withdraw").status_code == 403
+    # an Admin does not even see it (2026-09-29 addendum, §5); another Editor does
+    assert second_admin.post(f"/api/comments/{cid}/withdraw").status_code == 404
+    seed_editor = TestClient(people["editor"].app, base_url="https://testserver")
+    assert seed_editor.post("/api/auth/login", json={
+        "username": "09120000000", "password": PW}).status_code == 200
+    assert seed_editor.post(f"/api/comments/{cid}/withdraw").status_code == 403
     r = people["editor"].post(f"/api/comments/{cid}/withdraw")
     assert r.status_code == 200, r.text
     assert r.json()["state"] == "withdrawn"
