@@ -806,6 +806,8 @@ business — `facts-plan digest` re-renders it.
 
 ### Forms first, then the transcripts — the two phases (added 2026-09-15)
 
+Superseded in part by §14 (2026-09-29): no related talk, no unit-written account.
+
 `docs/superpowers/specs/2026-09-15-facts-form-anchored-units-design.md` is the
 design, agreed with the owner on 2026-09-15 (ADR 0017's ruling of that date).
 The preparation run of 2026-09-14 described **19 of its 37 tables from speech
@@ -1164,6 +1166,52 @@ docker compose exec control-bot sh -c \
 
 **What is committed.** The four store files and the run directory, as for every
 other verb. Nothing else: the edit writes no sidecar of its own.
+
+## 14. Processes as the source (2026-09-29)
+
+`docs/superpowers/specs/2026-09-29-facts-processes-as-source-design.md` is the
+design. The process engineer corrected the processes and diagrams, not the
+transcripts, so units built from raw meeting text kept stale facts. Now
+**form > process > meeting**: the form decides structure, the process decides
+practice, a transcript only fills gaps. **§12's related talk, its 80K budget row
+and unit-written accounts are superseded by this section.**
+
+- **Process files.** `facts-plan build` writes `{run_dir}/processes/<dept>.md`
+  for every department (tombstoned processes skipped). Per node: id and label,
+  `مجری:` (actor), description, the non-empty ICOM lists, and one
+  `بعدی: «<target label>» — <condition>` line per outgoing edge. An edge
+  condition is the exception of the step it leaves. Phase-1 input replaces the
+  node list and the related talk with `## فرایندها`, naming the run's own file
+  ("read whole") and the other departments' files; a process citation is checked
+  against every department's nodes.
+- **One unit per table.** A workbook unit is split by sheet tab, always. Stage G
+  (between Prepare and Plan, skipped when the department has no photos) has one
+  `quantify` agent in `group` mode write `{run_dir}/photo-groups.json`
+  (`schemas/photo-groups.schema.json`); one attachment unit per group. A missing
+  or invalid file falls back to one unit per photo, with one English line on
+  stderr; the run never stops on it. F4 (each attachment read once) still holds.
+- **Phase 2.** Transcript excerpts of 70K tokens (2–3 units instead of ~10),
+  checked against `PHASE2_IN_BUDGET` = 210K, with phase 1's entries shown
+  **whole** (`RECORDED_BUDGET` 120K), not a line cut at 200 characters. A
+  transcript unit writes little (`est_tokens_out` 0.15 × in), only `new[]`
+  entries nothing else says, never an `account`. Its precise `voice` lines replace
+  the whole-excerpt citation.
+- **`contradicted[]`.** A transcript claim against a process node or a phase-1
+  entry is not stored as a second side. It is gated like a `voice` citation
+  (lines inside the unit's excerpt; `against` names a live node or a handle of
+  this run, else dropped), collected in `assembly.json`, and printed at the end
+  of the bot's report under «کنار گذاشته شد چون با فرایندها یا ثبت‌های همین اجرا
+  نمی‌خواند», the meeting named by its date in words, no id, path or line.
+- **Keeper order.** The cross-unit merge keeps the sheet-side source
+  (sheet, script, comment, validation, cf, photo, pdf, docx), then process, then
+  voice and chat, then unit id.
+- **Unjudgeable leaves.** A disagreement on a leaf named `title`, `type`, `expr`,
+  `lang` or `key`, or under `data/inputs/*` or `data/outputs/*` except `value`,
+  `range`, `unit`, `per`, is never an owner question: the keeper's value stays.
+  A same-kind drift there still reaches the reviewer; only the owner question is
+  withheld.
+- **Model.** Every agent runs `claude-opus-5-5` at effort high (natively 1M, no
+  `[1m]` suffix); the control-bot image pins Claude Code 2.1.284.
 
 ## Next
 

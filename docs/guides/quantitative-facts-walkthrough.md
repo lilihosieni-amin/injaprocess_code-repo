@@ -353,6 +353,9 @@ merged eight of them into forms by title similarity.
   titles, units, cadence, who holds the form, thresholds, aliases — cited as a `voice` source.
   Every rule and measurement such a unit writes for its own table also names that table as its
   **home** (section 7.2).
+
+  > **Since 2026-09-29** a form unit is shown no meeting passage; it reads its department's corrected processes whole. A meeting is read afterwards, only to add what nothing recorded, and what it says against a process is listed at the end of the report.
+
   An attachment unit is handed several files at once — fourteen photos of the preparation run — so
   each file's text is printed under a heading naming the file and the path a citation must spell,
   and **only such a unit's shape section carries the `from` line**: an entry read off one of them
@@ -417,6 +420,8 @@ spoken one becomes an open dispute on it, with a `voice` source and the meeting'
 entry, never two. (Accounts used to be made only by the assembly. The id is still minted by the
 engine, and an account whose shape is wrong is dropped silently, the way any engine-owned member
 the agent writes is dropped.)
+
+> **Since 2026-09-29** a form unit is shown no meeting passage; it reads its department's corrected processes whole. A meeting is read afterwards, only to add what nothing recorded, and what it says against a process is listed at the end of the report.
 
 The division of labour is strict (rule QF-46): the engine has already written every location,
 instance, column letter, enum constraint, reference row, original formula text and
