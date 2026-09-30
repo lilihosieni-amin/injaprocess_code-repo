@@ -296,17 +296,24 @@ the mirror), a **function library** (`functions.md`, one section per distinct fu
 **Units.** The candidates are packed into **units** — parcels of work small enough for one model
 call: since 2026-09-15 at most 50 000 estimated input tokens of candidates, text and cards, 4 500
 lines of at most 1 900 characters, and — the number that has *not* moved — 20 000 estimated output
-tokens, because the output limit is the one that crashed agents on the first run. A transcript is
-chunked at 42 000 tokens, which leaves the cards their room under the input budget and still
-estimates to 20 000 of output. Grouping is fixed, not clever: one unit per workbook group
-(`u-wb-<short>`), one per transcript chunk (`u-tr-<recording>-l<first line>`), and **attachment
+tokens, because the output limit is the one that crashed agents on the first run. A recording
+longer than 70 000 tokens is cut on its own lines, and since 2026-09-30 the pieces are **packed**,
+in the owner's order, into the fewest transcript units of at most 70 000 tokens, balanced so the
+largest is as small as it can be — preparation's ten meetings are three units of about 57K, 47K
+and 39K, not ten, and each unit reads the department's process file once. A transcript unit is
+checked against a budget of its own, 210 000, because it also carries everything phase 1 recorded.
+Each meeting in it is headed `### <path> · L<a>–L<b>` and every line is printed after its own
+number (`L210: …`), so the unit cites the meeting and the lines it took a fact from. Grouping is
+fixed, not clever: one unit per workbook group (`u-wb-<short>`), one per group of transcript
+pieces, named after its first (`u-tr-<recording>-l<first line>`), and **attachment
 units** (`u-att-1`, `u-att-2`, … in input order) holding the attached files' text, packed to the
 same budget — one file too big for any unit goes alone with an `oversized` issue.
 Until 2026-09-13 the attachments rode on the last transcript unit, and when that unit split on its
 line range every one of them was dropped: 13 form photos of the preparation run reached no unit
 and nothing said so. Now every chosen transcript line and every attachment must be read by exactly
 one unit, or `build` exits 2 naming the file. A unit that does
-not fit is split along its natural axis (a workbook by tab, a transcript by line range). A unit that
+not fit is split along its natural axis (a workbook by tab, a packed transcript unit by halves of its meetings,
+one meeting by line range). A unit that
 still cannot fit has its largest candidates **set aside** as `oversized`
 issues rather than stopping the run — the owner is told which table was too big.
 

@@ -2119,11 +2119,12 @@ def test_a_voice_source_outside_the_shown_passages_is_dropped(tmp_path):
 TALK_B = "meetings/transcripts/n.txt"
 
 
-def _packed_run(tmp_path, tr_new, contradicted=None):
+def _packed_run(tmp_path, tr_new, contradicted=None,
+                b_text="چهار\nپنج\nشش\nهفت\n"):
     """`_two_unit_run` with its transcript unit packed: it read `TALK` L1-L3
     and `TALK_B` L2-L4 — B's line 1 was never printed to it."""
     root, run = _two_unit_run(tmp_path, att_new=[], tr_new=tr_new)
-    (root / TALK_B).write_text("چهار\nپنج\nشش\nهفت\n", encoding="utf-8")
+    (root / TALK_B).write_text(b_text, encoding="utf-8")
     plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
     plan["units"][1]["inputs"].append(f"{TALK_B}#L2-L4")
     plan["hashes"][TALK_B] = "c"
@@ -2136,9 +2137,11 @@ def _packed_run(tmp_path, tr_new, contradicted=None):
     return root, run
 
 
-def _packed_voices(tmp_path, voice):
-    """The voice sources of the packed unit's rule, written with `voice`."""
-    root, run = _packed_run(tmp_path, [dict(RULE, voice=voice)])
+def _packed_voices(tmp_path, voice, **run):
+    """The voice sources of the packed unit's rule, written with `voice`
+    (none at all when `voice` is None)."""
+    rule = RULE if voice is None else dict(RULE, voice=voice)
+    root, run = _packed_run(tmp_path, [rule], **run)
     assemble(root, run)
     delta = json.loads((run / "facts-delta.json").read_text(encoding="utf-8"))
     entry = next(e for e in delta["entries"] if e["key"] == RULE["key"])
@@ -2146,7 +2149,7 @@ def _packed_voices(tmp_path, voice):
 
 
 def test_a_packed_units_voice_credits_only_the_meeting_it_cites(tmp_path):
-    """Ruling 27 — a unit that read two meetings and cites B's lines is B's
+    """Ruling 30 — a unit that read two meetings and cites B's lines is B's
     fact alone: the whole excerpt of A it was also handed is no source of it."""
     assert _packed_voices(tmp_path, [{"ref": TALK_B, "lines": "3-4"}]) == \
         [_voice("3-4", TALK_B)]
@@ -2158,6 +2161,36 @@ def test_a_packed_units_voice_outside_every_excerpt_is_dropped(tmp_path):
     assert _packed_voices(tmp_path, [{"ref": TALK_B, "lines": "1-2"},
                                      {"ref": TALK, "lines": "4"}]) == \
         [_voice("1-3"), _voice("2-4", TALK_B)]
+
+
+def test_a_packed_units_uncited_entry_keeps_every_meeting_it_read(tmp_path):
+    """Ruling 31 — the title-word ladder ranks whole files, and B's file
+    carries the rule's title on a line the unit was never shown: an entry that
+    wrote no `voice` keeps both excerpts rather than a meeting guessed for it."""
+    assert _packed_voices(tmp_path, None,
+                          b_text="سقف ضایعات هر شب\nپنج\nشش\nهفت\n") == \
+        [_voice("1-3"), _voice("2-4", TALK_B)]
+
+
+@pytest.mark.parametrize("lines, stored", [
+    ("L3-L4", "3-4"), ("3–4", "3-4"), ("3—4", "3-4"), ("l3 - l4", "3-4"),
+    ("L3", "3"), ("3-4", "3-4")])
+def test_lines_in_the_printed_style_are_read_and_stored_bare(tmp_path, lines,
+                                                             stored):
+    """Ruling 31 — the unit reads `L3: …` under `L2–L4`, so it may cite in
+    that style; the gate reads it as the numbers and stores them bare."""
+    assert _packed_voices(tmp_path, [{"ref": TALK_B, "lines": lines}]) == \
+        [_voice(stored, TALK_B)]
+
+
+def test_a_contradiction_in_the_printed_style_is_stored_bare(tmp_path):
+    root, run = _packed_run(tmp_path, [RULE], contradicted=[
+        _claim(lines="L3-L4", ref=TALK_B), _claim(lines="L1", ref=TALK_B)])
+    _with_step(root)
+    assemble(root, run)
+    rows = json.loads((run / "assembly.json").read_text(
+        encoding="utf-8"))["contradicted"]
+    assert [(r["ref"], r["lines"]) for r in rows] == [(TALK_B, "3-4")]
 
 
 def test_a_packed_units_contradiction_is_gated_by_its_own_meetings_excerpt(

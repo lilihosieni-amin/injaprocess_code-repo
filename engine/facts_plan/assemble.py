@@ -397,9 +397,11 @@ def _checked_contradiction(item, ctx):
     if not (isinstance(item, dict) and isinstance(item.get("claim"), str)
             and item["claim"].strip()):
         return None
-    if not _cited({"type": "voice", "ref": item.get("ref"),
-                   "lines": item.get("lines")}, ctx["talk"]):
+    lines = _cited({"type": "voice", "ref": item.get("ref"),
+                    "lines": item.get("lines")}, ctx["talk"])
+    if not lines:
         return None
+    item = dict(item, lines=lines)
     against = item.get("against")
     if not isinstance(against, dict):
         return None
@@ -1008,7 +1010,13 @@ def _shown(unit):
 def _cited(src, passages):
     """A citation to talk this unit was actually handed: a `voice` source whose
     lines lie inside one of the stretches `_shown` lists for it (spec §3,
-    INV-3 at passage level).
+    INV-3 at passage level). Returns the lines as the store writes them —
+    `"210-218"` or `"210"` — or None.
+
+    Ruling 31: the unit reads its excerpt as `L210: …` under `L1–L40`, so a
+    citation copied in that style (`L210-L218`, `210–218`, `L210`) is read as
+    the numbers it names, never dropped for its spelling. `voice` and
+    `contradicted[]` both come through here, so both are read alike.
 
     `ref in plan["hashes"]` was not enough. The engine selects and the unit
     never searches, so a citation to a chosen transcript the unit was shown no
@@ -1017,16 +1025,19 @@ def _cited(src, passages):
     record of what it printed, so this asks the one question that matters.
     """
     if not (isinstance(src, dict) and src.get("type") == "voice"):
-        return False
+        return None
+    bare = re.sub(r"\s", "", str(src.get("lines"))).replace("–", "-").replace("—", "-")
+    lines = re.sub(r"[Ll](?=[0-9])", "", bare)
     # The store schema's own `sourceLoc.lines`: a single line is a range too.
-    span = re.fullmatch(r"([0-9]+)(?:-([0-9]+))?", str(src.get("lines")))
+    span = re.fullmatch(r"([0-9]+)(?:-([0-9]+))?", lines)
     if not span:
-        return False
+        return None
     first, last = int(span.group(1)), int(span.group(2) or span.group(1))
-    return first <= last and any(
+    inside = first <= last and any(
         p.get("rel") == src.get("ref")
         and p.get("first") <= first and last <= p.get("last")
         for p in passages)
+    return lines if inside else None
 
 
 def _unit_voices(node, passages):
@@ -1034,9 +1045,10 @@ def _unit_voices(node, passages):
     meeting. One `voice[]` member per passage used, gated by `_cited` — the
     unit's own excerpt only — and `_entry` appends them to `source[]` beside
     the sheet, never instead of it."""
-    return [{"type": "voice", "ref": v["ref"], "lines": v["lines"]}
-            for v in node.get("voice") or []
-            if isinstance(v, dict) and _cited(dict(v, type="voice"), passages)]
+    cited = [(v.get("ref"), _cited(dict(v, type="voice"), passages))
+             for v in node.get("voice") or [] if isinstance(v, dict)]
+    return [{"type": "voice", "ref": ref, "lines": lines}
+            for ref, lines in cited if lines]
 
 
 def _unit_froms(node, inputs):
@@ -1872,7 +1884,12 @@ def _entry(candidate, decision, state, part=None):
         sources = [s for s in read if s["ref"] in cited]
         # …and when it said nothing, `_narrow_citations` has the rest of the
         # ladder (bug 1b): the marker says which files are still on trial.
-        cite_all = not sources and len(read) > 1
+        # Never a meeting (Ruling 31): the ladder ranks whole files by title
+        # words, so it would credit an uncited fact to a meeting it may not
+        # have come from — an entry with no `voice` keeps every excerpt its
+        # unit read (Ruling 30).
+        files = [s["ref"] for s in read if s["type"] != "voice"]
+        cite_all = not sources and len(files) > 1
         sources = sources or read
     # §3 phase 1: what the meeting filled in that the form does not state is
     # cited as the meeting — after the sheet or the photo, so `READ_OFF_A_FORM`
@@ -1881,15 +1898,13 @@ def _entry(candidate, decision, state, part=None):
     # Spec 2026-09-29 §7: the lines a transcript unit says it took the fact
     # from (gated to its own excerpt) replace the whole-excerpt citation
     # `_unit_sources` gave it — hundreds of lines nobody can check. An entry
-    # whose unit wrote no `voice` keeps the whole excerpt. Ruling 27: a unit
+    # whose unit wrote no `voice` keeps the whole excerpt. Ruling 30: a unit
     # packed with several meetings drops the whole excerpt of every one of
     # them, not only the one it cites — else meeting B's fact is credited to
-    # meeting A as well — and the lines it named are no guess for
-    # `_narrow_citations` to narrow.
+    # meeting A as well.
     voices = written.get("voice") or []
     if voices:
         sources = [s for s in sources if s.get("type") != "voice"] + voices
-        cite_all = False
     # The citations hang off the decision, never off a split part (§2.5's
     # `splitPart` has no `processes`), so both parts of a split inherit them.
     # Owner ruling 2026-09-15: they sit beside the real origin, never instead
@@ -1914,7 +1929,7 @@ def _entry(candidate, decision, state, part=None):
              "_skeleton": candidate["id"], "_unit": decision["unit"],
              "_renames": renames}
     if cite_all:
-        entry["_cite_all"] = [s["ref"] for s in read]
+        entry["_cite_all"] = files
     if kind in HOMED_KINDS:
         entry["home"] = derive_home(dict(entry, home=written.get("home")),
                                     _kind_of(state))
