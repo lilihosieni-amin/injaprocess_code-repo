@@ -1589,6 +1589,42 @@ def transcript_chunks(text, budget=TRANSCRIPT_CHUNK):
     return chunks
 
 
+def pack_chunks(costs, budget=TRANSCRIPT_CHUNK):
+    """Ruling 27 — `[[index]]`: the pieces in the owner's order cut into the
+    fewest contiguous groups of summed cost ≤ `budget` (a piece over it stands
+    alone), and of those cuts the one whose largest group is smallest: the
+    smallest cap a greedy fill still meets the fewest groups under. Every
+    transcript unit re-reads the department's process file, so one fewer unit
+    is one fewer reading; preparation's ten meetings pack 57K/47K/39K, where a
+    greedy fill at the budget gives 69K/68K/6K."""
+    def fill(cap):
+        groups, size = [], 0
+        for i, cost in enumerate(costs):
+            if not groups or size + cost > cap:
+                groups.append([])
+                size = 0
+            groups[-1].append(i)
+            size += cost
+        return groups
+
+    fewest = len(fill(budget))
+    lo, hi = max([c for c in costs if c <= budget], default=0), budget
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if len(fill(mid)) <= fewest:
+            hi = mid
+        else:
+            lo = mid + 1
+    return fill(lo)
+
+
+def _transcript_id(ref):
+    """`u-tr-<recording>-l<first line>` — a transcript unit, or a part of one,
+    is named after its first input (Ruling 27)."""
+    path, _, span = ref.partition("#")
+    return f'u-tr-{pathlib.PurePosixPath(path).stem}-l{span.split("-")[0][1:]}'
+
+
 def est_tokens_out(candidates, est_tokens_in, is_transcript):
     """§2.3's estimator. The constants are frozen in `expected.json` (§7), so a
     retune shows up as a fixture diff and never as a silent resize."""
@@ -1642,8 +1678,10 @@ def fits(unit, text):
 
 def _axis_parts(unit, skeleton, conventions=DEFAULT_CONVENTIONS):
     """`[(axis, [candidate ids])]` — the natural sub-axis of a unit over
-    budget: a workbook by the tab its candidates sit on, a transcript by half
-    its line range."""
+    budget: a workbook by the tab its candidates sit on; a transcript by
+    halves of its inputs when it was packed with several (the first half the
+    larger), else by half its line range — and a transcript part's axis is its
+    whole id, named after its own first input (Ruling 27)."""
     by_id = {c["id"]: c for c in skeleton["candidates"]}
     if unit["type"] == "workbook":
         sheet_of = {i["key"]: i["sheetId"] for i in skeleton["instances"]}
@@ -1653,16 +1691,20 @@ def _axis_parts(unit, skeleton, conventions=DEFAULT_CONVENTIONS):
             axis = f's{min((sheet_of.get(k, 0) for k in keys), default=0)}'
             parts.setdefault(axis, []).append(cid)
         return sorted(parts.items())
-    if "#" not in (unit["inputs"] or [""])[0]:
+    inputs = unit["inputs"] or [""]
+    if unit["type"] == "transcript" and len(inputs) > 1:
+        half = (len(inputs) + 1) // 2
+        return [(_transcript_id(part[0]), part)
+                for part in (inputs[:half], inputs[half:])]
+    if "#" not in inputs[0]:
         return []
-    first, last = (int(n[1:]) for n in
-                   unit["inputs"][0].rsplit("#", 1)[1].split("-"))
+    first, last = (int(n[1:]) for n in inputs[0].rsplit("#", 1)[1].split("-"))
     if last <= first:
         return []
     middle = (first + last) // 2
-    path = unit["inputs"][0].rsplit("#", 1)[0]
-    return [(f"l{a}", [f"{path}#L{a}-L{b}"])
-            for a, b in ((first, middle), (middle + 1, last))]
+    path = inputs[0].rsplit("#", 1)[0]
+    return [(_transcript_id(ref), [ref])
+            for ref in (f"{path}#L{first}-L{middle}", f"{path}#L{middle + 1}-L{last}")]
 
 
 def _input_label(path):
@@ -1720,8 +1762,7 @@ def split_unit(unit, skeleton, render, conventions=DEFAULT_CONVENTIONS):
         if unit["type"] == "workbook":
             part = dict(unit, id=f'{unit["id"]}-{axis}', candidates=members)
         else:
-            head = unit["id"].rsplit("-l", 1)[0]
-            part = dict(unit, id=f"{head}-{axis}", inputs=members)
+            part = dict(unit, id=axis, inputs=members)
         text = render(part)
         part["est_tokens_in"] = estimate_tokens(text)
         part["est_tokens_out"] = est_tokens_out(
@@ -1738,7 +1779,9 @@ def plan_units(skeleton, groups, chunks, attachments,
     """`plan.json`'s `units[]` (§2.3) and, as a side effect, each candidate's
     `unit` — the two have to agree, so one function writes both.
 
-    `chunks` is `[(recording, path, (first, last), text)]` and `attachments`
+    `chunks` is `[(recording, path, (first, last), text)]`, packed by
+    `pack_chunks` into the fewest balanced transcript units (Ruling 27; one
+    unit per chunk until 2026-09-30), and `attachments`
     the cached `.text`/`.md` paths; they become `attachment` units of their own
     (`u-att-1`, …): one per list of `attachment_groups` (`attachment_groups()`
     — a photo group, or one other file), in its order, and with
@@ -1805,11 +1848,16 @@ def plan_units(skeleton, groups, chunks, attachments,
                           "inputs": [w["file"] for w in rows],
                           "candidates": sorted(members[key]), "nodes": [],
                           "est_tokens_in": 0, "est_tokens_out": 0})
-    for recording, path, (first, last), text in chunks:
-        units.append({"id": f"u-tr-{recording}-l{first}", "type": "transcript",
-                      "phase": PHASE_OF["transcript"],
-                      "inputs": [f"{path}#L{first}-L{last}"], "candidates": [],
-                      "nodes": [], "est_tokens_in": estimate_tokens(text),
+    # Ruling 27: the pieces packed into the fewest balanced units, each unit
+    # its pieces in the owner's order, named after the first.
+    costs = [estimate_tokens(text) for *_, text in chunks]
+    for group in pack_chunks(costs):
+        inputs = [f"{chunks[i][1]}#L{chunks[i][2][0]}-L{chunks[i][2][1]}"
+                  for i in group]
+        units.append({"id": _transcript_id(inputs[0]), "type": "transcript",
+                      "phase": PHASE_OF["transcript"], "inputs": inputs,
+                      "candidates": [], "nodes": [],
+                      "est_tokens_in": sum(costs[i] for i in group),
                       "est_tokens_out": 0})
     for n, group in enumerate(attachment_groups if attachment_groups is not None
                               else [[path] for path in attachments], start=1):
@@ -2686,7 +2734,7 @@ IMAGE_SIDECAR = ".image.md"
 
 
 def _unit_text(root, unit):
-    """The text a unit carries: its transcript chunk's lines or its attachments,
+    """The text a unit carries: its transcript excerpts or its attachments,
     wrapped and otherwise verbatim. A workbook unit's `inputs`
     name `.xlsx` files, which are not text and are never read.
 
@@ -2695,8 +2743,10 @@ def _unit_text(root, unit):
     unit's photos were concatenated nameless, so it could tell neither which
     form it was reading nor which one an entry came off, and the assembly cited
     all fourteen photos of the unit on each of its thirteen entries. A
-    transcript unit reads one excerpt whole and needs no heading to tell it
-    from another.
+    transcript excerpt is headed too (Ruling 27) — `### <path> · L<a>–L<b>`,
+    every line under the transcript file's own number — because a unit may
+    read several meetings and cites a fact by the path and lines printed here;
+    a line `_wrap` folds carries its number on its first piece only.
 
     A photograph's heading also names the photo itself (`· عکس: <path>`), so
     the unit can open it and see what the extracted description cannot say — a
@@ -2711,13 +2761,15 @@ def _unit_text(root, unit):
         if path.suffix not in (".txt", ".md") or not path.is_file():
             continue
         lines = path.read_text(encoding="utf-8").splitlines()
-        if span:
-            first, last = (int(n[1:]) for n in span.split("-"))
-            lines = lines[first - 1:last]
-        body = "\n".join(w for line in lines for w in _wrap(line))
+        first, last = (int(n[1:]) for n in span.split("-")) if span \
+            else (1, len(lines))
+        lines = lines[first - 1:last]
         if SIDECAR_DIR not in rel:
-            parts.append(body)
+            body = "\n".join(w for n, line in enumerate(lines, start=first)
+                             for w in _wrap(f"L{n}: {line}"))
+            parts.append(f"### {rel} · L{first}–L{last}\n\n{body}")
             continue
+        body = "\n".join(w for line in lines for w in _wrap(line))
         photo = owner_rel(root, rel) if rel.endswith(IMAGE_SIDECAR) else None
         head = f"### {_input_label(rel)} · {rel}"
         parts.append(f'{head}{f" · عکس: {photo}" if photo else ""}\n\n{body}')

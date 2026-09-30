@@ -82,6 +82,92 @@ def test_transcript_chunks_are_line_aligned_and_named_by_first_line():
                                   f"#L{chunks[0][0]}-L{chunks[0][1]}"]
 
 
+#: Run 20260929-115657's ten preparation meetings, in the owner's order, as the
+#: estimator costs them (Ruling 27).
+PREPARATION_COSTS = [16132, 7086, 3364, 30208, 11778, 16031, 19314, 30907,
+                     1828, 6132]
+
+
+def test_pack_chunks_packs_the_meetings_into_the_fewest_balanced_groups():
+    """Ruling 27 — ten units re-read a 300K-token process file for six facts;
+    three do the same reading once each. Contiguous in the owner's order, so
+    the largest group is the smallest any three-way cut can make it: 56790,
+    where a greedy fill makes 68568 / 68080 / 6132."""
+    import itertools
+
+    from facts_plan.build import TRANSCRIPT_CHUNK, pack_chunks
+    groups = pack_chunks(PREPARATION_COSTS, TRANSCRIPT_CHUNK)
+    assert groups == [[0, 1, 2, 3], [4, 5, 6], [7, 8, 9]]
+    assert [i for g in groups for i in g] == list(range(10))
+    sums = [sum(PREPARATION_COSTS[i] for i in g) for g in groups]
+    assert sums == [56790, 47123, 38867] and max(sums) <= TRANSCRIPT_CHUNK
+    c = PREPARATION_COSTS
+    assert max(sums) == min(max(sum(c[:i]), sum(c[i:j]), sum(c[j:]))
+                            for i, j in itertools.combinations(range(1, 10), 2))
+
+
+def test_pack_chunks_edges():
+    from facts_plan.build import pack_chunks
+    assert pack_chunks([], 50) == []
+    assert pack_chunks([10, 20, 15], 50) == [[0, 1, 2]]        # fits one budget
+    # a piece over the budget stands alone; its neighbours still pack
+    assert pack_chunks([100, 10, 10], 50) == [[0], [1, 2]]
+    assert pack_chunks([10, 10, 100, 10], 50) == [[0, 1], [2], [3]]
+    assert pack_chunks([60, 70], 50) == [[0], [1]]
+
+
+def _meeting(stem, first, last, tokens):
+    """One `_chunks` piece of `tokens` estimated tokens («و» costs ⅔ of one)."""
+    return (stem, f"meetings/transcripts/{stem}.txt", (first, last),
+            "و" * (tokens * 3 // 2))
+
+
+def test_several_meetings_plan_as_fewer_units_each_contiguous_in_owner_order():
+    """Ruling 27 — the pieces are packed, not one unit each: a unit's `inputs`
+    are its pieces in the owner's order, its id is its first piece's, its
+    estimate their sum; and every chosen line is still read by exactly one unit
+    (F4, which `plan_units` itself refuses to break)."""
+    chunks = [_meeting("zeta", 1, 40, 30000), _meeting("alpha", 1, 9, 30000),
+              _meeting("mid", 5, 20, 30000), _meeting("mid", 21, 30, 2000)]
+    units = plan_units({"candidates": [], "instances": []}, {}, chunks, [])
+    assert [u["id"] for u in units] == ["u-tr-zeta-l1", "u-tr-mid-l5"]
+    assert [u["inputs"] for u in units] == [
+        ["meetings/transcripts/zeta.txt#L1-L40",
+         "meetings/transcripts/alpha.txt#L1-L9"],
+        ["meetings/transcripts/mid.txt#L5-L20",
+         "meetings/transcripts/mid.txt#L21-L30"]]
+    assert [u["est_tokens_in"] for u in units] == [60000, 32000]
+    # a group of one keeps the id it always had
+    assert [u["id"] for u in plan_units({"candidates": [], "instances": []}, {},
+                                        chunks[1:2], [])] == ["u-tr-alpha-l1"]
+
+
+def test_a_packed_unit_over_budget_splits_by_its_inputs_and_names_each_part():
+    """Ruling 27 — a packed unit splits into halves of its input list, each
+    named after its own first input, so no two parts share an id; a part left
+    with one excerpt splits by half its lines, as a meeting always did."""
+    unit = {"id": "u-tr-a-l1", "type": "transcript", "phase": 2,
+            "inputs": ["meetings/transcripts/a.txt#L1-L4",
+                       "meetings/transcripts/b.txt#L1-L20",
+                       "meetings/transcripts/c.txt#L5-L9"],
+            "candidates": [], "nodes": [], "est_tokens_in": 0,
+            "est_tokens_out": 0}
+
+    def render(part):
+        """Over the line bound when it holds two meetings, or twenty lines."""
+        first, last = (int(n.lstrip("L")) for n in
+                       part["inputs"][0].rsplit("#", 1)[1].split("-"))
+        big = len(part["inputs"]) > 1 or last - first >= 19
+        return "x" * (MAX_LINE + 1) if big else "x"
+
+    parts = split_unit(unit, {"candidates": [], "instances": []}, render)
+    assert [(p["id"], p["inputs"]) for p in parts] == [
+        ("u-tr-a-l1", ["meetings/transcripts/a.txt#L1-L4"]),
+        ("u-tr-b-l1", ["meetings/transcripts/b.txt#L1-L10"]),
+        ("u-tr-b-l11", ["meetings/transcripts/b.txt#L11-L20"]),
+        ("u-tr-c-l5", ["meetings/transcripts/c.txt#L5-L9"])]
+
+
 def test_a_group_over_budget_splits_on_its_tabs_and_keeps_the_axis_in_the_id():
     skeleton = {"candidates": [
         {"id": f"S-rec-00000000000{n}", "kind": "record",
@@ -334,8 +420,9 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
         assert '"field": "meqdar"' in examples
     chunk = next(u for u in plan["units"] if u["type"] == "transcript")
     assert chunk["inputs"] == ["meetings/transcripts/cooking-1405-05-26.txt#L1-L39"]
-    # a line under the cap is quoted byte for byte, trailing spaces included
-    assert "سطر 39: موجودی پنیر پیتزا را آخر شب شمردیم.  \n" in (
+    # a line under the cap is quoted byte for byte, trailing spaces included,
+    # after the number of its line (Ruling 27)
+    assert "L39: سطر 39: موجودی پنیر پیتزا را آخر شب شمردیم.  \n" in (
         run_dir / "units" / chunk["id"] / "input.md").read_text(encoding="utf-8")
 
     # §2.3's context row: the bodies of the functions this unit's own
@@ -346,6 +433,46 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
     for bom in ("u-wb-mini_bom-s1", "u-wb-mini_bom-s2"):
         assert "## توابع" not in (run_dir / "units" / bom / "input.md").read_text(
             encoding="utf-8")
+
+
+def test_short_meetings_share_one_unit_each_under_its_heading_with_numbered_lines(
+        tmp_path):
+    """Ruling 27 end to end: three short meetings are one transcript unit, and
+    its `input.md` heads each excerpt with the path and the line range a
+    citation spells, every line under the transcript file's own number — a
+    line folded for its length carries its number once."""
+    import re
+    estate(tmp_path)
+    transcripts = tmp_path / "meetings" / "transcripts"
+    transcripts.mkdir(parents=True)
+    long_line = " ".join(["گفت‌وگو"] * 700)                  # over MAX_LINE
+    meetings = {"zeta-1405-06-02": ["یک", "دو"],
+                "alpha-1405-06-01": ["سه", long_line, "پنج"],
+                "mid-1405-06-03": ["شش"]}
+    for stem, lines in meetings.items():
+        (transcripts / f"{stem}.txt").write_text("\n".join(lines),
+                                                 encoding="utf-8")
+    run_dir = tmp_path / "runs" / "facts" / "cooking" / "20260930-090000"
+    build(tmp_path, "cooking", run_dir, list(meetings))
+
+    plan = json.loads((run_dir / "plan.json").read_text(encoding="utf-8"))
+    talk = [u for u in plan["units"] if u["type"] == "transcript"]
+    assert [u["id"] for u in talk] == ["u-tr-zeta-1405-06-02-l1"]
+    rels = [f"meetings/transcripts/{stem}.txt" for stem in meetings]
+    assert talk[0]["inputs"] == [f"{rels[0]}#L1-L2", f"{rels[1]}#L1-L3",
+                                 f"{rels[2]}#L1-L1"]
+    text = (run_dir / "units" / talk[0]["id"] / "input.md").read_text(
+        encoding="utf-8")
+    assert [line for line in text.split("\n") if line.startswith("### meetings/")] \
+        == [f"### {rels[0]} · L1–L2", f"### {rels[1]} · L1–L3",
+            f"### {rels[2]} · L1–L1"]
+    assert f"### {rels[0]} · L1–L2\n\nL1: یک\nL2: دو\n\n### {rels[1]}" in text
+    assert f"### {rels[2]} · L1–L1\n\nL1: شش\n" in text
+    folded = text[text.index("L2: گفت‌وگو"):text.index("L3: پنج")]
+    assert len(folded.strip("\n").split("\n")) > 1
+    assert re.findall(r"^L[0-9]+: ", folded, flags=re.M) == ["L2: "]
+    assert " ".join(folded.split()) == "L2: " + long_line
+    assert max(map(len, text.split("\n"))) <= MAX_LINE
 
 
 def test_refresh_inputs_rewrites_the_inputs_and_touches_nothing_else(

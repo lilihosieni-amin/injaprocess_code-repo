@@ -419,8 +419,9 @@ def test_each_attachment_text_is_headed_by_its_name_and_its_path(tmp_path):
     """Task G 2026-09-16: a unit handed several photos has to tell them apart
     and cite the one an entry was read off, so every `.text/` sidecar is headed
     by the file's own name and by the path the citation must spell — in input
-    order, with a blank line between files. A transcript excerpt is the unit's
-    only text and carries no heading."""
+    order, with a blank line between files. A transcript excerpt is headed too
+    — by its path and line range, every line under its own number — since a
+    unit may read several meetings (Ruling 27)."""
     from facts_plan.build import _unit_text
     text_dir = tmp_path / "departments" / "cooking" / "attachments" / ".text"
     text_dir.mkdir(parents=True)
@@ -436,7 +437,8 @@ def test_each_attachment_text_is_headed_by_its_name_and_its_path(tmp_path):
     (tmp_path / "meetings" / "transcripts" / "m.txt").write_text(
         "یک\nدو\nسه\n", encoding="utf-8")
     assert _unit_text(tmp_path,
-                      {"inputs": ["meetings/transcripts/m.txt#L1-L2"]}) == "یک\nدو"
+                      {"inputs": ["meetings/transcripts/m.txt#L2-L3"]}) == \
+        "### meetings/transcripts/m.txt · L2–L3\n\nL2: دو\nL3: سه"
 
 
 def test_an_image_sidecars_heading_names_the_photo_itself(tmp_path):
