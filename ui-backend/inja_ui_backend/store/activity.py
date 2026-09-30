@@ -40,7 +40,8 @@ CATALOGUE: dict[str, str] = {
     "supervisor.changed": "governance", "supervisor_flag.changed": "governance",
     "visibility.policy.changed": "governance",
     "comment.created": "governance", "comment.edited": "governance",
-    "comment.withdrawn": "governance", "comment.approved": "governance",
+    "comment.withdrawn": "governance", "comment.restored": "governance",
+    "comment.approved": "governance",
     "comment.noted": "governance", "comment.rejected": "governance",
     "comment.addressed": "governance", "projection.discontinuity": "governance",
 }
@@ -277,14 +278,23 @@ def departments(conn: sqlite3.Connection, root: Path, codes: set[str] | None,
 
 
 def comments(conn: sqlite3.Connection, cc: sqlite3.Connection,
-             codes: set[str] | None) -> list[dict]:
-    """Where each comment sits — metadata only, never its text (D44)."""
+             codes: set[str] | None, *, editor: bool) -> list[dict]:
+    """Where each comment sits — metadata only, never its text (D44).
+
+    An Editor's comment is listed to Editors only (2026-09-29 addendum §5, the
+    owner's decision): no Admin has a part in its life, so this tab — which is
+    about where comments are on their way — has nothing to show them about it.
+    The question is `comment_rules.AS_EDITOR`, the very fragment the inbox asks,
+    so the two can never disagree about which comments those are. This is a
+    view, not the record: every `comment.*` event is still written, and each
+    person's own activity page still lists them."""
     names = {r["id"]: r["display_name"]
              for r in conn.execute("SELECT id, display_name FROM users")}
-    rows = cc.execute("""
+    hide = "" if editor else f"WHERE NOT {comment_rules.AS_EDITOR}"
+    rows = cc.execute(f"""
         SELECT c.id, c.department, c.author_name, c.state, c.stage, c.approver_id,
           (SELECT MAX(e.at) FROM comment_events e WHERE e.comment_id = c.id) AS moved
-        FROM comments c ORDER BY c.id DESC""").fetchall()
+        FROM comments c {hide} ORDER BY c.id DESC""").fetchall()
     return [{"ref": comment_rules.cmt(r["id"]), "department": r["department"],
              "author": r["author_name"], "state": r["state"], "stage": r["stage"],
              "holder": names.get(r["approver_id"]) if r["stage"] == "reader" else None,
@@ -293,7 +303,7 @@ def comments(conn: sqlite3.Connection, cc: sqlite3.Connection,
 
 
 def summary(conn: sqlite3.Connection, cc: sqlite3.Connection, root: Path,
-            codes: set[str] | None, servable) -> dict:
+            codes: set[str] | None, servable, *, editor: bool) -> dict:
     """The report's headline numbers (D83). `activeUsers` and `failedSignIns`
     name no department, so — like the access/governance tabs — they show only
     to a `*` holder; a scoped caller gets `None` rather than a number that
@@ -312,6 +322,8 @@ def summary(conn: sqlite3.Connection, cc: sqlite3.Connection, root: Path,
         "failedSignIns": (conn.execute(
             f"SELECT COUNT(*) FROM audit_events WHERE action IN ({_in(_SIGN_IN_FAILURES)})",
             _SIGN_IN_FAILURES).fetchone()[0] if star else None),
-        "commentsAwaiting": sum(1 for c in comments(conn, cc, codes)
+        # Derived from `comments()` rather than counted separately, so it can
+        # never count a comment the same viewer's list leaves out.
+        "commentsAwaiting": sum(1 for c in comments(conn, cc, codes, editor=editor)
                                 if c["state"] == "awaiting"),
     }

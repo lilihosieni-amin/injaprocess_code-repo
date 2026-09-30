@@ -102,11 +102,25 @@ def advance(app: sqlite3.Connection, cc: sqlite3.Connection, cid: int, *,
         return
 
 
-def submit(app: sqlite3.Connection, cc: sqlite3.Connection, cid: int, *, now: int) -> None:
-    """Route a comment just written or just edited, from its author (D63.1, D63.5)."""
+def submit(app: sqlite3.Connection, cc: sqlite3.Connection, cid: int, *,
+           pass_kind: Literal["submitted", "edited", "restored"], now: int) -> None:
+    """Record the author's pass — written, edited or sent again — and route it
+    from them (D63.1).
+
+    The author's kind is read once, here, and both records the pass and routes
+    it: visibility reads the one and the comment's path follows the other
+    (2026-09-29 addendum, §5), so a re-role between two reads would leave a
+    comment waiting on Admins who cannot see it, or show Admins an Editor's.
+
+    An Admin's or an Editor's lands in the Editors' inbox at once (D63.5; the
+    2026-09-29 addendum, decision A): the chain exists to bring a comment to
+    an Admin's word and then to the Editors, and theirs already is."""
     c = S.get(cc, cid)
     author = users.by_id(app, c["author_id"])
-    if kind_of(app, author) == "admin":
+    k = kind_of(app, author)
+    S.event(cc, cid, kind=pass_kind, now=now, user_id=author["id"],
+            user_name=author["display_name"], role=k)
+    if k in ("admin", "editor"):
         S.set_state(cc, cid, state="approved", now=now)
         return
     advance(app, cc, cid, from_user_id=author["id"], now=now)
@@ -150,13 +164,31 @@ def _received(cc: sqlite3.Connection, cid: int, user_id: int) -> bool:
         " AND user_id = ? LIMIT 1", (cid, user_id)).fetchone() is not None
 
 
+#: Written as an Editor (2026-09-29 addendum, §5): an Admin has no part in such
+#: a comment's life, so does not see it. The kind is the one the latest pass —
+#: `submitted`, `edited` or `restored` — snapshotted (D62), never the author's
+#: now: each pass went through `submit()`, which routed by that very kind, so
+#: the comment is visible to whoever the path it is on waits for, and an Editor
+#: made an Admin since does not open their untouched comments to the Admins.
+#: `IS`, not `=`: a pass with no role recorded reads as not an Editor's.
+#:
+#: Public because the activity record's comment tab asks the same question
+#: (`store/activity.comments`): one definition, so the inbox and that tab can
+#: never disagree about whether a comment is an Editor's. Written against the
+#: alias `c` for `comments`.
+AS_EDITOR = ("(SELECT json_extract(e.detail, '$.role') FROM comment_events e"
+              " WHERE e.comment_id = c.id AND e.kind IN ('submitted', 'edited', 'restored')"
+              " ORDER BY e.id DESC LIMIT 1) IS 'editor'")
+
+
 def can_see(app, cc, viewer: sqlite3.Row, c: sqlite3.Row) -> bool:
     """D66, for one comment. `visible_sql` is the same rule for a listing."""
     k = kind_of(app, viewer)
     if k == "editor" or c["author_id"] == viewer["id"]:
         return True
     if k == "admin":
-        return covers(app, viewer, c["department"])
+        return covers(app, viewer, c["department"]) and not cc.execute(
+            f"SELECT {AS_EDITOR} FROM comments c WHERE c.id = ?", (c["id"],)).fetchone()[0]
     return _received(cc, c["id"], viewer["id"])
 
 
@@ -173,11 +205,11 @@ def visible_sql(app, viewer: sqlite3.Row) -> tuple[str, list]:
         depts: set[str] = set()
         for s in access.scopes_of(app, viewer):
             if s == "*":
-                return "1", []
+                return f"(c.author_id = ? OR NOT {AS_EDITOR})", [viewer["id"]]
             if scopes.SCOPE_RE.fullmatch(s) and "/" not in s:
                 depts.add(scopes.dept_of(s))
         marks = ",".join("?" * len(depts)) or "NULL"
-        return (f"(c.author_id = ? OR c.department IN ({marks}))",
+        return (f"(c.author_id = ? OR (c.department IN ({marks}) AND NOT {AS_EDITOR}))",
                 [viewer["id"], *sorted(depts)])
     return ("(c.author_id = ? OR EXISTS (SELECT 1 FROM comment_events e"
             " WHERE e.comment_id = c.id AND e.kind = 'assigned' AND e.user_id = ?))",
@@ -190,10 +222,25 @@ def actions(app, cc, viewer: sqlite3.Row, c: sqlite3.Row) -> dict[str, bool]:
     decide = awaiting and (
         (c["stage"] == "reader" and k == "reader" and c["approver_id"] == viewer["id"])
         or (c["stage"] == "pool" and k == "admin" and covers(app, viewer, c["department"])))
-    own_untouched = (c["author_id"] == viewer["id"] and awaiting
+    # The author's until someone else acts on it (D36, as amended by the
+    # 2026-09-29 addendum, decision B). Approvals since the last restart are
+    # the only act that leaves the comment open; addressing, rejecting and
+    # withdrawing each close it into a state of their own. So a Reader's
+    # comment drops out at its first approval, while an Admin's or an Editor's
+    # — `approved` at submission with none — stays theirs until addressed.
+    mine = c["author_id"] == viewer["id"]
+    own_untouched = (mine and c["state"] in ("awaiting", "approved")
                      and not S.approvers_since_restart(cc, c["id"]))
-    return {"approve": decide, "reject": decide, "edit": own_untouched,
+    # Changing the words or sending them in again is commenting, so it asks for
+    # what creating asked for, re-derived now (D48): an author whose scope or
+    # role no longer allows `comment` here keeps only the withdrawal — taking
+    # one's own words back never needs a permission.
+    may_comment = mine and access.allows(app, viewer, "comment", f"dept:{c['department']}")
+    return {"approve": decide, "reject": decide, "edit": own_untouched and may_comment,
             "withdraw": own_untouched,
+            # a withdrawal is the author's own act, so the author may undo it
+            # (decision C); a rejection is someone else's and stays final (D73)
+            "restore": may_comment and c["state"] == "withdrawn",
             "address": c["state"] == "approved" and k == "editor"}
 
 
@@ -207,6 +254,10 @@ def pending_count(app, cc, viewer: sqlite3.Row) -> int:
         " AND approver_id = ?", (viewer["id"],)).fetchone()[0]
     if k != "admin":
         return reader_hops
+    # Only what the viewer may see (D66), so the count agrees with the waiting
+    # tab behind it by construction rather than by the rules happening to match.
+    where, wp = visible_sql(app, viewer)
     pool = [r["department"] for r in cc.execute(
-        "SELECT department FROM comments WHERE state = 'awaiting' AND stage = 'pool'")]
+        "SELECT c.department FROM comments c WHERE c.state = 'awaiting'"
+        f" AND c.stage = 'pool' AND {where}", wp)]
     return reader_hops + sum(1 for d in pool if covers(app, viewer, d))

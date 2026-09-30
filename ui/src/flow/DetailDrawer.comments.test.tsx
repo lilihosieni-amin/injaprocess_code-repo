@@ -42,7 +42,7 @@ function cmt(n: number, nodeId: string | null): Comment {
     author: { name: 'سمیرا احمدی', isMe: true, role: 'reader' },
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     approvals: 0, notes: [], rejectReason: null, addressed: null,
-    actions: { approve: false, reject: false, edit: true, withdraw: true, address: false },
+    actions: { approve: false, reject: false, edit: true, withdraw: true, restore: false, address: false },
   }
 }
 
@@ -106,13 +106,13 @@ describe('step comments on the flowchart', () => {
     expect(await screen.findByText('گام «دروازهٔ منطقی XOR» · پخت')).toBeInTheDocument()
   })
 
-  it('an Editor sees the list and no button', async () => {
+  it('an Editor sees the list and the button (2026-09-29 addendum, decision A)', async () => {
     flow(EDITOR)
     await screen.findByTitle('کامنت دارد')
     fireEvent.click(screen.getByText('ثبت'))
     const d = drawer()
     expect(within(d).getByText('کامنت‌های این گام (۲)')).toBeInTheDocument()
-    expect(within(d).queryByRole('button', { name: 'کامنت روی این گام' })).toBeNull()
+    expect(within(d).getByRole('button', { name: 'کامنت روی این گام' })).toBeInTheDocument()
   })
 })
 

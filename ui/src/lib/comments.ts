@@ -12,6 +12,21 @@ export const STATUS: Record<CommentState, { label: string; bg: string; fg: strin
   withdrawn: { label: 'پس گرفته شد', bg: 'bg-tile-dead', fg: 'text-muted' },
 }
 
+/**
+ * Sending a withdrawn comment again (2026-09-29 addendum, decision C): the
+ * control, and the trail row it leaves (also its toast). lili's wording — the
+ * comment really does start its journey over, and the words say so.
+ */
+export const RESEND = 'ارسال دوباره'
+export const RESENT = 'دوباره فرستاده شد'
+/**
+ * The toast after an author changes their text, chosen by where it landed: an
+ * Admin's or an Editor's (or a Reader's with no Admin to pass, D63.6) is
+ * approved again at once, so only a comment back in the chain «starts over».
+ */
+export const EDITED = 'اصلاح شد'
+export const EDITED_RESTARTED = 'اصلاح شد و زنجیره از اول شروع شد'
+
 /** Panel design `ST` (Inja Panel.dc.html L3870) words two states differently. */
 const PANEL_LABEL: Partial<Record<CommentState, string>> = { addressed: 'رسیدگی‌شده', rejected: 'رد شده' }
 
@@ -56,8 +71,9 @@ const UNTIL = 'تا وقتی کسی تأیید نکرده، می‌توانید 
  * username only, so the name is shown only when a caller has it.
  */
 export function pathLine(s: SessionDescriptor, supervisorName?: string | null): string {
-  if (can(s, 'manage_users') && !can(s, 'edit'))
-    // An admin's comment is approved at submit (D63.5): no edit/withdraw window (D73).
+  if (can(s, 'manage_users') || can(s, 'edit'))
+    // An Admin's or an Editor's comment skips the chain and is approved at
+    // submit (D63.5; 2026-09-29 addendum, decision A).
     return 'این کامنت مستقیم به ادیتور می‌رود.'
   if (s.supervisor)
     return `این کامنت اول برای ${supervisorName || 'سرپرست شما'} می‌رود؛ پس از تأیید او به یکی از ادمین‌ها و سپس به ادیتور می‌رسد. ${UNTIL}`

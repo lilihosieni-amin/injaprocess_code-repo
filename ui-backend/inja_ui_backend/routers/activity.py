@@ -8,7 +8,7 @@ from typing import Callable, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 
-from .. import comment_jobs, facts_store, projection, storage
+from .. import comment_jobs, comment_rules, facts_store, projection, storage
 from ..access import NOT_FOUND, reachable_departments, requires
 from ..auth import require_session
 from ..disclosure import Disclosure
@@ -158,9 +158,18 @@ def list_departments(request: Request, codes=Depends(reach),
                                 _servable(request, user))
 
 
+def _is_editor(request: Request, user) -> bool:
+    """Whether this viewer sees an Editor's comment in the comment tab and its
+    count (2026-09-29 addendum §5) — the inbox's own `kind_of`, not a second
+    reading of the capabilities."""
+    return comment_rules.kind_of(request.app.state.db, user) == "editor"
+
+
 @router.get("/comments")
-def list_comments(request: Request, codes=Depends(reach)):
-    return activity.comments(request.app.state.db, request.app.state.comments_db, codes)
+def list_comments(request: Request, codes=Depends(reach),
+                  user=Depends(require_session)):
+    return activity.comments(request.app.state.db, request.app.state.comments_db, codes,
+                             editor=_is_editor(request, user))
 
 
 @router.get("/summary")
@@ -168,4 +177,4 @@ def get_summary(request: Request, codes=Depends(reach),
                 user=Depends(require_session)):
     return activity.summary(request.app.state.db, request.app.state.comments_db,
                             request.app.state.cfg.data_root, codes,
-                            _servable(request, user))
+                            _servable(request, user), editor=_is_editor(request, user))

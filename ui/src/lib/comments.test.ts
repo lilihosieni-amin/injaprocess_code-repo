@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest'
 import * as L from './comments'
 import { STATUS, statusLabel, anchorText, composeContext, pathLine, ageText } from './comments'
 import type { Comment } from '../api/comments'
-import { VIEWER, HEAD, ADMIN } from '../test/sessions'
+import { VIEWER, HEAD, ADMIN, EDITOR } from '../test/sessions'
 
 const base = {
   id: 'CMT-1', text: 't', state: 'awaiting', stage: 'reader', waitingWith: null,
   author: { name: 'x', isMe: true, role: 'reader' }, createdAt: '', updatedAt: '', approvals: 0, notes: [],
   rejectReason: null, addressed: null,
-  actions: { approve: false, reject: false, edit: false, withdraw: false, address: false },
+  actions: { approve: false, reject: false, edit: false, withdraw: false, restore: false, address: false },
 } as const
 const anchor = { id: 'dining-003-n020', processId: 'dining-003', department: 'dining',
   departmentName: 'سالن', processName: 'سرو غذا', nodeLabel: 'کنترل دما', orphan: false }
@@ -39,12 +39,13 @@ describe('comment labels', () => {
     expect(composeContext({ kind: 'process', id: 'dining-003' })).toBe('کل این فرآیند، نه یک گام خاص')
     expect(composeContext({ kind: 'department', id: 'dining' })).toBe('اطلاعات کلی دپارتمان، نه یک فرآیند خاص')
   })
-  it('pathLine for a reader with and without a supervisor, and for an admin', () => {
+  it('pathLine for a reader with and without a supervisor, and for an admin or an editor', () => {
     const tail = 'تا وقتی کسی تأیید نکرده، می‌توانید متنش را عوض کنید یا پس بگیرید.'
     expect(pathLine(VIEWER)).toBe(`این کامنت اول برای سرپرست شما می‌رود؛ پس از تأیید او به یکی از ادمین‌ها و سپس به ادیتور می‌رسد. ${tail}`)
     expect(pathLine(VIEWER, 'حسین مازندرانی')).toBe(`این کامنت اول برای حسین مازندرانی می‌رود؛ پس از تأیید او به یکی از ادمین‌ها و سپس به ادیتور می‌رسد. ${tail}`)
     expect(pathLine(HEAD)).toBe(`این کامنت به یکی از ادمین‌ها و سپس به ادیتور می‌رسد. ${tail}`)
     expect(pathLine(ADMIN)).toBe('این کامنت مستقیم به ادیتور می‌رود.')
+    expect(pathLine(EDITOR)).toBe('این کامنت مستقیم به ادیتور می‌رود.')
   })
   it('ageText', () => {
     const now = new Date('2026-09-21T12:00:00Z')

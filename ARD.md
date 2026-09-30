@@ -830,7 +830,7 @@ Key Docker notes:
 | FR-A7 / AC-16 (who may appoint whom) | §19.2 — strict-subset plus `manage_peers`, scope containment, self-edit ban |
 | FR-A8 / AC-23 (supervisor and `can_supervise`) | §19.2 eligibility rules; §19.8 routing |
 | FR-A11 / AC-24 (readers see no user administration) | §19.2; §19.8 for the comment-name exception |
-| FR-K2a (the editor receives comments, never writes them) | §19.2 — derived from routing, not a permission |
+| FR-K2a (the editor receives comments; superseded in part by the 2026-09-29 comment-authors addendum, decision A: an Editor may also write one, which lands `approved` without routing and is seen by Editors only) | §19.2; §19.8 |
 | NFR-12 / AC-25 (withheld data is never sent) | §19.4a — records, counts, existence, 404-not-403, response-body scan |
 | FR-V1…V4 / AC-18 (confirmation bound to a version) | §19.6 — content fingerprint, not a boolean field |
 | FR-V5, FR-V6 / AC-21 (content visibility) | §19.4 — one global policy guarded by `set_visibility`, one filter |
@@ -918,7 +918,7 @@ The intended deployment is: the analyst as **Editor** + `*`; a deputy as **Admin
 
 A department head is therefore a Reader: they read, comment, download and approve their branch's comments, but hold no `manage_users` and no `view_audit`. **All user administration is centralised at `*` scope**, and no role but Editor can edit or confirm.
 
-**The Editor holds `comment` but is offered no composer.** The roles are strictly nested, and delegation requires a created user's set to be a subset of the creator's — so removing `comment` from Editor would make `Reader ⊄ Editor` and leave the Editor unable to create any user at all. It is also meaningless rather than forbidden: routing climbs to the first holder of `edit` (§19.8), so an Editor's own comment would be approved on creation and land in their own inbox. The UI therefore offers no composer to any holder of `edit` — a rule derived from routing, not a permission (spec D11).
+**The Editor holds `comment`, and uses it.** The roles are strictly nested, and delegation requires a created user's set to be a subset of the creator's — so removing `comment` from Editor would make `Reader ⊄ Editor` and leave the Editor unable to create any user at all. Through 2026-09-28 the Editor was nonetheless offered no composer and the server refused an Editor author (spec D11, addendum D74); since the 2026-09-29 comment-authors addendum an Editor writes comments like anyone else, and, like an Admin's, an Editor's comment skips routing and lands `approved` in the Editors' inbox.
 
 **Resolution.**
 
@@ -1011,7 +1011,7 @@ Content without a valid confirmation is invisible to non-editors and excluded fr
 
 One append-only table in `app.db`: `at`, `actor`, `session`, `action`, `target`, `ip`, `user_agent`, `outcome`. Events cover access (including **successful** sign-ins, which were never logged before), content reads and downloads, edits and confirmations, and every governance action. Presence is derived from `last_seen` heartbeats accumulated as intervals of real activity, so a closed laptop lid does not read as eight hours present.
 
-The reports are `GROUP BY` queries filtered by `view_audit` scope. Note that `view_audit` follows **content scope**, unlike comment visibility which follows the supervisor tree (§19.8) — audit is an operational record, comments are routed private communications.
+The reports are `GROUP BY` queries filtered by `view_audit` scope. Note that `view_audit` follows **content scope** alone, unlike comment visibility, which also follows the routing (§19.8) — audit is an operational record, comments are routed private communications. So the comment tab lists, as metadata without text, comments its reader may not open — except an Editor's, which it lists to Editors only (comment-authors addendum §5); the one-user page still shows every `comment.*` event, since it is the audit of what that person did.
 
 **Three events are not written by an endpoint**, and each needs a writer that exists — otherwise the catalogue promises rows nothing can produce:
 
@@ -1055,13 +1055,13 @@ Every anchor carries a **snapshot** taken at comment time — department name, p
 
 **Identity:** `CMT-{n}`, monotonic from `comments.db`, never reused — INV-1's principle on a different ledger, because comments are not `data-repo` content.
 
-**Lifecycle:** `draft` → `awaiting` (one named approver at a time) → `approved` → `addressed`, with `rejected` and `withdrawn` as terminal-until-revised states. Nothing is hard-deleted, matching INV-4's doctrine: a supervisor's refusal must leave a trace.
+**Lifecycle:** `draft` → `awaiting` (one named approver at a time) → `approved` → `addressed`. `rejected` is final; `withdrawn` is final for everyone but its author, who may send it again (`restored`), restarting its routing from the beginning (2026-09-29 comment-authors addendum, decision C). Nothing is hard-deleted, matching INV-4's doctrine: a supervisor's refusal must leave a trace.
 
 **Routing** climbs the supervisor edges and becomes `approved` when the next hop would hold `edit` — an editor does not approve their own inbox. Disabled hops are skipped and recorded as skipped; a chain with no live approver above reaches the editors rather than sticking. An approver may approve, reject with a reason, or amend and approve — an amendment keeps both texts.
 
-**The author controls the comment exactly while it carries no approvals.** After the first approval it can be neither edited nor withdrawn: an approval vouches for specific words, and letting them change afterwards would make every signature above worthless. The escape hatch is that any approver may reject, which returns it to the author and leaves a record.
+**The author controls the comment until someone else acts on it** — while it is `awaiting` or `approved` with no approval since the last restart, so an Admin's or an Editor's, `approved` at submission, stays theirs until it is addressed (2026-09-29 addendum, decision B). After the first approval it can be neither edited nor withdrawn: an approval vouches for specific words, and letting them change afterwards would make every signature above worthless. The escape hatch is that any approver may reject, which returns it to the author and leaves a record.
 
-**Visibility follows the supervisor tree, not content scope:** author, every supervisor above them at any stage, and holders of `edit` once it has cleared. An Admin scoped `*` still reads only their own branch. Resolution and rejection are visible to that whole audience, with who, when, why, and the commit reference if one exists. These names are the sole exception to FR-A11's rule that a Reader sees nothing about other users (§19.2).
+**Who sees a comment** (routing addendum D66; comment-authors addendum §5): its author, always; a Reader supervisor from the moment it is assigned to them, to its end (D38); an Admin every comment whose department their scope covers (`*` or an exact `dept:{code}`), at every stage — **except a comment written as an Editor**, which no Admin sees: only the Editors, its author and anyone it was assigned to on an earlier pass, "written as" being the role recorded on its latest pass (submitted, edited or sent again), which is the role its routing was decided on, not the author's role now; and the Editors every comment, at every stage. `comment_rules.can_see` and `visible_sql` are this one rule, and every comment surface — the detail, the inbox tabs, the drawers, every comment list, count and badge — goes through them. The activity record's comment tab and its awaiting count (§19.7) are a separate surface under `view_audit` and do not — but they leave out an Editor's comment for anyone who is not an Editor by asking the same `comment_rules.AS_EDITOR`, so the two surfaces agree on which comments those are. Resolution and rejection are visible to that whole audience, with who, when, why, and the commit reference if one exists. These names are the sole exception to FR-A11's rule that a Reader sees nothing about other users (§19.2).
 
 **The CLI (D4).** `comments list|show|resolve`, added to `engine/` and baked into the control-bot image alongside the existing CLIs — outside `APPROVED_DIRECTORY`, exactly as §8 and §16 already require. It reads `comments.db` directly, returns only `approved` and `addressed` comments, and serves author and approval-trail names from denormalised columns so it never touches a users table and cannot enumerate people. This is what makes *«برو مشکل کامنت CMT-42 رو درست کن»* work: the AI reads the anchor, edits through `merge`, commits, and marks the comment addressed with the commit id.
 

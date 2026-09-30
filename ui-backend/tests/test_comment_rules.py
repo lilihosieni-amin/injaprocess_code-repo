@@ -35,12 +35,18 @@ def editor_id(app):
 
 
 def post(app, cc, author_id, dept="dining"):
+    """As `create_comment` does it: `submit` records the `submitted` pass too."""
     author = users.by_id(app, author_id)
     cid = S.insert(cc, author=author, anchor_kind="department", anchor_id=dept,
                    process_id=None, department=dept,
                    snapshot={"department_name": "سالن"}, text="متن", now=NOW)
-    R.submit(app, cc, cid, now=NOW)
+    R.submit(app, cc, cid, pass_kind="submitted", now=NOW)
     return cid
+
+
+def re_role(app, uid, role):
+    rid = app.execute("SELECT id FROM roles WHERE name = ?", (role,)).fetchone()[0]
+    app.execute("UPDATE users SET role_id = ? WHERE id = ?", (rid, uid))
 
 
 def kinds(cc, cid):
@@ -105,6 +111,15 @@ def test_an_admin_author_is_approved_at_once(world):
     app, cc = world
     a = mk(app, "admin", "admin", "*")
     c = S.get(cc, post(app, cc, a))
+    assert (c["state"], c["stage"]) == ("approved", None)
+
+
+def test_an_editor_author_is_approved_at_once(world):
+    """2026-09-29 addendum, decision A: an Editor's comment skips routing as an
+    Admin's does (D63.5) — with a covering Admin present, so it is not D63.6."""
+    app, cc = world
+    mk(app, "admin", "admin", "*")
+    c = S.get(cc, post(app, cc, editor_id(app)))
     assert (c["state"], c["stage"]) == ("approved", None)
 
 
@@ -273,6 +288,7 @@ def test_visible_sql_agrees_with_can_see(world):
     other = mk(app, "other", "reader", "dept:dining")
     cid = post(app, cc, viewer)
     post(app, cc, admin)
+    post(app, cc, editor_id(app))                           # Editors only
     S.event(cc, cid, kind="approved", now=NOW, user_id=head, user_name="head")
     R.advance(app, cc, cid, from_user_id=head, now=NOW)     # → top; head keeps seeing it
     for uid in (star_admin, admin, cashier_admin, report_admin, top, head, viewer, other,
@@ -283,6 +299,110 @@ def test_visible_sql_agrees_with_can_see(world):
         by_py = {r["id"] for r in cc.execute("SELECT * FROM comments")
                  if R.can_see(app, cc, u, r)}
         assert by_sql == by_py, uid
+
+
+def test_an_editor_s_comment_is_seen_by_editors_only(world):
+    """2026-09-29 addendum, §5: Admins have no part in an Editor's comment's
+    life, so they do not see it — `*` or covering its department alike."""
+    app, cc = world
+    star_admin = mk(app, "star admin", "admin", "*")
+    dining_admin = mk(app, "dining admin", "admin", "dept:dining")
+    second_editor = mk(app, "second editor", "editor", "*")
+    viewer = mk(app, "viewer", "reader", "dept:dining")
+    by_editor = post(app, cc, editor_id(app))
+    by_reader, by_admin = post(app, cc, viewer), post(app, cc, dining_admin)
+
+    def seen(uid):
+        u = users.by_id(app, uid)
+        where, params = R.visible_sql(app, u)
+        by_sql = {r[0] for r in cc.execute(f"SELECT c.id FROM comments c WHERE {where}",
+                                           params)}
+        by_py = {r["id"] for r in cc.execute("SELECT * FROM comments")
+                 if R.can_see(app, cc, u, r)}
+        assert by_sql == by_py, uid
+        return by_py
+
+    assert by_editor in seen(editor_id(app)) and by_editor in seen(second_editor)
+    assert seen(star_admin) == {by_reader, by_admin}
+    assert seen(dining_admin) == {by_reader, by_admin}      # the rest of D66 unchanged
+    assert seen(viewer) == {by_reader}
+
+
+def test_the_role_at_writing_decides_not_the_role_now(world):
+    """An Editor made an Admin since keeps their own comment (the author check
+    comes first) and does not open it to the other Admins."""
+    app, cc = world
+    star_admin = mk(app, "star admin", "admin", "*")
+    author = mk(app, "author", "editor", "*")
+    cid = post(app, cc, author)
+    re_role(app, author, "admin")
+
+    def see(uid):
+        u = users.by_id(app, uid)
+        where, params = R.visible_sql(app, u)
+        in_sql = cc.execute(f"SELECT 1 FROM comments c WHERE c.id = ? AND {where}",
+                            [cid, *params]).fetchone() is not None
+        assert in_sql == R.can_see(app, cc, u, S.get(cc, cid)), uid
+        return in_sql
+
+    assert see(author) and not see(star_admin)
+
+
+@pytest.mark.parametrize("pass_kind", ["edited", "restored"])
+def test_a_new_pass_as_a_reader_opens_it_to_the_admins_it_now_waits_on(world, pass_kind):
+    """The latest pass decides (addendum §5): an Editor made a Reader who edits
+    or sends their comment again sends it up the chain, so the Admins of the
+    pool it reaches see it and are counted it."""
+    app, cc = world
+    admin = mk(app, "admin", "admin", "dept:dining")
+    author = mk(app, "author", "editor", "*")
+    cid = post(app, cc, author)
+    re_role(app, author, "reader")
+    R.submit(app, cc, cid, pass_kind=pass_kind, now=NOW)
+    assert S.get(cc, cid)["stage"] == "pool"
+    u = users.by_id(app, admin)
+    where, params = R.visible_sql(app, u)
+    assert [r[0] for r in cc.execute(f"SELECT c.id FROM comments c WHERE {where}", params)] == [cid]
+    assert R.can_see(app, cc, u, S.get(cc, cid))
+    assert R.pending_count(app, cc, u) == 1
+
+
+def test_a_new_pass_as_an_editor_closes_it_to_the_admins(world):
+    """The reverse: a Reader made an Editor who edits their comment makes it an
+    Editor's, which lands `approved` without the pool."""
+    app, cc = world
+    admin = mk(app, "admin", "admin", "*")
+    author = mk(app, "author", "reader", "dept:dining")
+    cid = post(app, cc, author)
+    assert R.can_see(app, cc, users.by_id(app, admin), S.get(cc, cid))
+    re_role(app, author, "editor")
+    R.submit(app, cc, cid, pass_kind="edited", now=NOW)
+    assert S.get(cc, cid)["state"] == "approved"
+    u = users.by_id(app, admin)
+    where, params = R.visible_sql(app, u)
+    assert cc.execute(f"SELECT c.id FROM comments c WHERE {where}", params).fetchall() == []
+    assert not R.can_see(app, cc, u, S.get(cc, cid))
+
+
+def test_a_reader_it_was_assigned_to_keeps_it_when_it_becomes_an_editor_s(world):
+    """D38 (D67): everyone who saw a comment sees how it ended. The Reader it
+    was assigned to on an earlier pass keeps it after its author, made an
+    Editor, edits it into an Editor's; only the Admins lose it. Pinned so that
+    tightening this is a decision, not an accident."""
+    app, cc = world
+    admin = mk(app, "admin", "admin", "*")
+    head = mk(app, "head", "reader", "dept:dining", can_sup=True)
+    author = mk(app, "author", "reader", "dept:dining", sup=head)
+    cid = post(app, cc, author)                             # assigned to head
+    re_role(app, author, "editor")
+    R.submit(app, cc, cid, pass_kind="edited", now=NOW)
+    assert S.get(cc, cid)["state"] == "approved"
+    for uid, sees in ((head, True), (admin, False)):
+        u = users.by_id(app, uid)
+        where, params = R.visible_sql(app, u)
+        in_sql = cc.execute(f"SELECT 1 FROM comments c WHERE c.id = ? AND {where}",
+                            [cid, *params]).fetchone() is not None
+        assert in_sql is R.can_see(app, cc, u, S.get(cc, cid)) is sees, uid
 
 
 def test_actions(world):
@@ -306,6 +426,89 @@ def test_actions(world):
     assert not act(viewer)["edit"] and not act(viewer)["withdraw"]
     S.set_state(cc, cid, state="approved", now=NOW)
     assert act(editor_id(app))["address"] and not act(admin)["address"]
+    # a Reader's comment reached `approved` through approvals: no longer theirs
+    assert not act(viewer)["edit"] and not act(viewer)["withdraw"]
+
+
+@pytest.mark.parametrize("kind", ["admin", "editor"])
+def test_an_admin_or_editor_author_keeps_their_comment_until_it_is_addressed(world, kind):
+    """2026-09-29 addendum, decision B: approved at submission with nobody's
+    approval, so still the author's to edit or withdraw — until an Editor acts."""
+    app, cc = world
+    other = mk(app, "admin", "admin", "*")
+    author = editor_id(app) if kind == "editor" else mk(app, "author", "admin", "*")
+    cid = post(app, cc, author)
+
+    def act(uid):
+        return R.actions(app, cc, users.by_id(app, uid), S.get(cc, cid))
+
+    assert S.get(cc, cid)["state"] == "approved"
+    assert act(author)["edit"] and act(author)["withdraw"]
+    assert not act(other)["edit"] and not act(other)["withdraw"]
+    S.set_state(cc, cid, state="addressed", now=NOW)
+    assert not act(author)["edit"] and not act(author)["withdraw"]
+
+
+def test_a_reader_comment_delivered_with_nobody_acting_stays_the_authors(world):
+    """D63.6 delivers with no approval at all. Nobody else has acted on it, so
+    decision B leaves it the author's, as it does an Admin's."""
+    app, cc = world
+    viewer = mk(app, "viewer", "reader", "dept:dining")   # no supervisor, no Admin
+    cid = post(app, cc, viewer)
+    assert S.get(cc, cid)["state"] == "approved"
+    a = R.actions(app, cc, users.by_id(app, viewer), S.get(cc, cid))
+    assert a["edit"] and a["withdraw"]
+
+
+def test_the_author_of_a_withdrawn_comment_may_send_it_again(world):
+    """2026-09-29 addendum, decision C: `withdrawn` is no longer final for its
+    author — and only for its author."""
+    app, cc = world
+    admin = mk(app, "admin", "admin", "*")
+    head = mk(app, "head", "reader", "dept:dining", can_sup=True)
+    viewer = mk(app, "viewer", "reader", "dept:dining", sup=head)
+    cid = post(app, cc, viewer)
+
+    def act(uid):
+        return R.actions(app, cc, users.by_id(app, uid), S.get(cc, cid))
+
+    assert not act(viewer)["restore"]
+    S.set_state(cc, cid, state="withdrawn", now=NOW)
+    assert act(viewer)["restore"]
+    assert not act(viewer)["edit"] and not act(viewer)["withdraw"]
+    assert not act(admin)["restore"] and not act(head)["restore"]
+    S.set_state(cc, cid, state="rejected", now=NOW)
+    assert not act(viewer)["restore"]                       # D73: rejected stays closed
+
+
+def test_editing_and_sending_again_need_the_comment_capability_withdrawing_does_not(world):
+    """D48: every action re-derives permission. An author whose scope no longer
+    covers the department may take their words back, but not change them or send
+    them in again (review finding 1)."""
+    app, cc = world
+    viewer = mk(app, "viewer", "reader", "dept:dining")
+    mk(app, "admin", "admin", "*")
+    cid = post(app, cc, viewer)
+    app.execute("UPDATE user_scopes SET scope = 'dept:cashier' WHERE user_id = ?", (viewer,))
+
+    def act():
+        return R.actions(app, cc, users.by_id(app, viewer), S.get(cc, cid))
+
+    assert not act()["edit"] and act()["withdraw"]
+    S.set_state(cc, cid, state="withdrawn", now=NOW)
+    assert not act()["restore"]
+
+
+def test_sending_again_restarts_the_pass(world):
+    """`restored` resets the approvals that count, as `submitted` and `edited` do."""
+    app, cc = world
+    head = mk(app, "head", "reader", "dept:dining", can_sup=True)
+    viewer = mk(app, "viewer", "reader", "dept:dining", sup=head)
+    cid = post(app, cc, viewer)
+    S.event(cc, cid, kind="approved", now=NOW, user_id=head, user_name="head")
+    assert S.approvers_since_restart(cc, cid) == [head]
+    S.event(cc, cid, kind="restored", now=NOW, user_id=viewer, user_name="viewer")
+    assert S.approvers_since_restart(cc, cid) == []
 
 
 def test_rejected_is_closed_to_its_author(world):

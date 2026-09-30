@@ -20,7 +20,7 @@ afterEach(() => vi.restoreAllMocks())
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
 
-const NO = { approve: false, reject: false, edit: false, withdraw: false, address: false }
+const NO = { approve: false, reject: false, edit: false, withdraw: false, restore: false, address: false }
 const AT = '2026-09-20T08:00:00Z'
 const ev = (kind: CommentTrailItem['kind'], name: string, over: Partial<CommentTrailItem> = {}): CommentTrailItem =>
   ({ kind, name, note: null, reason: null, commit: null, role: kind === 'pooled' || kind === 'delivered' ? null : 'reader', at: AT, ...over })
@@ -134,7 +134,7 @@ describe('panel inbox', () => {
     open(EDITOR, '/comments?c=CMT-2')
     expect(await screen.findByText('در این سطح کاری لازم نیست')).toBeInTheDocument()
     expect(screen.getByText(/اکنون روی میز حسین مازندرانی قرار دارد/)).toBeInTheDocument()
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['رسیده به شما', 'همه'])
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['رسیده به شما', 'کامنت‌های من', 'همه'])
     for (const name of ['تأیید و ارسال به بالا', 'افزودن یادداشت', 'رد کردن', 'ثبت به‌عنوان رسیدگی‌شده']) {
       expect(screen.queryByRole('button', { name }), name).toBeNull()
     }
@@ -261,6 +261,119 @@ describe('panel inbox', () => {
     const chip = within(detail).getByRole('button', { name: 'CMT-8' })
     fireEvent.click(chip)
     expect(writeText).toHaveBeenCalledWith('CMT-8')
+  })
+
+  // 2026-09-29 addendum, decision B: every author controls their own comment
+  // until someone else acts on it — the panel draws the reader's controls.
+  const mine = (n: number, over: Partial<CommentDetail> = {}) => cmt(n, {
+    state: 'approved', stage: null, waitingWith: { kind: 'editors' }, approvals: 0,
+    author: { name: 'مهدی رجبی', isMe: true, role: 'admin' },
+    actions: { ...NO, edit: true, withdraw: true },
+    trail: [ev('submitted', 'مهدی رجبی', { role: 'admin' })], ...over,
+  })
+
+  it('gives an Admin author «عوض کردن متن»: the text becomes a box, «دوباره بفرست» PUTs it', async () => {
+    const own = mine(9)
+    const spy = stub({ own: [own] }, [own])
+    open(ADMIN, '/comments?c=CMT-9')
+    fireEvent.click(await screen.findByRole('button', { name: 'عوض کردن متن' }))
+    const box = screen.getByPlaceholderText('حرفتان را ساده بنویسید…')
+    expect(box).toHaveValue('متن نویسنده 9')
+    fireEvent.change(box, { target: { value: 'متن تازه' } })
+    fireEvent.click(screen.getByRole('button', { name: 'دوباره بفرست' }))
+    await waitFor(() => expect(posted(spy)).toHaveLength(1))
+    const [url, init] = posted(spy)[0]
+    expect(url).toBe('/api/comments/CMT-9')
+    expect(init!.method).toBe('PUT')
+    expect(JSON.parse(String(init!.body))).toEqual({ text: 'متن تازه' })
+    // review 4: it lands approved again, so nothing «starts over»
+    expect(await screen.findByText('اصلاح شد')).toBeInTheDocument()
+  })
+
+  it('shows the text again when the draft stops being the author’s to save (review 3)', async () => {
+    // An Editor's own comment, mid-draft, which the Editor then addresses: the
+    // refetch takes `edit` away, and the draft must not stay without its buttons.
+    let now = mine(10, { author: { name: 'آرزو نیک‌پی', isMe: true, role: 'editor' },
+      actions: { ...NO, address: true, edit: true, withdraw: true } })
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url === '/api/auth/me') return json(EDITOR)
+      if (url.startsWith('/api/comments/inbox')) return json({ items: [now], total: 1, page: 1, pages: 1 })
+      if (init?.method === 'POST') now = { ...now, state: 'addressed', waitingWith: null, actions: NO }
+      return json(now)
+    })
+    open(EDITOR, '/comments?c=CMT-10')
+    fireEvent.click(await screen.findByRole('button', { name: 'عوض کردن متن' }))
+    expect(screen.getByPlaceholderText('حرفتان را ساده بنویسید…')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'ثبت به‌عنوان رسیدگی‌شده' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'ثبت می‌کنم' }))
+    await waitFor(() => expect(posted(spy)).toHaveLength(1))
+    await waitFor(() => expect(screen.queryByPlaceholderText('حرفتان را ساده بنویسید…')).toBeNull())
+    const detail = document.querySelector('[data-r-cmtdetail]') as HTMLElement
+    expect(within(detail).getByText('متن نویسنده 10')).toBeInTheDocument()
+  })
+
+  it('gives an Admin author «پس گرفتن», which asks first in the panel’s own modal', async () => {
+    const own = mine(9)
+    const spy = stub({ own: [own] }, [own])
+    open(ADMIN, '/comments?c=CMT-9')
+    fireEvent.click(await screen.findByRole('button', { name: 'پس گرفتن' }))
+    const modal = screen.getByRole('dialog', { name: 'این کامنت را پس می‌گیرید؟' })
+    expect(posted(spy)).toHaveLength(0)
+    expect(within(modal).getByRole('button', { name: 'انصراف' })).toBeInTheDocument()
+    fireEvent.click(within(modal).getByRole('button', { name: 'پس می‌گیرم' }))
+    await waitFor(() => expect(posted(spy)).toHaveLength(1))
+    expect(posted(spy)[0][0]).toBe('/api/comments/CMT-9/withdraw')
+  })
+
+  it('gives an Editor author both the resolve box and their own controls, each with its own text', async () => {
+    const own = mine(10, { author: { name: 'آرزو نیک‌پی', isMe: true, role: 'editor' },
+      actions: { ...NO, address: true, edit: true, withdraw: true } })
+    stub({ waiting: [own] }, [own], EDITOR)
+    open(EDITOR, '/comments?c=CMT-10')
+    fireEvent.change(await screen.findByPlaceholderText('یادداشت رسیدگی — چه تغییری داده شد…'), { target: { value: 'یادداشت رسیدگی' } })
+    fireEvent.click(screen.getByRole('button', { name: 'عوض کردن متن' }))
+    expect(screen.getByPlaceholderText('حرفتان را ساده بنویسید…')).toHaveValue('متن نویسنده 10')
+    expect(screen.getByPlaceholderText('یادداشت رسیدگی — چه تغییری داده شد…')).toHaveValue('یادداشت رسیدگی')
+    expect(screen.getByRole('button', { name: 'ثبت به‌عنوان رسیدگی‌شده' })).toBeInTheDocument()
+  })
+
+  it('gives the author of a withdrawn comment «ارسال دوباره», and draws the resend in the chain', async () => {
+    const back = mine(12, { state: 'withdrawn', waitingWith: null, actions: { ...NO, restore: true },
+      trail: [ev('submitted', 'مهدی رجبی', { role: 'admin' }), ev('withdrawn', 'مهدی رجبی', { role: 'admin' }),
+        ev('restored', 'مهدی رجبی', { role: 'admin' }), ev('withdrawn', 'مهدی رجبی', { role: 'admin' })] })
+    const spy = stub({ own: [back] }, [back])
+    open(ADMIN, '/comments?c=CMT-12')
+    const trail = await screen.findByRole('list', { name: 'زنجیرهٔ تأیید' })
+    const rows = within(trail).getAllByText(/^(پس گرفته شد|دوباره فرستاده شد)/).map((e) => e.textContent!.split(' · ')[0])
+    expect(rows).toEqual(['پس گرفته شد', 'دوباره فرستاده شد', 'پس گرفته شد'])
+    expect(screen.queryByRole('button', { name: 'عوض کردن متن' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'ارسال دوباره' }))
+    await waitFor(() => expect(posted(spy)).toHaveLength(1))
+    expect(posted(spy)[0][0]).toBe('/api/comments/CMT-12/restore')
+  })
+
+  it('gives the Editor «کامنت‌های من», where their withdrawn comment waits with «ارسال دوباره»', async () => {
+    const back = mine(13, { state: 'withdrawn', waitingWith: null,
+      author: { name: 'آرزو نیک‌پی', isMe: true, role: 'editor' }, actions: { ...NO, restore: true } })
+    const spy = stub({ own: [back] }, [back], EDITOR)
+    open(EDITOR)
+    fireEvent.click(await screen.findByRole('tab', { name: 'کامنت‌های من' }))
+    fireEvent.click(await screen.findByText('متن نویسنده 13'))
+    fireEvent.click(await screen.findByRole('button', { name: 'ارسال دوباره' }))
+    await waitFor(() => expect(posted(spy)).toHaveLength(1))
+    expect(posted(spy)[0][0]).toBe('/api/comments/CMT-13/restore')
+    expect(spy.mock.calls.some(([u]) => String(u) === '/api/comments/inbox?tab=own&page=1')).toBe(true)
+  })
+
+  it('offers no author control on someone else’s comment', async () => {
+    const pool = cmt(11, { actions: { ...NO, approve: true, reject: true } })
+    stub({ waiting: [pool] }, [pool])
+    open(ADMIN, '/comments?c=CMT-11')
+    expect(await screen.findByRole('button', { name: 'تأیید و ارسال به بالا' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'عوض کردن متن' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'پس گرفتن' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'ارسال دوباره' })).toBeNull()
   })
 
   it('marks the open comment’s row as selected; the others stay plain', async () => {

@@ -27,7 +27,7 @@ const COPY: Record<Decision, { title: string; body: string; ok: string; tone: st
     body: 'کامنت بسته می‌شود و نتیجه‌اش به همهٔ کسانی که آن را دیده‌اند نشان داده می‌شود.',
     ok: 'ثبت می‌کنم', tone: 'bg-violet shadow-violet',
   },
-  // The Reader author's «پس گرفتن» asks first (lili, 2026-09-22).
+  // An author's «پس گرفتن» asks first (lili, 2026-09-22), on either surface.
   withdraw: {
     title: 'این کامنت را پس می‌گیرید؟',
     body: 'کامنت از زنجیره خارج می‌شود و در سابقه می‌ماند.',

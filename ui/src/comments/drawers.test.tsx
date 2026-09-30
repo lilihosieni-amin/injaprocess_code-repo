@@ -24,7 +24,7 @@ function cmt(n: number, over: Partial<Comment> = {}, anchor: Partial<Comment['an
     author: { name: 'سمیرا احمدی', isMe: true, role: 'reader' },
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     approvals: 0, notes: [{ by: 'حسین', text: 'یادداشت تأییدکننده', at: '' }], rejectReason: null,
-    addressed: null, actions: { approve: false, reject: false, edit: true, withdraw: true, address: false },
+    addressed: null, actions: { approve: false, reject: false, edit: true, withdraw: true, restore: false, address: false },
     ...over,
   }
 }
@@ -112,12 +112,12 @@ describe('process drawer', () => {
     expect(screen.getByRole('dialog', { name: 'کامنت‌های این فرآیند' })).toBeInTheDocument()
   })
 
-  it('an EDITOR sees the FAB and the drawer but never «کامنت تازه»', async () => {
+  it('an EDITOR sees the FAB, the drawer and «کامنت تازه» (2026-09-29 addendum, decision A)', async () => {
     stub([cmt(1)])
     flow(EDITOR)
     fireEvent.click(await fab())
     expect(await screen.findByText('متن نویسنده 1')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /کامنت تازه/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'کامنت تازه روی این فرآیند' })).toBeInTheDocument()
   })
 
   it('a VIEWER outside the department gets no «کامنت تازه»', async () => {
@@ -158,13 +158,13 @@ describe('department drawer', () => {
     expect(document.querySelector('[data-r-composebox]')).not.toHaveClass('border-e')
   })
 
-  it('Panel: its own title and empty copy; an EDITOR sees no «کامنت تازه»', async () => {
+  it('Panel: its own title and empty copy; an EDITOR gets «کامنت تازه»', async () => {
     stub([], [])
     dept(EDITOR, 'panel')
     fireEvent.click(await fab())
     expect(screen.getByRole('dialog', { name: 'کامنت‌های این خلاصه' })).toBeInTheDocument()
     expect(await screen.findByText('کامنتی روی خلاصهٔ این دپارتمان نیست')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'کامنت تازه' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'کامنت تازه' })).toBeInTheDocument()
   })
 
   it('Panel cards carry the id, the author and the inbox link', async () => {

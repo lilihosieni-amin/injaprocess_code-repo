@@ -52,7 +52,7 @@ export function CloseX({ at = 'md', onClick }: { at?: keyof typeof CLOSE; onClic
   )
 }
 
-/** The coral «کامنت تازه» — Reader L689 / L914, Panel L2885. Callers gate it (addendum §7.2). */
+/** The coral «کامنت تازه» — Reader L689 / L914, Panel L2885. Callers gate it (`useMayComment`). */
 export function NewButton({ label, onClick, className }: { label: string; onClick: () => void; className: string }) {
   return (
     <button type="button" onClick={onClick} className={

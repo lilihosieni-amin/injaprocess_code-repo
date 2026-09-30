@@ -70,21 +70,58 @@ def _registry_name(cfg, code: str) -> str | None:
     return next((d["name"] for d in reg["departments"] if d["code"] == code), None)
 
 
-def _orphan(cfg, c, docs: dict) -> bool:
-    """The anchor no longer stands: its process is gone or tombstoned, or its
-    node removed (D31: surfaced, never repointed). `docs` caches one read per
-    process for a listing."""
-    pid = c["process_id"]
-    if pid is None:
-        return False
+def _doc(cfg, pid: str, docs: dict) -> dict | None:
+    """A process document, or None when it is not on disk. `docs` caches one
+    read per process for a listing."""
     if pid not in docs:
         path = storage.proc_path(cfg.data_root, pid)
         docs[pid] = storage.read_json(path) if path.is_file() else None
-    doc = docs[pid]
+    return docs[pid]
+
+
+def _node(doc: dict, aid: str) -> dict | None:
+    return next((n for n in doc.get("nodes", []) if n["id"] == aid and not n.get("removed")),
+                None)
+
+
+def _orphan(cfg, c, docs: dict) -> bool:
+    """The anchor no longer stands: its process is gone or tombstoned, or its
+    node removed (D31: surfaced, never repointed)."""
+    pid = c["process_id"]
+    if pid is None:
+        return False
+    doc = _doc(cfg, pid, docs)
     if doc is None or doc.get("tombstoned"):
         return True
-    return c["anchor_kind"] == "node" and not any(
-        n["id"] == c["anchor_id"] and not n.get("removed") for n in doc.get("nodes", []))
+    return c["anchor_kind"] == "node" and _node(doc, c["anchor_id"]) is None
+
+
+def _pid(kind: str, aid: str) -> str | None:
+    """The process a node or process anchor names, or None when the id is not
+    the shape of one — it becomes a path: nothing but a real id gets there."""
+    if kind == "node":
+        real = ids.is_real_activity_id(aid) or ids.is_real_junction_id(aid)
+        return aid.rsplit("-", 1)[0] if real else None
+    return aid if PROCESS_ID_RE.fullmatch(aid) else None
+
+
+def _stands(request: Request, user, kind: str, aid: str, docs: dict) -> bool:
+    """The anchor still stands and is served to `user`: a department in the
+    registry; a process on disk that `Disclosure.may_serve` gives them (D17,
+    D22); a node on it, not removed.
+
+    Asks nothing of scope or capability and records nothing, so `present` can
+    ask it of each comment it offers «ارسال دوباره» on while `_anchor` refuses by
+    it: one check for the offer and the enforcement (D48)."""
+    cfg = request.app.state.cfg
+    if kind == "department":
+        return _registry_name(cfg, aid) is not None
+    pid = _pid(kind, aid)
+    doc = _doc(cfg, pid, docs) if pid else None
+    if doc is None or not Disclosure(request.app.state.db, user).may_serve(
+            doc, storage.dept_of(pid), pid):
+        return False
+    return kind != "node" or _node(doc, aid) is not None
 
 
 def _waiting(app, c) -> dict | None:
@@ -100,6 +137,7 @@ def _waiting(app, c) -> dict | None:
 def present(request: Request, viewer, c, *, trail: bool = False,
             docs: dict | None = None) -> dict:
     app, cc, cfg = request.app.state.db, request.app.state.comments_db, request.app.state.cfg
+    docs = {} if docs is None else docs
     snap = json.loads(c["snapshot"])
     evs = S.events(cc, c["id"])
     detail = [json.loads(e["detail"] or "{}") for e in evs]
@@ -107,6 +145,13 @@ def present(request: Request, viewer, c, *, trail: bool = False,
              for e in evs if e["kind"] == "approved" and e["note"]]
     rejected = next((e for e in reversed(evs) if e["kind"] == "rejected"), None)
     addressed = next((e for e in reversed(evs) if e["kind"] == "addressed"), None)
+    actions = R.actions(app, cc, viewer, c)
+    # Offered only where sending again would get through: `restore` refuses by
+    # this same check. Asked only of the viewer's own withdrawn comments, and it
+    # shares `docs` with `_orphan` below, so whichever runs first reads the
+    # process file and the other finds it cached.
+    actions["restore"] = actions["restore"] and _stands(
+        request, viewer, c["anchor_kind"], c["anchor_id"], docs)
     out = {
         "id": R.cmt(c["id"]),
         "anchor": {"kind": c["anchor_kind"], "id": c["anchor_id"],
@@ -114,12 +159,13 @@ def present(request: Request, viewer, c, *, trail: bool = False,
                    "departmentName": snap.get("department_name"),
                    "processName": snap.get("process_name"),
                    "nodeLabel": snap.get("node_label"),
-                   "orphan": _orphan(cfg, c, {} if docs is None else docs)},
+                   "orphan": _orphan(cfg, c, docs)},
         "text": c["text"], "state": c["state"], "stage": c["stage"],
         "waitingWith": _waiting(app, c),
+        # the latest pass's role: the one visibility and routing follow (§5)
         "author": {"name": c["author_name"], "isMe": c["author_id"] == viewer["id"],
-                   "role": next((d.get("role") for e, d in zip(evs, detail)
-                                 if e["kind"] == "submitted"), None)},
+                   "role": next((d.get("role") for e, d in zip(reversed(evs), reversed(detail))
+                                 if e["kind"] in ("submitted", "edited", "restored")), None)},
         "createdAt": _iso(c["created_at"]), "updatedAt": _iso(c["updated_at"]),
         "approvals": len(S.approvers_since_restart(cc, c["id"])),
         "notes": notes,
@@ -128,7 +174,7 @@ def present(request: Request, viewer, c, *, trail: bool = False,
                        "note": addressed["note"],
                        "commit": json.loads(addressed["detail"] or "{}").get("commit")}
                       if addressed else None),
-        "actions": R.actions(app, cc, viewer, c),
+        "actions": actions,
     }
     if trail:
         out["trail"] = [{"kind": e["kind"], "name": _who(e["user_name"]), "note": e["note"],
@@ -140,67 +186,52 @@ def present(request: Request, viewer, c, *, trail: bool = False,
 
 def _gate(request: Request, user, dept: str) -> None:
     """Scope before capability (access.requires): 404 out of scope, 403 +
-    access.denied when visible but not allowed. D74 refuses an Editor author."""
+    access.denied when visible but not allowed."""
     app = request.app.state.db
     target = f"dept:{dept}"
     if not allows(app, user, "view", target):
         log_out_of_scope(request, user, target)
         raise HTTPException(status_code=404, detail=NOT_FOUND)
-    if not allows(app, user, "comment", target) or R.kind_of(app, user) == "editor":
+    if not allows(app, user, "comment", target):
         record(request, "access.denied", actor=user["username"],
                session_id=getattr(request.state, "session_id", None), target=target,
                outcome="denied", detail={"capability": "comment"})
         raise HTTPException(status_code=403, detail=FORBIDDEN)
 
 
-def _anchor(request: Request, user, body: CommentBody) -> tuple[str | None, str, dict]:
-    """(process_id, department, D31 snapshot) for an anchor the caller may see, or 404."""
-    cfg, app = request.app.state.cfg, request.app.state.db
-    if body.anchorKind == "department":
-        dept = body.anchorId
-        name = _registry_name(cfg, dept)
-        if name is None:
+def _anchor(request: Request, user, kind: str, aid: str) -> tuple[str | None, str, dict]:
+    """(process_id, department, D31 snapshot) for an anchor the caller may see, or 404.
+    Asked by creating a comment and again by sending one in again."""
+    cfg, docs = request.app.state.cfg, {}
+    if kind == "department":
+        # an unknown department is a 404 before the gate, like a malformed id below
+        if not _stands(request, user, kind, aid, docs):
             raise HTTPException(status_code=404, detail=NOT_FOUND)
-        _gate(request, user, dept)
-        return None, dept, {"department_name": name}
-    if body.anchorKind == "node":
-        if not (ids.is_real_activity_id(body.anchorId) or ids.is_real_junction_id(body.anchorId)):
-            raise HTTPException(status_code=404, detail=NOT_FOUND)
-        pid = body.anchorId.rsplit("-", 1)[0]
-    else:
-        pid = body.anchorId
-        # the id becomes a path below: nothing but a real process id gets there
-        if not PROCESS_ID_RE.fullmatch(pid):
-            raise HTTPException(status_code=404, detail=NOT_FOUND)
+        _gate(request, user, aid)
+        return None, aid, {"department_name": _registry_name(cfg, aid)}
+    pid = _pid(kind, aid)
+    if pid is None:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
     dept = storage.dept_of(pid)
     _gate(request, user, dept)
-    path = storage.proc_path(cfg.data_root, pid)
-    if not path.is_file():
+    if not _stands(request, user, kind, aid, docs):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
-    doc = storage.read_json(path)
-    if not Disclosure(app, user).may_serve(doc, dept, pid):
-        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    doc = docs[pid]
     snap = {"department_name": _registry_name(cfg, dept), "process_name": doc.get("name")}
-    if body.anchorKind == "node":
-        node = next((n for n in doc.get("nodes", [])
-                     if n["id"] == body.anchorId and not n.get("removed")), None)
-        if node is None:
-            raise HTTPException(status_code=404, detail=NOT_FOUND)
-        snap["node_label"] = node.get("label")
+    if kind == "node":
+        snap["node_label"] = _node(doc, aid).get("label")
     return pid, dept, snap
 
 
 @router.post("", status_code=201)
 def create_comment(body: CommentBody, request: Request, user=Depends(require_session)):
     text = clean(body.text)
-    pid, dept, snap = _anchor(request, user, body)
+    pid, dept, snap = _anchor(request, user, body.anchorKind, body.anchorId)
     now = int(time.time())
     with write(request) as cc:
         cid = S.insert(cc, author=user, anchor_kind=body.anchorKind, anchor_id=body.anchorId,
                        process_id=pid, department=dept, snapshot=snap, text=text, now=now)
-        S.event(cc, cid, kind="submitted", now=now, user_id=user["id"],
-                user_name=user["display_name"], role=R.kind_of(request.app.state.db, user))
-        R.submit(request.app.state.db, cc, cid, now=now)
+        R.submit(request.app.state.db, cc, cid, pass_kind="submitted", now=now)
     record(request, "comment.created", actor=user["username"],
            session_id=getattr(request.state, "session_id", None), target=R.cmt(cid),
            detail={"anchor": body.anchorKind, "department": dept})
@@ -360,9 +391,7 @@ def edit(ref: str, body: TextBody, request: Request, user=Depends(require_sessio
 
     def go(cc, c, now):
         S.set_text(cc, c["id"], text=text, now=now)
-        S.event(cc, c["id"], kind="edited", now=now, user_id=user["id"],
-                user_name=user["display_name"], role=R.kind_of(request.app.state.db, user))
-        R.submit(app, cc, c["id"], now=now)
+        R.submit(app, cc, c["id"], pass_kind="edited", now=now)
 
     out = _act(request, user, ref, "edit", go)
     _audit(request, user, "comment.edited", out)
@@ -378,6 +407,29 @@ def withdraw(ref: str, request: Request, user=Depends(require_session)):
 
     out = _act(request, user, ref, "withdraw", go)
     _audit(request, user, "comment.withdrawn", out)
+    return out
+
+
+@router.post("/{ref}/restore")
+def restore(ref: str, request: Request, user=Depends(require_session)):
+    """Send a withdrawn comment again (2026-09-29 addendum, decision C). A new
+    pass from its author, routed as an edit is: a Reader's goes back to the
+    first approver, an Admin's or an Editor's lands approved again.
+
+    The anchor must still stand and be served to the author, exactly as when the
+    comment was created (`_anchor`'s 404) — so a Reader's or an Admin's comment
+    on a process tombstoned since is not sent back, while an Editor's is, since
+    `may_serve` serves Editors a tombstone and creating on one is allowed to them
+    too. The two answers match by construction. Asked after `actions` has allowed the
+    send, so an author who may no longer comment here gets its 403 instead."""
+    app = request.app.state.db
+
+    def go(cc, c, now):
+        _anchor(request, user, c["anchor_kind"], c["anchor_id"])
+        R.submit(app, cc, c["id"], pass_kind="restored", now=now)
+
+    out = _act(request, user, ref, "restore", go)
+    _audit(request, user, "comment.restored", out)
     return out
 
 

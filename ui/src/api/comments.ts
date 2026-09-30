@@ -4,7 +4,7 @@ import { fetchJson } from './client'
 /** The JSON of `ui-backend/inja_ui_backend/routers/comments.py::present`. */
 export type CommentAnchorKind = 'node' | 'process' | 'department'
 export type CommentState = 'awaiting' | 'approved' | 'addressed' | 'rejected' | 'withdrawn'
-export type CommentAction = 'approve' | 'reject' | 'edit' | 'withdraw' | 'address'
+export type CommentAction = 'approve' | 'reject' | 'edit' | 'withdraw' | 'restore' | 'address'
 /** A person's kind when they acted (D62), snapshotted on the event; null for a system move. */
 export type CommentRole = 'reader' | 'admin' | 'editor'
 
@@ -37,7 +37,7 @@ export interface Comment {
 
 export interface CommentTrailItem {
   kind: 'submitted' | 'edited' | 'assigned' | 'skipped' | 'pooled' | 'delivered'
-    | 'approved' | 'rejected' | 'withdrawn' | 'addressed'
+    | 'approved' | 'rejected' | 'withdrawn' | 'restored' | 'addressed'
   name: string
   note: string | null
   reason: string | null
@@ -89,5 +89,7 @@ export const useEditComment = () => useCommentMutation(
   ({ ref, text }: { ref: string; text: string }) => post(at(ref), 'PUT', { text }))
 export const useWithdrawComment = () => useCommentMutation(
   (ref: string) => post(`${at(ref)}/withdraw`, 'POST'))
+export const useRestoreComment = () => useCommentMutation(
+  (ref: string) => post(`${at(ref)}/restore`, 'POST'))
 export const useAddressComment = () => useCommentMutation(
   ({ ref, note }: { ref: string; note?: string | null }) => post(`${at(ref)}/address`, 'POST', { note: note ?? null }))

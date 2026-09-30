@@ -4,6 +4,8 @@ user change that strands a waiting comment moves it on.
 
 `people` (conftest) is the shared cast of test_comments_api.py.
 """
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 from inja_ui_backend import db
@@ -131,6 +133,133 @@ def test_withdraw(people):
     assert _events(people["viewer"], "comment.withdrawn")[-1]["target"] == cid
 
 
+def test_an_admin_author_edits_and_withdraws_until_it_is_addressed(people):
+    """2026-09-29 addendum, decision B."""
+    cid = _new(people, "admin")
+    r = people["admin"].put(f"/api/comments/{cid}", json={"text": "تازه"})
+    assert r.status_code == 200, r.text
+    assert (r.json()["text"], r.json()["state"]) == ("تازه", "approved")
+    assert r.json()["actions"]["withdraw"]
+    assert people["editor"].post(f"/api/comments/{cid}/address", json={}).status_code == 200
+    assert people["admin"].put(f"/api/comments/{cid}", json={"text": "z"}).status_code == 403
+    assert people["admin"].post(f"/api/comments/{cid}/withdraw").status_code == 403
+
+
+def test_an_editor_author_withdraws_their_own_and_nobody_else_may(people, second_admin):
+    cid = _new(people, "editor")
+    # an Admin does not even see it (2026-09-29 addendum, §5); another Editor does
+    assert second_admin.post(f"/api/comments/{cid}/withdraw").status_code == 404
+    seed_editor = TestClient(people["editor"].app, base_url="https://testserver")
+    assert seed_editor.post("/api/auth/login", json={
+        "username": "09120000000", "password": PW}).status_code == 200
+    assert seed_editor.post(f"/api/comments/{cid}/withdraw").status_code == 403
+    r = people["editor"].post(f"/api/comments/{cid}/withdraw")
+    assert r.status_code == 200, r.text
+    assert r.json()["state"] == "withdrawn"
+    assert _events(people["editor"], "comment.withdrawn")[-1]["target"] == cid
+
+
+def test_a_withdrawn_comment_is_sent_again_from_the_start(people):
+    """2026-09-29 addendum, decision C: back to the first approver, a new pass (D69)."""
+    cid = _new(people)
+    people["viewer"].post(f"/api/comments/{cid}/withdraw")
+    assert people["admin"].post(f"/api/comments/{cid}/restore").status_code == 403
+    assert _events(people["admin"], "access.denied")[-1]["target"] == cid
+    assert people["other"].post(f"/api/comments/{cid}/restore").status_code == 404
+    r = people["viewer"].post(f"/api/comments/{cid}/restore")
+    assert r.status_code == 200, r.text
+    c = r.json()
+    assert (c["state"], c["waitingWith"]) == ("awaiting", {"kind": "person", "name": "head"})
+    assert [t["kind"] for t in c["trail"]] == [
+        "submitted", "assigned", "withdrawn", "restored", "assigned"]
+    assert c["actions"]["edit"] and c["actions"]["withdraw"] and not c["actions"]["restore"]
+    assert [e["target"] for e in _events(people["viewer"], "comment.restored")] == [cid]
+    assert people["viewer"].post(f"/api/comments/{cid}/restore").status_code == 403
+
+
+def test_an_author_out_of_scope_may_withdraw_but_not_edit_or_send_again(people):
+    """Review finding 1 (D48): the `comment` capability create asks for, asked
+    again by edit and send-again; never by withdraw."""
+    cid = _new(people)
+    conn = db.connect(people["viewer"].app_db)
+    try:
+        conn.execute("UPDATE user_scopes SET scope = 'dept:cashier' WHERE user_id = ?",
+                     (_user_id(people, "viewer"),))
+    finally:
+        conn.close()
+    before = len(_events(people["viewer"], "access.denied"))
+    assert people["viewer"].put(f"/api/comments/{cid}", json={"text": "y"}).status_code == 403
+    assert len(_events(people["viewer"], "access.denied")) == before + 1
+    assert people["viewer"].post(f"/api/comments/{cid}/withdraw").status_code == 200
+    assert people["viewer"].post(f"/api/comments/{cid}/restore").status_code == 403
+    denied = _events(people["viewer"], "access.denied")[before:]
+    assert [e["target"] for e in denied] == [cid, cid]
+
+
+def test_sending_again_rechecks_the_anchor_as_creating_does(people, data_root):
+    """Review finding 2: a comment on a process tombstoned since is not sent
+    back to the Editors — the anchor is refused exactly as `create` refuses it."""
+    cid = _new(people)
+    people["viewer"].post(f"/api/comments/{cid}/withdraw")
+    path = data_root / "departments" / "cooking" / "processes" / "cooking-001.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    doc["tombstoned"] = True
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    assert people["viewer"].post("/api/comments", json={
+        "anchorKind": "process", "anchorId": "cooking-001", "text": "x"}).status_code == 404
+    assert people["viewer"].post(f"/api/comments/{cid}/restore").status_code == 404
+    assert people["viewer"].get(f"/api/comments/{cid}").json()["state"] == "withdrawn"
+    assert _events(people["viewer"], "comment.restored") == []
+
+
+def _rewrite(data_root, change):
+    path = data_root / "departments" / "cooking" / "processes" / "cooking-001.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    change(doc)
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+
+def _offered(people, cid) -> tuple[bool, bool]:
+    """«ارسال دوباره» as the detail and the author's own tab each serve it."""
+    one = people["viewer"].get(f"/api/comments/{cid}").json()["actions"]["restore"]
+    own = people["viewer"].get("/api/comments/inbox?tab=own").json()["items"]
+    return one, next(c for c in own if c["id"] == cid)["actions"]["restore"]
+
+
+def test_send_again_is_offered_on_an_ordinary_withdrawn_comment(people):
+    """Review item 7 (c)."""
+    cid = _new(people)
+    people["viewer"].post(f"/api/comments/{cid}/withdraw")
+    assert _offered(people, cid) == (True, True)
+
+
+def test_send_again_is_not_offered_once_the_process_is_tombstoned(people, data_root):
+    """Review item 7 (a): the offer is the refusal's own check."""
+    cid = _new(people)
+    people["viewer"].post(f"/api/comments/{cid}/withdraw")
+    _rewrite(data_root, lambda d: d.update(tombstoned=True))
+    assert _offered(people, cid) == (False, False)
+
+
+def test_send_again_is_not_offered_once_the_process_is_withheld(people, data_root):
+    """Review item 7 (b): an edit leaves the process unconfirmed, so a Reader is
+    no longer served it (D22) — neither the offer nor the send."""
+    cid = _new(people)
+    people["viewer"].post(f"/api/comments/{cid}/withdraw")
+    _rewrite(data_root, lambda d: d.update(name="نام تازه"))
+    assert _offered(people, cid) == (False, False)
+    assert people["viewer"].post(f"/api/comments/{cid}/restore").status_code == 404
+
+
+@pytest.mark.parametrize("who", ["admin", "editor"])
+def test_an_admin_or_editor_comment_sent_again_lands_approved(people, who):
+    cid = _new(people, who)
+    people[who].post(f"/api/comments/{cid}/withdraw")
+    r = people[who].post(f"/api/comments/{cid}/restore")
+    assert r.status_code == 200, r.text
+    assert (r.json()["state"], r.json()["waitingWith"]) == ("approved", {"kind": "editors"})
+
+
 def test_two_admins_racing_only_one_wins(people, second_admin):
     cid = _new(people)
     people["head"].post(f"/api/comments/{cid}/approve", json={})
@@ -142,6 +271,35 @@ def test_the_badge(people):
     _new(people)
     assert people["head"].get("/api/auth/me").json()["pendingApprovals"] == 1
     assert people["viewer"].get("/api/auth/me").json()["pendingApprovals"] == 0
+
+
+@pytest.mark.parametrize("again", ["edit", "resend"])
+def test_an_editor_s_comment_sent_again_as_a_reader_waits_on_admins_who_see_it(people, again):
+    """Written as an Editor, its author a Reader since, edited or withdrawn and
+    sent again: it climbs to the pool (routing reads the author's kind now), so
+    the latest pass's role makes it the pool's Admins' to see, count and
+    approve (2026-09-29 addendum, §5)."""
+    cid = _new(people, "editor")
+    assert people["admin"].get(f"/api/comments/{cid}").status_code == 404
+    conn = db.connect(people["editor"].app_db)
+    try:
+        conn.execute("UPDATE users SET role_id = (SELECT id FROM roles WHERE name = 'reader')"
+                     " WHERE display_name = 'editor'")
+    finally:
+        conn.close()
+    if again == "edit":
+        r = people["editor"].put(f"/api/comments/{cid}", json={"text": "y"})
+    else:
+        assert people["editor"].post(f"/api/comments/{cid}/withdraw").status_code == 200
+        r = people["editor"].post(f"/api/comments/{cid}/restore")
+    assert r.status_code == 200, r.text
+    assert r.json()["waitingWith"] == {"kind": "pool"}
+    waiting = people["admin"].get("/api/comments/inbox?tab=waiting").json()["items"]
+    assert [c["id"] for c in waiting] == [cid]
+    # the role shown is the latest pass's, the one the rule and the path follow
+    assert r.json()["author"]["role"] == waiting[0]["author"]["role"] == "reader"
+    assert people["admin"].get("/api/auth/me").json()["pendingApprovals"] == 1
+    assert people["admin"].post(f"/api/comments/{cid}/approve", json={}).status_code == 200
 
 
 def test_disabling_the_supervisor_moves_the_comment(people):

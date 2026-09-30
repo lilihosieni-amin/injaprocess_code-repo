@@ -40,6 +40,7 @@ WRITES = {
     ("POST", "/api/comments"): {"comment.created"},
     ("PUT", "/api/comments/{ref}"): {"comment.edited"},
     ("POST", "/api/comments/{ref}/withdraw"): {"comment.withdrawn"},
+    ("POST", "/api/comments/{ref}/restore"): {"comment.restored"},
     ("POST", "/api/comments/{ref}/approve"): {"comment.approved", "comment.noted"},
     ("POST", "/api/comments/{ref}/reject"): {"comment.rejected"},
     ("POST", "/api/comments/{ref}/address"): {"comment.addressed"},
