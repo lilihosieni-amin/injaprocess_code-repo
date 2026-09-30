@@ -825,6 +825,37 @@ describe('«تأیید همهٔ فرآیندها» in the page ⋯', () => {
     expect(screen.queryByRole('menuitem', { name: 'تأیید همهٔ فرآیندها' })).toBeNull()
   })
 
+  it('offers «لغو تأیید همهٔ فرآیندها» right after it while any process is confirmed', async () => {
+    mockMarks([
+      { target: 'cooking', kind: 'department', confirmed: true },
+      { target: 'cooking-014', kind: 'process', confirmed: false },
+      { target: 'cooking-001', kind: 'process', confirmed: true },
+    ])
+    renderAt('/departments/:code', <ToastProvider><ProcessList /></ToastProvider>, '/departments/cooking', CONFIRMER)
+    fireEvent.click(await screen.findByRole('button', { name: 'کارهای بیشتر' }))
+    const items = (await screen.findAllByRole('menuitem')).map((m) => m.textContent)
+    expect(items.slice(0, 2)).toEqual(['تأیید همهٔ فرآیندها', 'لغو تأیید همهٔ فرآیندها'])
+    // …and it counts processes only: the department's own confirmation stays.
+    fireEvent.click(screen.getByRole('menuitem', { name: 'لغو تأیید همهٔ فرآیندها' }))
+    expect(await screen.findByRole('dialog', { name: 'لغو تأیید همهٔ فرآیندهای دپارتمان پخت؟' })).toBeInTheDocument()
+    expect(screen.getByText(/تأیید ۱ فرآیند برداشته می‌شود/)).toBeInTheDocument()
+  })
+
+  it('does not offer the undo when no process is confirmed, nor to anyone without confirm', async () => {
+    mockMarks(UNCONFIRMED)
+    const { unmount } = renderAt('/departments/:code', <ProcessList />, '/departments/cooking', CONFIRMER)
+    fireEvent.click(await screen.findByRole('button', { name: 'کارهای بیشتر' }))
+    await screen.findAllByRole('menuitem')
+    expect(screen.queryByRole('menuitem', { name: 'لغو تأیید همهٔ فرآیندها' })).toBeNull()
+    unmount()
+    vi.restoreAllMocks()
+
+    mockMarks([{ target: 'cooking-001', kind: 'process', confirmed: true }])
+    renderAt('/departments/:code', <ProcessList />, '/departments/cooking', EDITOR)
+    fireEvent.click(await screen.findByRole('button', { name: 'کارهای بیشتر' }))
+    expect(screen.queryByRole('menuitem', { name: 'لغو تأیید همهٔ فرآیندها' })).toBeNull()
+  })
+
   it('asks first, counting only the unconfirmed processes', async () => {
     mockMarks([
       ...UNCONFIRMED.slice(0, 2),

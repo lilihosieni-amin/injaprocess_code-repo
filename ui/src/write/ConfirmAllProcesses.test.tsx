@@ -90,6 +90,45 @@ describe('ConfirmAllProcesses', () => {
     expect(await screen.findByText('۲ فرآیند تأیید شد · ۱ فرآیند تأیید نشد')).toBeInTheDocument()
   })
 
+  it('withdraws every confirmed process in revoke mode, and says what that hides', async () => {
+    // Owner ruling 2026-09-30 — «لغو تأیید همهٔ فرآیندها»: the single withdraw
+    // (`DELETE /api/confirmations/{target}`), repeated. No fingerprint is sent —
+    // withdrawing says "whatever is there is wrong", whichever version it is.
+    const calls: { url: string; method?: string }[] = []
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), method: init?.method })
+      return Promise.resolve(new Response(JSON.stringify(
+        { target: 'x', kind: 'process', fingerprint: 'x', confirmed: false, confirmed_by: null, confirmed_at: null }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    })
+    const onClose = vi.fn()
+    wrap(<ConfirmAllProcesses mode="revoke" code="cooking" deptName="پخت" targets={TARGETS.slice(0, 2)} onClose={onClose} />)
+    expect(screen.getByRole('dialog', { name: 'لغو تأیید همهٔ فرآیندهای دپارتمان پخت؟' })).toBeInTheDocument()
+    expect(screen.getByText(/تأیید ۲ فرآیند برداشته می‌شود/)).toBeInTheDocument()
+    expect(screen.getByText(/دیگر برای خوانندگان نمایش داده نمی‌شوند/)).toBeInTheDocument()
+    const go = screen.getByRole('button', { name: 'لغو تأیید همه' })
+    expect(go).toHaveClass('bg-tile-c2', 'text-conflict')     // the danger skin, as delete wears
+    fireEvent.click(go)
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(calls).toEqual([
+      { url: '/api/confirmations/cooking-001', method: 'DELETE' },
+      { url: '/api/confirmations/cooking-014', method: 'DELETE' },
+    ])
+    expect(await screen.findByText('تأیید ۲ فرآیند برداشته شد')).toBeInTheDocument()
+  })
+
+  it('counts a withdrawal that failed', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) =>
+      Promise.resolve(new Response(JSON.stringify({ detail: 'x' }),
+        { status: String(input).endsWith('cooking-014') ? 500 : 200,
+          headers: { 'Content-Type': 'application/json' } })))
+    const onClose = vi.fn()
+    wrap(<ConfirmAllProcesses mode="revoke" code="cooking" deptName="پخت" targets={TARGETS} onClose={onClose} />)
+    fireEvent.click(screen.getByRole('button', { name: 'لغو تأیید همه' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(await screen.findByText('تأیید ۲ فرآیند برداشته شد · ۱ فرآیند انجام نشد')).toBeInTheDocument()
+  })
+
   it('looks busy while it works', async () => {
     vi.spyOn(globalThis, 'fetch').mockReturnValue(new Promise<Response>(() => {}))
     wrap(<ConfirmAllProcesses code="cooking" deptName="پخت" targets={TARGETS} onClose={vi.fn()} />)

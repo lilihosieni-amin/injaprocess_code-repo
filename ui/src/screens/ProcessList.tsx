@@ -254,7 +254,7 @@ export function ProcessList() {
   const [creating, setCreating] = useState(false)
   const [reordering, setReordering] = useState(false)
   const [delTarget, setDelTarget] = useState<{ pid: string; name: string } | null>(null)
-  const [confirmingAll, setConfirmingAll] = useState(false)
+  const [confirmingAll, setConfirmingAll] = useState<'confirm' | 'revoke' | null>(null)
   /**
    * Which row has its ⋮ open — and it is here rather than inside `OverflowMenu`
    * because of what the CARD does on hover.
@@ -356,13 +356,22 @@ export function ProcessList() {
   // page ⋯ menus. Its rows come from the confirmations listing, which already
   // leaves tombstones out and carries each row's fingerprint; the department's
   // own row is not a process and keeps its own confirm. Offered only while
-  // something is left to confirm (R5).
-  const unconfirmed = marks
-    .filter((mark) => mark.kind === 'process' && !mark.confirmed)
+  // something is left to confirm (R5). Its undo, «لغو تأیید همهٔ فرآیندها»
+  // (owner ruling the same day), follows it, offered while anything is
+  // confirmed.
+  const processMarks = (confirmed: boolean) => marks
+    .filter((mark) => mark.kind === 'process' && mark.confirmed === confirmed)
     .map((mark) => ({ target: mark.target, fingerprint: mark.fingerprint }))
-  const confirmAllActs: Act[] = mayConfirm && unconfirmed.length > 0
-    ? [{ key: 'confirm-all', label: 'تأیید همهٔ فرآیندها', run: () => setConfirmingAll(true) }]
-    : []
+  const unconfirmed = processMarks(false)
+  const confirmed = processMarks(true)
+  const confirmAllActs: Act[] = !mayConfirm ? [] : [
+    ...(unconfirmed.length > 0
+      ? [{ key: 'confirm-all', label: 'تأیید همهٔ فرآیندها', run: () => setConfirmingAll('confirm' as const) }]
+      : []),
+    ...(confirmed.length > 0
+      ? [{ key: 'revoke-all', label: 'لغو تأیید همهٔ فرآیندها', run: () => setConfirmingAll('revoke' as const) }]
+      : []),
+  ]
   const barMenuActs: Act[] = [...confirmAllActs, ...reportActs]
 
   // R5 — the overflow is the action bar, not a superset of it, so both are
@@ -509,8 +518,9 @@ export function ProcessList() {
                   around it (40 + 2×2 = 44), the same rule the other two
                   triggers on this screen follow at their own sizes.
 
-                  Since 2026-09-30 it also opens with «تأیید همهٔ فرآیندها»
-                  (owner ruling) — an act the bar has no button for — so it is
+                  Since 2026-09-30 it also opens with «تأیید همهٔ فرآیندها» and
+                  its undo «لغو تأیید همهٔ فرآیندها» (owner rulings) — acts the
+                  bar has no button for — so it is
                   named «گزینه‌های بیشتر» rather than «خروجی‌ها», and it is
                   drawn for an editor with nothing to download. */}
               {barMenuActs.length > 0 && (
@@ -747,7 +757,11 @@ export function ProcessList() {
       {creating && <CreateProcessModal department={code} departmentName={dept?.name ?? ''} onClose={() => setCreating(false)} />}
       {reordering && <ReorderModal department={code} departmentName={dept?.name ?? ''} processes={procs} onClose={() => setReordering(false)} />}
       {delTarget && <DeleteProcessConfirm pid={delTarget.pid} name={delTarget.name} onClose={() => setDelTarget(null)} />}
-      {confirmingAll && <ConfirmAllProcesses code={code} deptName={dept?.name ?? ''} targets={unconfirmed} onClose={() => setConfirmingAll(false)} />}
+      {confirmingAll && (
+        <ConfirmAllProcesses mode={confirmingAll} code={code} deptName={dept?.name ?? ''}
+          targets={confirmingAll === 'revoke' ? confirmed : unconfirmed}
+          onClose={() => setConfirmingAll(null)} />
+      )}
       {/* At the SCREEN root, not inside any of its three triggers: whichever
           one was pressed unmounts on the press that starts the download, and
           `[data-r-plistactions]` — where the bar's own ⋯ lives — is
