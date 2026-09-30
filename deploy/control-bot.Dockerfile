@@ -55,6 +55,16 @@ RUN set -eux; \
     grep -q "float = 100.0  # control-bot patch 0005" "$SITE/src/config/environments.py"; \
     grep -q "control-bot patch 0006" "$SITE/src/bot/middleware/security.py"
 
+# The bot drives Claude through claude-agent-sdk, which ships its OWN Claude Code binary and
+# prefers it over the one on PATH — so the pin above never reached the bot. 0.1.81 bundles
+# 2.1.139, which refuses claude-opus-5-5 («2.1.280 or newer is required», 2026-09-30). With the
+# bundled binary gone the SDK falls back to `claude` on PATH, i.e. the pinned CLI.
+RUN set -eux; \
+    SITE="$(uv tool run --from claude-code-telegram python -c \
+      'import os, claude_agent_sdk as s; print(os.path.dirname(s.__file__))')"; \
+    rm -f "$SITE/_bundled/claude"; \
+    test ! -e "$SITE/_bundled/claude"
+
 # Runtime: APPROVED_DIRECTORY (data-repo) bind-mounted; env_file supplies the profile;
 # claude-credentials volume mounted at /root/.claude for subscription auth.
 CMD ["claude-telegram-bot"]
