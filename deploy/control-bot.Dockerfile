@@ -65,6 +65,11 @@ RUN set -eux; \
     rm -f "$SITE/_bundled/claude"; \
     test ! -e "$SITE/_bundled/claude"
 
+# The data-repo is bind-mounted at /data. On a native Docker engine its files keep the host
+# user's uid, and git (running as root here) refuses a repo it does not own — every pipeline
+# commit fails with «dubious ownership». Docker Desktop's file sharing hid this.
+RUN git config --system --add safe.directory /data
+
 # Runtime: APPROVED_DIRECTORY (data-repo) bind-mounted; env_file supplies the profile;
 # claude-credentials volume mounted at /root/.claude for subscription auth.
 CMD ["claude-telegram-bot"]
