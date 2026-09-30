@@ -765,3 +765,75 @@ describe('R39 — the list stops offering a summary that would be empty', () => 
     expect(within(withDoor as HTMLElement).getByText('فرآیند پرجزئیات')).toBeInTheDocument()
   })
 })
+
+/**
+ * «تأیید همهٔ فرآیندها» — owner ruling 2026-09-30: the page's ⋯ offers an
+ * editor who may confirm here to confirm every unconfirmed process in one act,
+ * as the FIRST item. The confirmations listing is its source: it already
+ * excludes tombstones and carries each row's fingerprint.
+ */
+function mockMarks(rows: { target: string; kind: string; confirmed: boolean }[]) {
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
+    const url = String(input)
+    const body = url.startsWith('/api/confirmations')
+      ? rows.map((r) => ({ ...r, fingerprint: r.target.padEnd(64, '0'),
+        confirmed_by: r.confirmed ? '09120000001' : null, confirmed_at: r.confirmed ? 1 : null }))
+      : url.includes('/processes') ? PROCS
+      : url === '/api/reports' ? REPORTS
+      : [{ code: 'cooking', name: 'پخت', count: 2 }]
+    return Promise.resolve(new Response(JSON.stringify(body),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }))
+  })
+}
+const UNCONFIRMED = [
+  { target: 'cooking', kind: 'department', confirmed: false },
+  { target: 'cooking-014', kind: 'process', confirmed: false },
+  { target: 'cooking-001', kind: 'process', confirmed: false },
+]
+
+describe('«تأیید همهٔ فرآیندها» in the page ⋯', () => {
+  it('is the first item of both ⋯ menus for an editor who may confirm here', async () => {
+    mockMarks(UNCONFIRMED)
+    renderAt('/departments/:code', <ToastProvider><ProcessList /></ToastProvider>, '/departments/cooking', CONFIRMER)
+    fireEvent.click(await screen.findByRole('button', { name: 'کارهای بیشتر' }))
+    expect((await screen.findAllByRole('menuitem'))[0]).toHaveTextContent('تأیید همهٔ فرآیندها')
+    fireEvent.click(screen.getByRole('button', { name: 'کارهای بیشتر' }))
+    fireEvent.click(screen.getByRole('button', { name: 'گزینه‌های بیشتر' }))
+    expect(screen.getAllByRole('menuitem')[0]).toHaveTextContent('تأیید همهٔ فرآیندها')
+  })
+
+  it('is not offered to an editor without confirm, nor to a reader', async () => {
+    for (const who of [EDITOR, READER]) {
+      mockMarks(UNCONFIRMED)
+      const { unmount } = renderAt('/departments/:code', <ProcessList />, '/departments/cooking', who)
+      fireEvent.click(await screen.findByRole('button', { name: 'کارهای بیشتر' }))
+      expect(screen.queryByRole('menuitem', { name: 'تأیید همهٔ فرآیندها' })).toBeNull()
+      unmount()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('is not offered when every process is already confirmed — the department row does not count', async () => {
+    mockMarks([
+      { target: 'cooking', kind: 'department', confirmed: false },
+      { target: 'cooking-014', kind: 'process', confirmed: true },
+      { target: 'cooking-001', kind: 'process', confirmed: true },
+    ])
+    renderAt('/departments/:code', <ProcessList />, '/departments/cooking', CONFIRMER)
+    fireEvent.click(await screen.findByRole('button', { name: 'کارهای بیشتر' }))
+    await screen.findAllByRole('menuitem')
+    expect(screen.queryByRole('menuitem', { name: 'تأیید همهٔ فرآیندها' })).toBeNull()
+  })
+
+  it('asks first, counting only the unconfirmed processes', async () => {
+    mockMarks([
+      ...UNCONFIRMED.slice(0, 2),
+      { target: 'cooking-001', kind: 'process', confirmed: true },
+    ])
+    renderAt('/departments/:code', <ToastProvider><ProcessList /></ToastProvider>, '/departments/cooking', CONFIRMER)
+    fireEvent.click(await screen.findByRole('button', { name: 'کارهای بیشتر' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'تأیید همهٔ فرآیندها' }))
+    expect(await screen.findByRole('dialog', { name: 'تأیید همهٔ فرآیندهای دپارتمان پخت؟' })).toBeInTheDocument()
+    expect(screen.getByText(/۱ فرآیند تأییدنشده تأیید می‌شود/)).toBeInTheDocument()
+  })
+})
