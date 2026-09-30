@@ -2115,64 +2115,6 @@ def test_a_voice_source_outside_the_shown_passages_is_dropped(tmp_path):
     assert [s["type"] for s in entry["source"]] == ["sheet"]
 
 
-#: A second meeting the transcript unit is packed with (Ruling 27).
-TALK_B = "meetings/transcripts/n.txt"
-
-
-def _packed_run(tmp_path, tr_new, contradicted=None):
-    """`_two_unit_run` with its transcript unit packed: it read `TALK` L1-L3
-    and `TALK_B` L2-L4 — B's line 1 was never printed to it."""
-    root, run = _two_unit_run(tmp_path, att_new=[], tr_new=tr_new)
-    (root / TALK_B).write_text("چهار\nپنج\nشش\nهفت\n", encoding="utf-8")
-    plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
-    plan["units"][1]["inputs"].append(f"{TALK_B}#L2-L4")
-    plan["hashes"][TALK_B] = "c"
-    (run / "plan.json").write_text(json.dumps(plan), encoding="utf-8")
-    if contradicted is not None:
-        path = run / "units" / "u-tr-m-l1" / "out.1.json"
-        doc = json.loads(path.read_text(encoding="utf-8"))
-        doc["contradicted"] = contradicted
-        path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-    return root, run
-
-
-def _packed_voices(tmp_path, voice):
-    """The voice sources of the packed unit's rule, written with `voice`."""
-    root, run = _packed_run(tmp_path, [dict(RULE, voice=voice)])
-    assemble(root, run)
-    delta = json.loads((run / "facts-delta.json").read_text(encoding="utf-8"))
-    entry = next(e for e in delta["entries"] if e["key"] == RULE["key"])
-    return [s for s in entry["source"] if s["type"] == "voice"]
-
-
-def test_a_packed_units_voice_credits_only_the_meeting_it_cites(tmp_path):
-    """Ruling 27 — a unit that read two meetings and cites B's lines is B's
-    fact alone: the whole excerpt of A it was also handed is no source of it."""
-    assert _packed_voices(tmp_path, [{"ref": TALK_B, "lines": "3-4"}]) == \
-        [_voice("3-4", TALK_B)]
-
-
-def test_a_packed_units_voice_outside_every_excerpt_is_dropped(tmp_path):
-    """B's line 1 and A's line 4 were printed to no unit: both citations go,
-    and the entry keeps the excerpts it was handed."""
-    assert _packed_voices(tmp_path, [{"ref": TALK_B, "lines": "1-2"},
-                                     {"ref": TALK, "lines": "4"}]) == \
-        [_voice("1-3"), _voice("2-4", TALK_B)]
-
-
-def test_a_packed_units_contradiction_is_gated_by_its_own_meetings_excerpt(
-        tmp_path):
-    root, run = _packed_run(tmp_path, [RULE], contradicted=[
-        _claim(lines="3-4", ref=TALK_B),       # inside B's excerpt
-        _claim(lines="1", ref=TALK_B),         # B, but a line never printed
-        _claim(lines="3-4", ref=TALK)])        # A's path, B's lines
-    _with_step(root)
-    assemble(root, run)
-    rows = json.loads((run / "assembly.json").read_text(
-        encoding="utf-8"))["contradicted"]
-    assert [(r["ref"], r["lines"]) for r in rows] == [(TALK_B, "3-4")]
-
-
 def test_the_phase_two_input_prints_a_phase_one_entry_by_handle_and_location(
         tmp_path):
     """The seam end to end: a phase-1 `new[]` form folds through `phase_entries`

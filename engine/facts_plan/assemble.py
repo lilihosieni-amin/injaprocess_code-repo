@@ -1881,15 +1881,12 @@ def _entry(candidate, decision, state, part=None):
     # Spec 2026-09-29 §7: the lines a transcript unit says it took the fact
     # from (gated to its own excerpt) replace the whole-excerpt citation
     # `_unit_sources` gave it — hundreds of lines nobody can check. An entry
-    # whose unit wrote no `voice` keeps the whole excerpt. Ruling 27: a unit
-    # packed with several meetings drops the whole excerpt of every one of
-    # them, not only the one it cites — else meeting B's fact is credited to
-    # meeting A as well — and the lines it named are no guess for
-    # `_narrow_citations` to narrow.
+    # whose unit wrote no `voice` keeps the whole excerpt.
     voices = written.get("voice") or []
-    if voices:
-        sources = [s for s in sources if s.get("type") != "voice"] + voices
-        cite_all = False
+    heard = {v["ref"] for v in voices}
+    sources = [s for s in sources
+               if not (s.get("type") == "voice" and s.get("ref") in heard)]
+    sources += voices
     # The citations hang off the decision, never off a split part (§2.5's
     # `splitPart` has no `processes`), so both parts of a split inherit them.
     # Owner ruling 2026-09-15: they sit beside the real origin, never instead

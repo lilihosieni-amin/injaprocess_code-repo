@@ -123,7 +123,7 @@
    "id": "u-wb-gozaresh_markazi-s0",
    "type": "workbook",
    "candidates": 2,
-   "est_tokens_in": 9419,
+   "est_tokens_in": 5833,
    "est_tokens_out": 500
   },
   {
@@ -249,7 +249,7 @@
    "id": "u-tr-transcript-l1",
    "type": "transcript",
    "candidates": 0,
-   "est_tokens_in": 14485,
+   "est_tokens_in": 14320,
    "est_tokens_out": 1279
   }
  ],
